@@ -17,11 +17,14 @@ Los prototipos de conectores usan **solo la librería estándar** de Python (3.1
 corren sin instalar nada:
 
 ```bash
-python backend/demo.py
+python backend/demo.py      # foto rápida en consola (sin BD)
+
+python backend/ingest.py    # trae datos y los guarda en backend/simpac.db (SQLite)
+python backend/api.py       # sirve la API JSON en http://localhost:8000
 ```
 
-Salida esperada (datos en vivo — foto de Cajamarca): contexto El Niño (ONI/ICEN), caudales
-de ríos con su estado de alerta, y la lluvia horaria de una estación automática.
+Salida esperada de `demo.py` (datos en vivo — foto de Cajamarca): contexto El Niño (ONI/ICEN),
+caudales de ríos con su estado de alerta, y la lluvia horaria de una estación automática.
 
 ```
 NOAA ONI   JJA 2026: +1.80  -> El Niño
@@ -45,6 +48,10 @@ VigiaFEN/
 │  │  ├─ ana.py          # caudales de ríos + estado de alerta por umbral
 │  │  ├─ igp.py          # Índice Costero El Niño (ICEN)
 │  │  └─ noaa.py         # ONI (contexto ENSO global)
+│  ├─ store.py           # persistencia SQLite (prototipo de la BD)
+│  ├─ alerts.py          # motor de umbrales (lluvia + caudal)
+│  ├─ ingest.py          # job de ingesta (correr cada hora)
+│  ├─ api.py             # API JSON (http.server, sin deps)
 │  ├─ demo.py            # prueba de humo en vivo
 │  └─ requirements.txt
 └─ docs/
@@ -250,7 +257,49 @@ acumulación propia en la BD) se puede:
 
 ---
 
-## 7. Estrategia de adquisición y buenas prácticas
+## 7. Persistencia, ingesta y API (prototipo)
+
+El prototipo ya tiene el flujo completo **fuentes → ingesta → BD → API**, todo con la
+librería estándar para que corra sin instalar nada.
+
+**Persistencia** (`store.py`, SQLite en `backend/simpac.db`). Esquema (refleja el de PostGIS):
+
+| Tabla | Contenido | Clave / dedup |
+|---|---|---|
+| `estacion` | inventario (cod, nombre, tipo, cat, estado, lat/lon) | `cod` (upsert) |
+| `lectura_lluvia` | serie horaria precip/temp por estación | `(cod, ts)` |
+| `lectura_caudal` | caudal por estación + umbrales + estado | `(estacion, fecha, hora)` |
+| `indice` | último ONI / ICEN | `fuente` |
+| `alerta` | alertas vigentes (se reescriben cada corrida) | autoincrement |
+
+**Ingesta** (`ingest.py`): una pasada = inventario + lluvia (automáticas) + caudales +
+índices + recálculo de alertas. Última corrida real: `93 estaciones, 672 filas de lluvia,
+12 de caudal, 0 alertas` (estiaje). Programarla **cada hora**:
+
+```bash
+# Linux/mac (cron):     0 * * * *  cd /ruta/VigiaFEN && python backend/ingest.py
+# Windows (Programador de tareas): acción -> python  argumento -> backend\ingest.py
+```
+Acumular estas pasadas es lo que construye el histórico propio para el modelo predictivo.
+
+**API** (`api.py`, `http.server`, CORS abierto):
+
+| Método | Ruta | Devuelve |
+|---|---|---|
+| GET | `/api/snapshot` | contexto (ONI/ICEN) + resumen + alertas + caudales |
+| GET | `/api/estaciones` | inventario de Cajamarca |
+| GET | `/api/caudales` | última lectura por estación, con `estado` |
+| GET | `/api/lluvia?cod=107028` | serie horaria de una estación |
+| GET | `/api/alertas` | alertas vigentes |
+| GET | `/api/contexto` | índices El Niño |
+
+> **Migración a producción:** reemplazar `store.py` por PostgreSQL+PostGIS (mismas firmas) y
+> envolver estas consultas en rutas **FastAPI** async. `api.py` (stdlib) es solo para ver el
+> flujo hoy; no usarlo en prod (sin validación, sin auth, monohilo básico).
+
+---
+
+## 8. Estrategia de adquisición y buenas prácticas
 
 Orden de preferencia por estabilidad: **API/archivo abierto → API interna (sniffing) →
 scraping HTML/PDF.**
@@ -274,13 +323,15 @@ Reglas:
 
 ---
 
-## 8. Pendientes
+## 9. Pendientes
 
 - [ ] Conector de **avisos** SENAMHI (scraping de tabla + filtro Cajamarca).
 - [ ] Conector **ENFEN** (`wp-json`) validado desde producción.
 - [ ] URL exacta del **MapServer de CENEPRED** (enumerar capas de peligro por lluvia/inundación).
-- [ ] Persistencia (PostGIS) + jobs horarios (APScheduler/cron) para acumular histórico propio.
-- [ ] API FastAPI + esquema de la BD (ver pre-documentación, sección Modelo de datos).
+- [x] Persistencia + ingesta + API (prototipo SQLite/stdlib, sección 7).
+- [ ] Migrar persistencia a **PostgreSQL + PostGIS** y programar el job horario en el servidor.
+- [ ] Reescribir la API en **FastAPI** (auth, validación, paginación) sobre el mismo `store`.
+- [ ] Conector de **push** (Firebase) que dispare la notificación cuando `alerta` cambie de nivel.
 - [ ] Reejecutar la verificación en **temporada de lluvias (dic–abr)**, cuando disparan los umbrales.
 
 ---

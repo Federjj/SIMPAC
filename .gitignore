@@ -18,6 +18,11 @@ build/
 cache/
 data/cache/
 
+# Base de datos local del prototipo
+*.db
+*.sqlite
+*.sqlite3
+
 # SO / editores
 .DS_Store
 Thumbs.db
