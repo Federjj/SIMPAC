@@ -1,0 +1,11 @@
+# Los prototipos de conectores usan SOLO la librería estándar (urllib), así que
+# `python backend/demo.py` corre sin instalar nada.
+#
+# Dependencias recomendadas cuando se construya el backend real (API + jobs):
+#   fastapi
+#   uvicorn[standard]
+#   httpx            # cliente HTTP con timeouts/reintentos (reemplaza urllib)
+#   geopandas        # shapefile -> GeoJSON (mapas de anomalías de SENAMHI/IDESEP)
+#   shapely
+#   psycopg[binary]  # PostgreSQL + PostGIS
+#   apscheduler      # o cron / GitHub Actions para los jobs de ingesta

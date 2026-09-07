@@ -1,0 +1,688 @@
+<title>Monitoreo El Niño</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Source+Serif+4:opsz,wght@8..60,400;8..60,500;8..60,600;8..60,700&display=swap">
+
+<style>
+  :root {
+    /* Minimalist formal — warm off-white, near-black ink, one restrained slate accent */
+    --bg: #FBFBF9;
+    --surface: #FFFFFF;
+    --surface-2: #F2F2EF;
+    --ink: #1C1C1A;
+    --ink-soft: #4A4B48;
+    --muted: #7A7B77;
+    --line: #E5E5E1;
+    --line-strong: #CDCDC8;
+    --accent: #35566E;
+    --accent-soft: #5C7994;
+    /* Alert-state semantics — the only other colours, and only where they carry meaning */
+    --st-normal: #4E7D5E;
+    --st-watch: #B08A2A;
+    --st-alert: #C06A28;
+    --st-high: #B23A2E;
+    --radius: 3px;
+  }
+  :root:not([data-theme="light"]) {
+    @media (prefers-color-scheme: dark) {
+      --bg: #17170F;
+      --surface: #1E1E17;
+      --surface-2: #26261E;
+      --ink: #ECEBE3;
+      --ink-soft: #BFBFB6;
+      --muted: #8B8B82;
+      --line: #2E2E26;
+      --line-strong: #3E3E34;
+      --accent: #86A9C5;
+      --accent-soft: #6E92AF;
+      --st-normal: #6FB287;
+      --st-watch: #D3AE4D;
+      --st-alert: #DD8B48;
+      --st-high: #DF6353;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #17170F;
+    --surface: #1E1E17;
+    --surface-2: #26261E;
+    --ink: #ECEBE3;
+    --ink-soft: #BFBFB6;
+    --muted: #8B8B82;
+    --line: #2E2E26;
+    --line-strong: #3E3E34;
+    --accent: #86A9C5;
+    --accent-soft: #6E92AF;
+    --st-normal: #6FB287;
+    --st-watch: #D3AE4D;
+    --st-alert: #DD8B48;
+    --st-high: #DF6353;
+  }
+
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: "Source Serif 4", Georgia, "Times New Roman", serif;
+    font-size: 18px;
+    line-height: 1.72;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  .wrap { max-width: 1000px; margin: 0 auto; padding: 0 28px; }
+  .col { max-width: 680px; }
+
+  /* ---- typography ---- */
+  h1, h2, h3 { font-family: "Source Serif 4", Georgia, serif; line-height: 1.18; text-wrap: balance; color: var(--ink); font-weight: 600; }
+  h2 { font-size: clamp(1.45rem, 1.15rem + 1.1vw, 1.85rem); margin: 0 0 .55rem; letter-spacing: -.005em; }
+  h3 { font-size: 1.14rem; font-weight: 600; margin: 0 0 .35rem; }
+  p { margin: 0 0 1rem; }
+  a { color: var(--accent); text-decoration: none; border-bottom: 1px solid color-mix(in srgb, var(--accent) 40%, transparent); }
+  a:hover { border-bottom-color: var(--accent); }
+  strong { font-weight: 600; color: var(--ink); }
+  em { font-style: italic; }
+  code, .mono { font-family: "IBM Plex Mono", ui-monospace, SFMono-Regular, monospace; }
+  code { font-size: .8em; background: var(--surface-2); padding: .1em .4em; border-radius: var(--radius); border: 1px solid var(--line); word-break: break-word; }
+  .eyebrow { font-family: "IBM Plex Mono", monospace; font-size: .72rem; letter-spacing: .18em; text-transform: uppercase; color: var(--muted); margin: 0 0 .7rem; font-weight: 500; }
+  .secnum { color: var(--ink-soft); }
+
+  /* ---- masthead ---- */
+  .top { position: sticky; top: 0; z-index: 20; background: var(--bg); border-bottom: 1px solid var(--line); }
+  .top-inner { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 11px 28px; max-width: 1000px; margin: 0 auto; }
+  .brand { font-family: "IBM Plex Mono", monospace; font-weight: 500; font-size: .74rem; letter-spacing: .14em; text-transform: uppercase; color: var(--muted); }
+  .toggle { font-family: "IBM Plex Mono", monospace; font-size: .68rem; letter-spacing: .1em; text-transform: uppercase; background: transparent; color: var(--muted); border: 1px solid var(--line-strong); border-radius: var(--radius); padding: 5px 12px; cursor: pointer; }
+  .toggle:hover { border-color: var(--accent); color: var(--accent); }
+  .toggle:focus-visible, a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 2px; }
+
+  header.hero { padding: 78px 0 46px; border-bottom: 1px solid var(--line-strong); }
+  .hero h1 { font-size: clamp(2rem, 1.5rem + 2.2vw, 2.9rem); font-weight: 600; letter-spacing: -.015em; margin: 0; color: var(--ink); }
+  .hero .lede { font-size: clamp(1.05rem, 1rem + .35vw, 1.2rem); color: var(--ink-soft); max-width: 640px; margin: 1.1rem 0 0; }
+  .metaline { display: flex; flex-wrap: wrap; gap: 6px 26px; margin-top: 30px; font-family: "IBM Plex Mono", monospace; font-size: .74rem; color: var(--muted); }
+  .metaline b { color: var(--ink-soft); font-weight: 500; }
+
+  .toc { margin-top: 34px; display: flex; flex-wrap: wrap; gap: 4px 22px; }
+  .toc a { font-family: "IBM Plex Mono", monospace; font-size: .74rem; letter-spacing: .02em; color: var(--muted); border-bottom: none; }
+  .toc a:hover { color: var(--accent); }
+  .toc a span { color: var(--line-strong); }
+
+  section { padding: 56px 0; border-bottom: 1px solid var(--line); scroll-margin-top: 62px; }
+
+  /* ---- callout / note: quiet left rule, no fill ---- */
+  .callout { border-left: 2px solid var(--accent); padding: 4px 0 4px 22px; margin: 24px 0; }
+  .callout p:last-child { margin-bottom: 0; }
+  .note { border-left: 2px solid var(--line-strong); padding: 2px 0 2px 20px; margin: 22px 0; font-size: .95rem; color: var(--ink-soft); }
+  .note p:last-child { margin-bottom: 0; }
+  .note b { color: var(--ink); }
+
+  /* ---- phase cards: hairline, no shadow, no fill ---- */
+  .cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0; margin-top: 28px; border: 1px solid var(--line-strong); border-radius: var(--radius); overflow: hidden; }
+  .card { padding: 22px 22px 24px; border-right: 1px solid var(--line); display: flex; flex-direction: column; background: var(--surface); }
+  .card:last-child { border-right: none; }
+  .card .tag { font-family: "IBM Plex Mono", monospace; font-size: .7rem; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); margin-bottom: 14px; }
+  .card .tag.now { color: var(--accent); }
+  .card h3 { margin-bottom: .55rem; }
+  .card > p { font-size: .92rem; color: var(--muted); margin-bottom: .7rem; }
+  .card ul { margin: .2rem 0 0; padding-left: 1.05rem; }
+  .card li { margin-bottom: .38rem; font-size: .92rem; color: var(--ink-soft); }
+  .card li::marker { color: var(--line-strong); }
+
+  ul.clean { list-style: none; padding: 0; margin: 1rem 0; }
+  ul.clean li { padding-left: 1.4rem; position: relative; margin-bottom: .6rem; }
+  ul.clean li::before { content: "—"; position: absolute; left: 0; color: var(--muted); font-family: "IBM Plex Mono", monospace; }
+
+  ol.steps { list-style: none; padding: 0; margin: 1.1rem 0; counter-reset: s; }
+  ol.steps li { position: relative; padding-left: 2rem; margin-bottom: .7rem; counter-increment: s; }
+  ol.steps li::before { content: counter(s, decimal-leading-zero); position: absolute; left: 0; top: .12em; color: var(--accent); font-family: "IBM Plex Mono", monospace; font-size: .76rem; letter-spacing: .04em; }
+
+  h3.sub { margin: 30px 0 .2rem; font-size: 1.08rem; }
+
+  /* ---- tables ---- */
+  .tablewrap { overflow-x: auto; margin: 26px 0; border: 1px solid var(--line-strong); border-radius: var(--radius); }
+  table { border-collapse: collapse; width: 100%; min-width: 600px; background: var(--surface); font-size: .9rem; }
+  th, td { text-align: left; padding: 11px 16px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  thead th { font-family: "IBM Plex Mono", monospace; font-size: .68rem; letter-spacing: .09em; text-transform: uppercase; color: var(--muted); font-weight: 500; border-bottom: 1px solid var(--line-strong); }
+  tbody tr:last-child td { border-bottom: none; }
+  td .mono { font-size: .8rem; color: var(--muted); }
+  .pri { font-family: "IBM Plex Mono", monospace; font-size: .72rem; color: var(--muted); white-space: nowrap; }
+  .pri.p1 { color: var(--ink-soft); }
+
+  /* ---- alert legend ---- */
+  .legend { display: flex; flex-wrap: wrap; gap: 8px 18px; margin: 20px 0 8px; }
+  .lvl { display: flex; align-items: center; gap: 9px; font-size: .88rem; color: var(--ink-soft); }
+  .dot { width: 10px; height: 10px; border-radius: 50%; flex: none; }
+
+  /* ---- figures ---- */
+  figure { margin: 32px 0; }
+  .figbox { overflow-x: auto; background: var(--surface); border: 1px solid var(--line-strong); border-radius: var(--radius); padding: 24px 22px; }
+  figure svg { display: block; width: 100%; height: auto; min-width: 540px; color: var(--ink-soft); }
+  figcaption { font-size: .84rem; color: var(--muted); margin-top: 13px; max-width: 640px; line-height: 1.55; }
+  figcaption b { color: var(--ink-soft); font-weight: 500; }
+
+  /* svg helpers — monochrome, one accent for the single meaningful node */
+  .n-box { fill: var(--surface); stroke: var(--line-strong); }
+  .n-soft { fill: var(--surface-2); stroke: var(--line-strong); }
+  .n-hi { fill: var(--surface); stroke: var(--accent); stroke-width: 1.6; }
+  .s-flow { stroke: var(--muted); }
+  .s-hi { stroke: var(--accent); }
+  .t-hd { fill: var(--ink); font-family: "IBM Plex Sans", "Source Serif 4", sans-serif; font-weight: 600; }
+  .t-lb { fill: var(--ink-soft); font-family: "IBM Plex Sans", sans-serif; }
+  .t-mono { fill: var(--muted); font-family: "IBM Plex Mono", monospace; }
+  .t-edge { fill: var(--muted); font-family: "IBM Plex Mono", monospace; }
+
+  footer { padding: 48px 0 76px; color: var(--muted); font-size: .88rem; }
+  footer .col { max-width: 680px; }
+
+  @media (max-width: 760px) {
+    body { font-size: 17px; }
+    .cards { grid-template-columns: 1fr; }
+    .card { border-right: none; border-bottom: 1px solid var(--line); }
+    .card:last-child { border-bottom: none; }
+    section { padding: 46px 0; }
+    header.hero { padding: 52px 0 38px; }
+  }
+</style>
+
+<div class="top">
+  <div class="top-inner">
+    <div class="brand">Proyecto FEN · documentación</div>
+    <button class="toggle" id="themeToggle" type="button" aria-label="Cambiar tema">Tema</button>
+  </div>
+</div>
+
+<div class="wrap">
+  <header class="hero">
+    <p class="eyebrow">Pre-documentación general · Arquitectura · Hoja de ruta</p>
+    <h1>Nombre por decidir</h1>
+    <p class="lede">Aplicación web —y posteriormente Android— que reúne en un solo lugar la información sobre el Fenómeno El Niño publicada por los organismos que lo monitorean, la interpreta para el usuario común y la combina con reportes enviados por los propios usuarios.</p>
+    <div class="metaline">
+      <span><b>Nombre</b> por decidir</span>
+      <span><b>Versión</b> 0.1 · borrador</span>
+      <span><b>Fecha</b> 31 ago 2026</span>
+      <span><b>Desarrollo</b> Kevin y equipo</span>
+    </div>
+    <nav class="toc" aria-label="Secciones">
+      <a href="#problema"><span>01</span> Problema</a>
+      <a href="#fases"><span>02</span> Fases</a>
+      <a href="#arquitectura"><span>03</span> Arquitectura</a>
+      <a href="#fuentes"><span>04</span> Fuentes</a>
+      <a href="#mapas"><span>05</span> Mapas</a>
+      <a href="#interpretacion"><span>06</span> Interpretación</a>
+      <a href="#reportes"><span>07</span> Reportes</a>
+      <a href="#stack"><span>08</span> Stack</a>
+      <a href="#datos"><span>09</span> Datos</a>
+      <a href="#roadmap"><span>10</span> Roadmap</a>
+      <a href="#riesgos"><span>11</span> Riesgos</a>
+    </nav>
+  </header>
+
+  <!-- 01 PROBLEMA -->
+  <section id="problema">
+    <div class="col">
+      <p class="eyebrow"><span class="secnum">01</span> &nbsp;Problema y enfoque</p>
+      <h2>Información dispersa y poco accesible para el ciudadano</h2>
+      <p>La información sobre El Niño existe, pero está repartida entre organismos globales (NOAA, NASA, OMM), regionales (CIIFEN) y nacionales (ENFEN, SENAMHI, IGP), en formatos distintos —APIs geoespaciales, PDFs técnicos, boletines e índices numéricos— y redactada para especialistas. El usuario común no dispone de un lugar único donde consultar, de forma rápida, qué está ocurriendo y qué medidas tomar.</p>
+      <p>El proyecto atiende dos carencias: el <strong>acceso</strong> (centralizar e interpretar los datos oficiales) y el <strong>detalle local</strong> (la información a nivel de calle o barrio que los organismos no registran, aportada por los propios usuarios).</p>
+
+      <div class="callout">
+        <p style="margin-bottom:.5rem"><strong>Aporte diferenciador (propuesta principal)</strong></p>
+        <p>Un método para estimar la confiabilidad de los reportes ciudadanos combinando la corroboración entre usuarios (modelo similar a Waze) con la <strong>validación cruzada contra los datos hidrometeorológicos oficiales</strong> de la zona. La hipótesis de trabajo es que ese cruce reduce los falsos positivos frente a la corroboración por votos por sí sola.</p>
+      </div>
+      <p style="margin-bottom:.4rem">Enfoques alternativos, en caso de reorientar el foco del proyecto:</p>
+      <ul class="clean">
+        <li><strong>Interoperabilidad</strong>: un modelo común para integrar fuentes heterogéneas de monitoreo del ENSO (índices, geoespacial y boletines).</li>
+        <li><strong>Comunicación de riesgo</strong>: generación de lenguaje natural (NLG) que traduce indicadores técnicos a un mensaje comprensible sin alterar el dato.</li>
+      </ul>
+      <div class="note"><p><b>Decisión pendiente:</b> definir cuál de los tres enfoques es el central. El resto del documento asume el primero (validación cruzada).</p></div>
+    </div>
+  </section>
+
+  <!-- 02 FASES -->
+  <section id="fases">
+    <div class="col">
+      <p class="eyebrow"><span class="secnum">02</span> &nbsp;Alcance por fases</p>
+      <h2>Dos productos distintos, en fases separadas</h2>
+      <p>El sistema combina dos componentes de naturaleza diferente: una <strong>plataforma de datos</strong> (desarrollo predecible) y una <strong>capa social en tiempo real</strong> (que concentra la mayor parte del riesgo técnico y de moderación). No se recomienda desarrollarlos en paralelo. Cada fase constituye un entregable independiente.</p>
+    </div>
+    <div class="cards">
+      <div class="card">
+        <span class="tag now">v1 · MVP</span>
+        <h3>Plataforma de datos + mapa</h3>
+        <p>Web, solo lectura. Constituye un producto completo por sí solo.</p>
+        <ul>
+          <li><strong>Mapa interactivo</strong> con anomalías de SENAMHI (Leaflet + GeoJSON)</li>
+          <li>Titular del <strong>estado de alerta oficial</strong> (ENFEN)</li>
+          <li>Gráficos de índices (ONI de NOAA, ICEN del IGP)</li>
+          <li>Resumen en lenguaje natural con <strong>LLM controlado</strong></li>
+        </ul>
+      </div>
+      <div class="card">
+        <span class="tag">v2</span>
+        <h3>Reportes ciudadanos</h3>
+        <p>Cuentas y reportes estructurados sobre el mapa.</p>
+        <ul>
+          <li>Tipo de incidente, ubicación, foto</li>
+          <li>Confirmación por votos de vecinos</li>
+          <li>Cruce con datos oficiales (validación central)</li>
+          <li><strong>Sin chat libre todavía</strong>, más fácil de moderar</li>
+        </ul>
+      </div>
+      <div class="card">
+        <span class="tag">v3</span>
+        <h3>Tiempo real + móvil</h3>
+        <p>El componente de mayor riesgo; se aborda al final.</p>
+        <ul>
+          <li>Chat en tiempo real, mensajes efímeros</li>
+          <li>Moderación (filtros + clasificador)</li>
+          <li>App Android (GPS nativo)</li>
+        </ul>
+      </div>
+    </div>
+    <div class="col">
+      <div class="note"><p>Si v2 o v3 se retrasan, <strong>v1 se mantiene como un producto terminado</strong>. El faseo reduce el riesgo frente a la fecha de entrega.</p></div>
+    </div>
+  </section>
+
+  <!-- 03 ARQUITECTURA -->
+  <section id="arquitectura">
+    <div class="col">
+      <p class="eyebrow"><span class="secnum">03</span> &nbsp;Arquitectura del sistema</p>
+      <h2>Estructura general del sistema</h2>
+      <p>El criterio de diseño es que cada organismo se integra mediante un <strong>conector aislado</strong> que normaliza sus datos a un modelo común. Así se pueden añadir fuentes de forma incremental sin afectar al resto, y el frontend recibe siempre el mismo formato, con independencia del origen.</p>
+    </div>
+
+    <figure>
+      <div class="figbox">
+        <svg viewBox="0 0 940 470" role="img" aria-label="Diagrama de arquitectura: las fuentes entran por conectores que normalizan a una base de datos PostGIS; la API FastAPI sirve al frontend React/Leaflet, con una capa LLM para interpretación (resaltada) y un carril de tiempo real para reportes ciudadanos en fases posteriores.">
+          <defs>
+            <marker id="ar" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+              <path d="M0,0 L10,5 L0,10 z" fill="var(--muted)"></path>
+            </marker>
+            <marker id="arh" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+              <path d="M0,0 L10,5 L0,10 z" fill="var(--accent)"></path>
+            </marker>
+          </defs>
+
+          <text x="90"  y="26" class="t-mono" font-size="11" text-anchor="middle">FUENTES</text>
+          <text x="298" y="26" class="t-mono" font-size="11" text-anchor="middle">INGESTA</text>
+          <text x="505" y="26" class="t-mono" font-size="11" text-anchor="middle">ALMACÉN</text>
+          <text x="690" y="26" class="t-mono" font-size="11" text-anchor="middle">SERVICIO</text>
+          <text x="866" y="26" class="t-mono" font-size="11" text-anchor="middle">CLIENTE</text>
+
+          <g font-size="12">
+            <rect class="n-box" x="20" y="44" width="140" height="34" rx="3"></rect>
+            <text class="t-hd" x="90" y="65" text-anchor="middle" font-size="12">NOAA · CPC (ONI)</text>
+            <rect class="n-box" x="20" y="86" width="140" height="34" rx="3"></rect>
+            <text class="t-hd" x="90" y="107" text-anchor="middle" font-size="12">IGP · ICEN</text>
+            <rect class="n-box" x="20" y="128" width="140" height="34" rx="3"></rect>
+            <text class="t-hd" x="90" y="149" text-anchor="middle" font-size="12">ENFEN · alerta</text>
+            <rect class="n-box" x="20" y="170" width="140" height="34" rx="3"></rect>
+            <text class="t-hd" x="90" y="188" text-anchor="middle" font-size="12">SENAMHI · IDE</text>
+            <text class="t-mono" x="90" y="200" text-anchor="middle" font-size="9.5">mapas / shapefiles</text>
+          </g>
+
+          <rect class="n-box" x="228" y="70" width="140" height="112" rx="3"></rect>
+          <text class="t-hd" x="298" y="112" text-anchor="middle" font-size="12.5">Conectores</text>
+          <text class="t-lb" x="298" y="131" text-anchor="middle" font-size="11">1 módulo / fuente</text>
+          <text class="t-lb" x="298" y="147" text-anchor="middle" font-size="11">normaliza a</text>
+          <text class="t-lb" x="298" y="163" text-anchor="middle" font-size="11">modelo común</text>
+
+          <rect class="n-soft" x="440" y="70" width="130" height="112" rx="3"></rect>
+          <text class="t-hd" x="505" y="108" text-anchor="middle" font-size="12.5">PostgreSQL</text>
+          <text class="t-hd" x="505" y="126" text-anchor="middle" font-size="12.5">+ PostGIS</text>
+          <text class="t-lb" x="505" y="150" text-anchor="middle" font-size="10.5">índices · mapas</text>
+          <text class="t-lb" x="505" y="165" text-anchor="middle" font-size="10.5">reportes</text>
+
+          <rect class="n-soft" x="628" y="70" width="128" height="112" rx="3"></rect>
+          <text class="t-hd" x="692" y="120" text-anchor="middle" font-size="12.5">API</text>
+          <text class="t-hd" x="692" y="138" text-anchor="middle" font-size="12.5">FastAPI</text>
+
+          <rect class="n-soft" x="812" y="70" width="112" height="112" rx="3"></rect>
+          <text class="t-hd" x="868" y="112" text-anchor="middle" font-size="12.5">React</text>
+          <text class="t-hd" x="868" y="130" text-anchor="middle" font-size="12.5">+ Leaflet</text>
+          <text class="t-lb" x="868" y="152" text-anchor="middle" font-size="10.5">mapa · panel</text>
+
+          <line class="s-flow" x1="164" y1="126" x2="224" y2="126" marker-end="url(#ar)"></line>
+          <line class="s-flow" x1="372" y1="126" x2="436" y2="126" marker-end="url(#ar)"></line>
+          <line class="s-flow" x1="574" y1="126" x2="624" y2="126" marker-end="url(#ar)"></line>
+          <line class="s-flow" x1="760" y1="126" x2="808" y2="126" marker-end="url(#ar)"></line>
+          <text class="t-edge" x="298" y="60" text-anchor="middle" font-size="9.5">cron / jobs</text>
+          <text class="t-edge" x="692" y="60" text-anchor="middle" font-size="9.5">REST / JSON</text>
+
+          <!-- LLM layer: the single highlighted node -->
+          <rect class="n-hi" x="596" y="250" width="192" height="58" rx="3"></rect>
+          <text class="t-hd" x="692" y="275" text-anchor="middle" font-size="12.5">Capa LLM / NLG</text>
+          <text class="t-lb" x="692" y="293" text-anchor="middle" font-size="10.5">interpreta · números fijados</text>
+          <line class="s-hi" x1="692" y1="250" x2="692" y2="184" marker-end="url(#arh)"></line>
+          <text class="t-edge" x="748" y="222" text-anchor="middle" font-size="9.5" fill="var(--accent)">titular</text>
+
+          <!-- realtime lane (future) -->
+          <rect class="n-box" x="228" y="360" width="342" height="58" rx="3" stroke-dasharray="5 4"></rect>
+          <text class="t-hd" x="399" y="384" text-anchor="middle" font-size="12.5">Reportes ciudadanos · WebSockets</text>
+          <text class="t-mono" x="399" y="402" text-anchor="middle" font-size="10">v2 / v3 — fase posterior</text>
+          <line class="s-flow" x1="399" y1="360" x2="450" y2="184" marker-end="url(#ar)" stroke-dasharray="5 4"></line>
+          <text class="t-edge" x="360" y="300" text-anchor="middle" font-size="9.5">escribe reportes</text>
+          <line class="s-flow" x1="570" y1="389" x2="690" y2="184" marker-end="url(#ar)" stroke-dasharray="5 4"></line>
+          <text class="t-edge" x="662" y="330" text-anchor="middle" font-size="9.5">stream</text>
+        </svg>
+      </div>
+      <figcaption><b>Flujo principal (línea continua):</b> fuentes → conectores → PostGIS → API → cliente. <b>La capa LLM</b> (resaltada) recibe del almacén y devuelve el titular interpretado. <b>El carril de reportes</b> (punteado) se conecta recién en v2/v3.</figcaption>
+    </figure>
+  </section>
+
+  <!-- 04 FUENTES -->
+  <section id="fuentes">
+    <div class="col">
+      <p class="eyebrow"><span class="secnum">04</span> &nbsp;Fuentes de datos</p>
+      <h2>Priorización de fuentes</h2>
+      <p>Varias fuentes ofrecen información equivalente con distinto nivel de detalle. El MVP prioriza las que entregan datos estructurados y de referencia; las demás se incorporan después como conectores independientes.</p>
+    </div>
+    <div class="tablewrap">
+      <table style="min-width:760px">
+        <thead>
+          <tr><th>Organismo</th><th>Qué aporta</th><th>Formato</th><th>Adquisición</th><th>Fase</th></tr>
+        </thead>
+        <tbody>
+          <tr><td><strong>NOAA · CPC</strong></td><td>ONI y anomalías de TSM en regiones Niño 3.4 / 1+2. Referencia mundial.</td><td><span class="mono">ASCII / CSV</span></td><td><span class="mono">archivo abierto</span></td><td><span class="pri p1">v1</span></td></tr>
+          <tr><td><strong>IGP</strong></td><td>Índice Costero El Niño (ICEN), específico del Perú. Serie mensual → gráfico.</td><td><span class="mono">tablas / archivos</span></td><td><span class="mono">API interna / scraping</span></td><td><span class="pri p1">v1</span></td></tr>
+          <tr><td><strong>ENFEN</strong></td><td>Estado oficial del sistema de alerta y comunicados. El titular del sistema.</td><td><span class="mono">PDF / web</span></td><td><span class="mono">scraping (PDF/web)</span></td><td><span class="pri p1">v1</span></td></tr>
+          <tr><td><strong>SENAMHI · IDE</strong></td><td>Mapas de anomalías (precipitación, TSM) como shapefiles geoespaciales.</td><td><span class="mono">GeoNetwork · CSW</span></td><td><span class="mono">API GeoNetwork</span></td><td><span class="pri p1">v1</span></td></tr>
+          <tr><td><strong>OMM</strong></td><td>Boletín global El Niño/La Niña. Poco frecuente; aporta contexto.</td><td><span class="mono">PDF</span></td><td><span class="mono">scraping (PDF)</span></td><td><span class="pri">v2</span></td></tr>
+          <tr><td><strong>CIIFEN</strong></td><td>Monitoreo regional del Pacífico sudeste, enfoque agroclimático.</td><td><span class="mono">web / mapas</span></td><td><span class="mono">scraping (web)</span></td><td><span class="pri">v2</span></td></tr>
+          <tr><td><strong>NASA</strong></td><td>Visualizaciones satelitales (altura del mar, vientos, TSM).</td><td><span class="mono">imágenes</span></td><td><span class="mono">enlace / imagen</span></td><td><span class="pri">—</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="col">
+      <div class="note"><p>El estado de alerta oficial lo publica <b>ENFEN</b>, no la API de SENAMHI. El catálogo GeoNetwork de SENAMHI corresponde a la Infraestructura de Datos Espaciales (metadatos y mapas) y es la fuente de los mapas; el nivel de alerta de El Niño Costero lo fija ENFEN.</p></div>
+
+      <h3 class="sub">Estrategia de adquisición</h3>
+      <p>La mayoría de los organismos no ofrece una API pública documentada. La obtención de datos sigue un orden de preferencia, de la fuente más estable a la más frágil:</p>
+      <ol class="steps">
+        <li><strong>API documentada o archivo abierto.</strong> NOAA publica el ONI como archivo de texto y SENAMHI expone la API de GeoNetwork. Es la vía preferente por su estabilidad.</li>
+        <li><strong>API interna detectada por inspección de red.</strong> Cuando una web carga sus datos mediante peticiones XHR/fetch sin documentar (caso probable de ENFEN e IGP), se identifica ese endpoint con las herramientas de red del navegador y se consume directamente. Devuelve datos estructurados y es más estable que raspar el HTML.</li>
+        <li><strong>Scraping de HTML o PDF.</strong> Último recurso, cuando no existe un endpoint de datos. Es el método más sensible a los cambios del sitio.</li>
+      </ol>
+      <p style="margin-bottom:.3rem">Consideraciones de uso responsable:</p>
+      <ul class="clean">
+        <li>Cachear las respuestas y limitar la frecuencia de peticiones (<em>rate limit</em>) para no sobrecargar los servidores de origen.</li>
+        <li>Enviar un <em>User-Agent</em> identificable y revisar los términos de uso y el <code>robots.txt</code> de cada sitio.</li>
+        <li>Como las APIs internas no están documentadas y pueden cambiar sin aviso, cada fuente se implementa en un <strong>conector aislado con pruebas</strong> (ver sección 11).</li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- 05 MAPAS -->
+  <section id="mapas">
+    <div class="col">
+      <p class="eyebrow"><span class="secnum">05</span> &nbsp;Pipeline de mapas</p>
+      <h2>Obtención y renderizado de los mapas de SENAMHI</h2>
+      <p>El catálogo GeoNetwork de SENAMHI expone su API sobre CSW y Elasticsearch. Los mapas de anomalías se descargan como <strong>shapefiles</strong> dentro de un archivo <code>.zip</code> adjunto a cada registro. El pipeline los convierte a un formato que el navegador puede representar.</p>
+    </div>
+
+    <figure>
+      <div class="figbox">
+        <svg viewBox="0 0 760 330" role="img" aria-label="Pipeline de mapas: búsqueda CSW devuelve UUIDs; con el UUID se descarga el zip de shapefile adjunto; GeoPandas lo lee y exporta GeoJSON; Leaflet lo renderiza en el frontend.">
+          <defs>
+            <marker id="ar2" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="7.5" markerHeight="7.5" orient="auto-start-reverse">
+              <path d="M0,0 L10,5 L0,10 z" fill="var(--muted)"></path>
+            </marker>
+          </defs>
+
+          <text x="20" y="24" class="t-mono" font-size="11">BACKEND · adquisición</text>
+          <rect class="n-box" x="20" y="40" width="200" height="60" rx="3"></rect>
+          <text class="t-hd" x="120" y="66" text-anchor="middle" font-size="12.5">Búsqueda CSW</text>
+          <text class="t-mono" x="120" y="84" text-anchor="middle" font-size="9.5">GetRecords · AnyText</text>
+
+          <rect class="n-box" x="280" y="40" width="200" height="60" rx="3"></rect>
+          <text class="t-hd" x="380" y="66" text-anchor="middle" font-size="12.5">UUID del registro</text>
+          <text class="t-mono" x="380" y="84" text-anchor="middle" font-size="9.5">SummaryRecord · identifier</text>
+
+          <rect class="n-box" x="540" y="40" width="200" height="60" rx="3"></rect>
+          <text class="t-hd" x="640" y="66" text-anchor="middle" font-size="12.5">Adjunto .zip</text>
+          <text class="t-mono" x="640" y="84" text-anchor="middle" font-size="9.5">records/:uuid/attachments</text>
+
+          <line class="s-flow" x1="220" y1="70" x2="276" y2="70" marker-end="url(#ar2)"></line>
+          <line class="s-flow" x1="480" y1="70" x2="536" y2="70" marker-end="url(#ar2)"></line>
+          <text class="t-edge" x="248" y="60" text-anchor="middle" font-size="9">devuelve</text>
+          <text class="t-edge" x="508" y="60" text-anchor="middle" font-size="9">GET</text>
+
+          <path d="M640,100 L640,140 L120,140 L120,168" fill="none" class="s-flow" marker-end="url(#ar2)"></path>
+          <text class="t-edge" x="392" y="134" text-anchor="middle" font-size="9">shapefile (.shp .dbf .shx .prj)</text>
+
+          <text x="20" y="196" class="t-mono" font-size="11">TRANSFORMACIÓN + RENDER</text>
+          <rect class="n-box" x="20" y="210" width="200" height="60" rx="3"></rect>
+          <text class="t-hd" x="120" y="236" text-anchor="middle" font-size="12.5">GeoPandas</text>
+          <text class="t-mono" x="120" y="254" text-anchor="middle" font-size="9.5">lee zip://…  (sin extraer)</text>
+
+          <rect class="n-soft" x="280" y="210" width="200" height="60" rx="3"></rect>
+          <text class="t-hd" x="380" y="236" text-anchor="middle" font-size="12.5">GeoJSON</text>
+          <text class="t-mono" x="380" y="254" text-anchor="middle" font-size="9.5">formato web estándar</text>
+
+          <rect class="n-soft" x="540" y="210" width="200" height="60" rx="3"></rect>
+          <text class="t-hd" x="640" y="236" text-anchor="middle" font-size="12.5">Leaflet</text>
+          <text class="t-mono" x="640" y="254" text-anchor="middle" font-size="9.5">frontend · capa GeoJSON</text>
+
+          <line class="s-flow" x1="220" y1="240" x2="276" y2="240" marker-end="url(#ar2)"></line>
+          <line class="s-flow" x1="480" y1="240" x2="536" y2="240" marker-end="url(#ar2)"></line>
+          <text class="t-edge" x="248" y="230" text-anchor="middle" font-size="9">exporta</text>
+          <text class="t-edge" x="508" y="230" text-anchor="middle" font-size="9">sirve</text>
+        </svg>
+      </div>
+      <figcaption><b>Nota técnica:</b> GeoPandas lee directamente dentro del zip con una ruta <code>zip://archivo.zip!capa.shp</code>, sin descomprimir de forma manual. La búsqueda inicial también puede hacerse con la API REST (<code>_search</code> sobre Elasticsearch) si se requieren filtros más avanzados.</figcaption>
+    </figure>
+  </section>
+
+  <!-- 06 INTERPRETACION -->
+  <section id="interpretacion">
+    <div class="col">
+      <p class="eyebrow"><span class="secnum">06</span> &nbsp;Capa de interpretación</p>
+      <h2>Interpretación de los datos con el LLM</h2>
+      <p>Esta capa aporta valor, pero también concentra riesgo: una aplicación que entrega información errónea sobre un peligro es peor que no tener aplicación. Por ese motivo la interpretación se divide en <strong>dos niveles</strong>:</p>
+      <ul class="clean">
+        <li><strong>Titular por reglas (determinista):</strong> el estado y los números provienen de lógica fija, no del modelo. Ejemplo: <code>ICEN = +0.9 → "cálidas débiles"</code>. Es la información que se muestra de forma destacada y no depende del LLM.</li>
+        <li><strong>Narrativa por LLM (opcional):</strong> el modelo redacta el párrafo explicativo recibiendo los números ya calculados en el <em>prompt</em>, con la instrucción de no introducir cifras nuevas. Traduce el lenguaje técnico; no genera hechos.</li>
+      </ul>
+      <p>De este modo el LLM redacta la explicación, pero el dato de riesgo siempre es trazable a una fuente oficial.</p>
+
+      <p style="margin-top:1.7rem;margin-bottom:.2rem;font-weight:600;font-size:1.05rem">El titular como semáforo</p>
+      <p style="font-size:.95rem;color:var(--ink-soft)">El estado de alerta se representa con color, además de texto, para facilitar su lectura rápida:</p>
+      <div class="legend">
+        <span class="lvl"><span class="dot" style="background:var(--st-normal)"></span> No activo / normal</span>
+        <span class="lvl"><span class="dot" style="background:var(--st-watch)"></span> Vigilancia</span>
+        <span class="lvl"><span class="dot" style="background:var(--st-alert)"></span> Alerta</span>
+        <span class="lvl"><span class="dot" style="background:var(--st-high)"></span> Alerta alta</span>
+      </div>
+      <p style="font-size:.82rem;color:var(--muted);margin-top:.6rem">Los niveles exactos se ajustan a la nomenclatura vigente de ENFEN; el color es semántico e independiente del color de acento de la interfaz.</p>
+    </div>
+  </section>
+
+  <!-- 07 REPORTES -->
+  <section id="reportes">
+    <div class="col">
+      <p class="eyebrow"><span class="secnum">07</span> &nbsp;Reportes ciudadanos y alertas falsas</p>
+      <h2>Validación de reportes ciudadanos</h2>
+      <p>La detección de reportes falsos es uno de los puntos más difíciles del proyecto. El enfoque no parte de un modelo de aprendizaje automático, sino de una <strong>estructura de validación por etapas</strong>. Cada reporte acumula señales de confianza en cadena; el cruce con los datos oficiales entra al final y ajusta el puntaje de confianza.</p>
+    </div>
+
+    <figure>
+      <div class="figbox">
+        <svg viewBox="0 0 900 300" role="img" aria-label="Modelo de confianza: un reporte pasa por un filtro de geocerca, luego corroboración por N confirmaciones de vecinos, luego cruce con el dato oficial de la zona (resaltado), y de ahí a un puntaje de confianza que decide entre estado sin confirmar y confirmado.">
+          <defs>
+            <marker id="ar3" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+              <path d="M0,0 L10,5 L0,10 z" fill="var(--muted)"></path>
+            </marker>
+            <marker id="ar3h" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+              <path d="M0,0 L10,5 L0,10 z" fill="var(--accent)"></path>
+            </marker>
+          </defs>
+
+          <rect class="n-box" x="16" y="110" width="128" height="60" rx="3"></rect>
+          <text class="t-hd" x="80" y="136" text-anchor="middle" font-size="12">Reporte</text>
+          <text class="t-mono" x="80" y="153" text-anchor="middle" font-size="9">tipo · lugar · foto</text>
+
+          <rect class="n-soft" x="188" y="110" width="130" height="60" rx="3"></rect>
+          <text class="t-hd" x="253" y="132" text-anchor="middle" font-size="12">Geocerca</text>
+          <text class="t-mono" x="253" y="149" text-anchor="middle" font-size="9">¿GPS cerca?</text>
+
+          <rect class="n-soft" x="362" y="110" width="140" height="60" rx="3"></rect>
+          <text class="t-hd" x="432" y="132" text-anchor="middle" font-size="12">Corroboración</text>
+          <text class="t-mono" x="432" y="149" text-anchor="middle" font-size="9">N vecinos confirman</text>
+
+          <!-- central stage: cross-reference, the single highlighted node -->
+          <rect class="n-hi" x="546" y="104" width="150" height="72" rx="3"></rect>
+          <text class="t-hd" x="621" y="128" text-anchor="middle" font-size="12">Cruce oficial</text>
+          <text class="t-lb" x="621" y="145" text-anchor="middle" font-size="9.5">¿alerta hidromet</text>
+          <text class="t-lb" x="621" y="158" text-anchor="middle" font-size="9.5">en la zona?</text>
+
+          <rect class="n-soft" x="742" y="110" width="140" height="60" rx="3"></rect>
+          <text class="t-hd" x="812" y="132" text-anchor="middle" font-size="12">Puntaje</text>
+          <text class="t-mono" x="812" y="149" text-anchor="middle" font-size="9">confianza 0–1</text>
+
+          <line class="s-flow" x1="144" y1="140" x2="184" y2="140" marker-end="url(#ar3)"></line>
+          <line class="s-flow" x1="318" y1="140" x2="358" y2="140" marker-end="url(#ar3)"></line>
+          <line class="s-flow" x1="502" y1="140" x2="542" y2="140" marker-end="url(#ar3)"></line>
+          <line class="s-flow" x1="696" y1="140" x2="738" y2="140" marker-end="url(#ar3)"></line>
+
+          <rect class="n-soft" x="516" y="238" width="210" height="46" rx="3"></rect>
+          <text class="t-hd" x="621" y="260" text-anchor="middle" font-size="11.5">Datos oficiales (PostGIS)</text>
+          <text class="t-mono" x="621" y="275" text-anchor="middle" font-size="9">alertas SENAMHI · anomalías</text>
+          <line class="s-hi" x1="621" y1="238" x2="621" y2="178" marker-end="url(#ar3h)"></line>
+          <text class="t-edge" x="688" y="212" text-anchor="middle" font-size="9" fill="var(--accent)">prior espacial</text>
+
+          <rect class="n-box" x="742" y="20" width="140" height="44" rx="3"></rect>
+          <text class="t-hd" x="812" y="41" text-anchor="middle" font-size="11">Reputación</text>
+          <text class="t-mono" x="812" y="56" text-anchor="middle" font-size="9">peso por usuario</text>
+          <line class="s-flow" x1="812" y1="64" x2="812" y2="106" marker-end="url(#ar3)"></line>
+
+          <rect class="n-box" x="742" y="214" width="140" height="34" rx="3" stroke-dasharray="4 3"></rect>
+          <text class="t-lb" x="812" y="235" text-anchor="middle" font-size="10.5">sin confirmar</text>
+          <rect class="n-box" x="742" y="256" width="140" height="34" rx="3"></rect>
+          <text class="t-lb" x="812" y="277" text-anchor="middle" font-size="10.5">confirmado</text>
+          <line class="s-flow" x1="812" y1="170" x2="812" y2="210" marker-end="url(#ar3)"></line>
+        </svg>
+      </div>
+      <figcaption><b>Etapa central del modelo (resaltada):</b> un reporte de inundación en una zona donde SENAMHI ya tiene una alerta hidrológica gana credibilidad; uno aislado y sin respaldo oficial queda "sin confirmar".</figcaption>
+    </figure>
+
+    <div class="col">
+      <p style="margin-bottom:.3rem">Otras medidas complementarias:</p>
+      <ul class="clean">
+        <li><strong>Rate limiting</strong> y un reporte por zona/tiempo para frenar el spam.</li>
+        <li><strong>Mensajes efímeros por diseño</strong>: expiran, lo que limita el daño a largo plazo.</li>
+        <li><strong>Botón de reportar</strong> siempre visible; moderación humana como última capa.</li>
+        <li><strong>Filtro de chat</strong> (v3): lista de términos en español y rate limit primero; clasificador de toxicidad después.</li>
+      </ul>
+      <div class="note"><p><b>Aviso legal y ético:</b> la aplicación ofrece información comunitaria y <strong>no constituye un canal oficial de emergencias</strong>. Cada reporte debe incluir un aviso claro y derivar a los números de emergencia reales (105 / 116). Debe considerarse desde el diseño.</p></div>
+    </div>
+  </section>
+
+  <!-- 08 STACK -->
+  <section id="stack">
+    <div class="col">
+      <p class="eyebrow"><span class="secnum">08</span> &nbsp;Stack tecnológico</p>
+      <h2>Selección tecnológica</h2>
+    </div>
+    <div class="tablewrap">
+      <table>
+        <thead><tr><th>Capa</th><th>Elección</th><th>Justificación</th></tr></thead>
+        <tbody>
+          <tr><td>Frontend</td><td><strong>React + Leaflet</strong></td><td>Leaflet soporta GeoJSON de forma nativa; ya estaba identificado por el equipo.</td></tr>
+          <tr><td>Backend</td><td><strong>FastAPI (Python)</strong></td><td>Un solo lenguaje para scraping, GeoPandas, PDF, REST y WebSockets.</td></tr>
+          <tr><td>Base de datos</td><td><strong>PostgreSQL + PostGIS</strong></td><td>Consultas geoespaciales ("reportes a X km de un punto") de fábrica.</td></tr>
+          <tr><td>Auth · realtime · storage</td><td><strong>Supabase</strong> <span class="mono">(a evaluar)</span></td><td>Reúne base de datos, autenticación, tiempo real y almacenamiento en un solo servicio; evita implementar login y tiempo real desde cero.</td></tr>
+          <tr><td>Ingesta</td><td><strong>Jobs programados</strong></td><td>Cron o GitHub Actions que normalizan cada fuente hacia la base de datos.</td></tr>
+          <tr><td>Extracción</td><td><strong>pdfplumber · BS4 · GeoPandas</strong></td><td>Tablas de PDFs de ENFEN, scraping y conversión shapefile → GeoJSON.</td></tr>
+          <tr><td>LLM</td><td><strong>API de un modelo</strong></td><td>Solo para la narrativa, con los números fijados en el prompt (ver sección 06).</td></tr>
+          <tr><td>Móvil (v3)</td><td><strong>Android</strong></td><td>GPS nativo. Se aborda tras estabilizar la web; consume la misma API.</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- 09 DATOS -->
+  <section id="datos">
+    <div class="col">
+      <p class="eyebrow"><span class="secnum">09</span> &nbsp;Modelo de datos</p>
+      <h2>Entidades principales</h2>
+      <p>Esquema mínimo que sostiene las tres fases. Los elementos geoespaciales (mapas y reportes) se almacenan con geometría PostGIS para permitir consultas por cercanía.</p>
+      <ul class="clean">
+        <li><code>source</code> — cada organismo/conector: nombre, tipo, última sincronización.</li>
+        <li><code>index_series</code> — series de índices (ONI, ICEN): fuente, fecha, valor, categoría.</li>
+        <li><code>alert_state</code> — estado oficial vigente de ENFEN: nivel, fecha, comunicado.</li>
+        <li><code>map_layer</code> — mapas de SENAMHI: uuid, variable, fecha, GeoJSON, imagen de previsualización.</li>
+        <li><code>user</code> — cuentas (v2): reputación, zona.</li>
+        <li><code>report</code> — reportes ciudadanos (v2): tipo, geometría, foto, autor, puntaje de confianza, expira_en.</li>
+        <li><code>confirmation</code> — votos de corroboración sobre un reporte (v2).</li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- 10 ROADMAP -->
+  <section id="roadmap">
+    <div class="col">
+      <p class="eyebrow"><span class="secnum">10</span> &nbsp;Hoja de ruta</p>
+      <h2>Entregables por fase</h2>
+      <p style="color:var(--muted);font-size:.92rem">Los tiempos son relativos; deben ajustarse al calendario real del equipo y al número de integrantes.</p>
+    </div>
+    <div class="tablewrap">
+      <table>
+        <thead><tr><th>Tramo</th><th>Entregable</th></tr></thead>
+        <tbody>
+          <tr><td><span class="pri p1">v1 · A</span></td><td>Conectores NOAA + IGP; dashboard con gráficos de índices.</td></tr>
+          <tr><td><span class="pri p1">v1 · B</span></td><td>Pipeline de mapas SENAMHI en Leaflet; titular ENFEN con resumen del LLM.</td></tr>
+          <tr><td><span class="pri">v2</span></td><td>Cuentas, reportes estructurados y modelo de validación de confianza.</td></tr>
+          <tr><td><span class="pri">v3</span></td><td>Tiempo real, moderación y app Android.</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- 11 RIESGOS -->
+  <section id="riesgos" style="border-bottom:none">
+    <div class="col">
+      <p class="eyebrow"><span class="secnum">11</span> &nbsp;Riesgos y consideraciones</p>
+      <h2>Riesgos identificados</h2>
+      <ul class="clean">
+        <li><strong>Alcance excesivo.</strong> Es el mayor riesgo. Mitigación: el faseo descrito en la sección 02.</li>
+        <li><strong>Fragilidad de las fuentes.</strong> Los PDFs y el HTML de los organismos cambian. Mitigación: conectores aislados con pruebas y uso del formato más estructurado disponible en cada caso.</li>
+        <li><strong>Licencias y atribución.</strong> Cada organismo tiene términos de uso propios; deben revisarse y la fuente debe atribuirse de forma visible en cada dato.</li>
+        <li><strong>Responsabilidad legal.</strong> Una aplicación de emergencias implica responsabilidad legal; requiere un aviso claro y no presentarse como canal oficial.</li>
+        <li><strong>Desinformación mediante el LLM.</strong> Se mitiga con el diseño en dos niveles (sección 06).</li>
+        <li><strong>Privacidad de la ubicación.</strong> Debe solicitarse permiso explícito y nunca exponerse la ubicación exacta de un usuario en el mapa público.</li>
+      </ul>
+    </div>
+  </section>
+
+  <footer>
+    <div class="col">
+      <p><strong>Pre-documentación general del proyecto</strong> · borrador v0.1. Las decisiones marcadas como «pendiente» siguen abiertas.</p>
+      <p style="font-size:.82rem;color:var(--muted)">Supuestos por confirmar: nombre del proyecto, calendario y alcance final de cada fase.</p>
+    </div>
+  </footer>
+</div>
+
+<script>
+  (function () {
+    var root = document.documentElement;
+    var btn = document.getElementById('themeToggle');
+    var stored = null;
+    try { stored = localStorage.getItem('proyfen-theme'); } catch (e) {}
+    if (stored === 'dark' || stored === 'light') root.setAttribute('data-theme', stored);
+
+    function current() {
+      var t = root.getAttribute('data-theme');
+      if (t) return t;
+      return (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) ? 'dark' : 'light';
+    }
+    function label() { btn.textContent = current() === 'dark' ? 'Claro' : 'Oscuro'; }
+    label();
+    btn.addEventListener('click', function () {
+      var next = current() === 'dark' ? 'light' : 'dark';
+      root.setAttribute('data-theme', next);
+      try { localStorage.setItem('proyfen-theme', next); } catch (e) {}
+      label();
+    });
+  })();
+</script>

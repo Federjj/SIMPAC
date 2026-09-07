@@ -1,0 +1,25 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+env/
+.env
+*.env
+
+# Node / frontend
+node_modules/
+dist/
+build/
+.next/
+
+# Datos cacheados / temporales
+*.log
+cache/
+data/cache/
+
+# SO / editores
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/

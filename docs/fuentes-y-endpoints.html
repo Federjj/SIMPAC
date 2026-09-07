@@ -1,0 +1,373 @@
+<title>Endpoints SIMPAC</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Source+Serif+4:opsz,wght@8..60,400;8..60,500;8..60,600;8..60,700&display=swap">
+
+<style>
+  :root {
+    --bg: #FBFBF9; --surface: #FFFFFF; --surface-2: #F2F2EF;
+    --ink: #1C1C1A; --ink-soft: #4A4B48; --muted: #7A7B77;
+    --line: #E5E5E1; --line-strong: #CDCDC8;
+    --accent: #35566E; --accent-soft: #5C7994;
+    --ok: #4E7D5E; --watch: #B08A2A; --alert: #C06A28; --high: #B23A2E;
+    --radius: 3px;
+  }
+  :root:not([data-theme="light"]) { @media (prefers-color-scheme: dark) {
+    --bg:#17170F; --surface:#1E1E17; --surface-2:#26261E;
+    --ink:#ECEBE3; --ink-soft:#BFBFB6; --muted:#8B8B82;
+    --line:#2E2E26; --line-strong:#3E3E34;
+    --accent:#86A9C5; --accent-soft:#6E92AF;
+    --ok:#6FB287; --watch:#D3AE4D; --alert:#DD8B48; --high:#DF6353;
+  }}
+  :root[data-theme="dark"] {
+    --bg:#17170F; --surface:#1E1E17; --surface-2:#26261E;
+    --ink:#ECEBE3; --ink-soft:#BFBFB6; --muted:#8B8B82;
+    --line:#2E2E26; --line-strong:#3E3E34;
+    --accent:#86A9C5; --accent-soft:#6E92AF;
+    --ok:#6FB287; --watch:#D3AE4D; --alert:#DD8B48; --high:#DF6353;
+  }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink);
+    font-family:"Source Serif 4",Georgia,serif; font-size:18px; line-height:1.72;
+    -webkit-font-smoothing:antialiased; text-rendering:optimizeLegibility; }
+  .wrap { max-width:1000px; margin:0 auto; padding:0 28px; }
+  .col { max-width:700px; }
+  h1,h2,h3 { font-family:"Source Serif 4",Georgia,serif; line-height:1.18; text-wrap:balance; color:var(--ink); font-weight:600; }
+  h2 { font-size:clamp(1.45rem,1.15rem + 1.1vw,1.85rem); margin:0 0 .55rem; letter-spacing:-.005em; }
+  h3 { font-size:1.12rem; margin:1.8rem 0 .3rem; }
+  h3 .mono { font-size:.8rem; color:var(--muted); font-weight:400; }
+  p { margin:0 0 1rem; }
+  a { color:var(--accent); text-decoration:none; border-bottom:1px solid color-mix(in srgb,var(--accent) 40%,transparent); }
+  a:hover { border-bottom-color:var(--accent); }
+  strong { font-weight:600; }
+  code,.mono { font-family:"IBM Plex Mono",ui-monospace,monospace; }
+  code { font-size:.8em; background:var(--surface-2); padding:.1em .4em; border-radius:var(--radius); border:1px solid var(--line); word-break:break-word; }
+  pre { background:var(--surface-2); border:1px solid var(--line-strong); border-radius:var(--radius); padding:14px 16px; overflow-x:auto; font-family:"IBM Plex Mono",monospace; font-size:.78rem; line-height:1.5; color:var(--ink-soft); margin:14px 0; }
+  .eyebrow { font-family:"IBM Plex Mono",monospace; font-size:.72rem; letter-spacing:.18em; text-transform:uppercase; color:var(--muted); margin:0 0 .7rem; font-weight:500; }
+  .secnum { color:var(--ink-soft); }
+  .top { position:sticky; top:0; z-index:20; background:var(--bg); border-bottom:1px solid var(--line); }
+  .top-inner { display:flex; align-items:center; justify-content:space-between; gap:16px; padding:11px 28px; max-width:1000px; margin:0 auto; }
+  .brand { font-family:"IBM Plex Mono",monospace; font-weight:500; font-size:.74rem; letter-spacing:.14em; text-transform:uppercase; color:var(--muted); }
+  .toggle { font-family:"IBM Plex Mono",monospace; font-size:.68rem; letter-spacing:.1em; text-transform:uppercase; background:transparent; color:var(--muted); border:1px solid var(--line-strong); border-radius:var(--radius); padding:5px 12px; cursor:pointer; }
+  .toggle:hover { border-color:var(--accent); color:var(--accent); }
+  header.hero { padding:70px 0 42px; border-bottom:1px solid var(--line-strong); }
+  .hero h1 { font-size:clamp(2rem,1.5rem + 2.2vw,2.8rem); font-weight:600; letter-spacing:-.015em; margin:0; }
+  .hero .lede { font-size:clamp(1.05rem,1rem + .35vw,1.2rem); color:var(--ink-soft); max-width:640px; margin:1.1rem 0 0; }
+  .metaline { display:flex; flex-wrap:wrap; gap:6px 26px; margin-top:28px; font-family:"IBM Plex Mono",monospace; font-size:.74rem; color:var(--muted); }
+  .metaline b { color:var(--ink-soft); font-weight:500; }
+  .toc { margin-top:32px; display:flex; flex-wrap:wrap; gap:4px 22px; }
+  .toc a { font-family:"IBM Plex Mono",monospace; font-size:.74rem; color:var(--muted); border-bottom:none; }
+  .toc a:hover { color:var(--accent); }
+  .toc a span { color:var(--line-strong); }
+  section { padding:52px 0; border-bottom:1px solid var(--line); scroll-margin-top:60px; }
+  .note { border-left:2px solid var(--line-strong); padding:2px 0 2px 20px; margin:20px 0; font-size:.95rem; color:var(--ink-soft); }
+  .note.accent { border-left-color:var(--accent); }
+  .note.warn { border-left-color:var(--alert); }
+  .note b { color:var(--ink); }
+  ul.clean { list-style:none; padding:0; margin:1rem 0; }
+  ul.clean li { padding-left:1.4rem; position:relative; margin-bottom:.55rem; }
+  ul.clean li::before { content:"—"; position:absolute; left:0; color:var(--muted); font-family:"IBM Plex Mono",monospace; }
+  .tablewrap { overflow-x:auto; margin:24px 0; border:1px solid var(--line-strong); border-radius:var(--radius); }
+  table { border-collapse:collapse; width:100%; min-width:640px; background:var(--surface); font-size:.88rem; }
+  th,td { text-align:left; padding:10px 14px; border-bottom:1px solid var(--line); vertical-align:top; }
+  thead th { font-family:"IBM Plex Mono",monospace; font-size:.67rem; letter-spacing:.08em; text-transform:uppercase; color:var(--muted); font-weight:500; border-bottom:1px solid var(--line-strong); }
+  tbody tr:last-child td { border-bottom:none; }
+  td .mono { font-size:.78rem; }
+  .rt { font-family:"IBM Plex Mono",monospace; font-size:.68rem; padding:1px 7px; border-radius:999px; white-space:nowrap; border:1px solid var(--line-strong); color:var(--muted); }
+  .rt.si { color:var(--ok); border-color:color-mix(in srgb,var(--ok) 45%,var(--line-strong)); }
+  figure { margin:30px 0; }
+  .figbox { overflow-x:auto; background:var(--surface); border:1px solid var(--line-strong); border-radius:var(--radius); padding:24px 20px; }
+  figure svg { display:block; width:100%; height:auto; min-width:560px; color:var(--ink-soft); }
+  figcaption { font-size:.84rem; color:var(--muted); margin-top:12px; max-width:640px; line-height:1.55; }
+  figcaption b { color:var(--ink-soft); font-weight:500; }
+  .n-box { fill:var(--surface); stroke:var(--line-strong); }
+  .n-soft { fill:var(--surface-2); stroke:var(--line-strong); }
+  .n-hi { fill:var(--surface); stroke:var(--accent); stroke-width:1.6; }
+  .s-flow { stroke:var(--muted); }
+  .s-hi { stroke:var(--accent); }
+  .t-hd { fill:var(--ink); font-family:"IBM Plex Sans","Source Serif 4",sans-serif; font-weight:600; }
+  .t-lb { fill:var(--ink-soft); font-family:"IBM Plex Sans",sans-serif; }
+  .t-mono { fill:var(--muted); font-family:"IBM Plex Mono",monospace; }
+  footer { padding:46px 0 76px; color:var(--muted); font-size:.88rem; }
+  footer .col { max-width:700px; }
+  @media (max-width:760px){ body{font-size:17px;} section{padding:44px 0;} header.hero{padding:48px 0 34px;} }
+</style>
+
+<div class="top">
+  <div class="top-inner">
+    <div class="brand">SIMPAC · fuentes de datos</div>
+    <button class="toggle" id="themeToggle" type="button" aria-label="Cambiar tema">Tema</button>
+  </div>
+</div>
+
+<div class="wrap">
+  <header class="hero">
+    <p class="eyebrow">Inventario técnico · Adquisición de datos · Conectores</p>
+    <h1>Fuentes y Endpoints</h1>
+    <p class="lede">Endpoints reales de cada organismo, capturados por inspección de red, para alimentar los conectores de SIMPAC. Enfoque: datos hidrometeorológicos y de riesgo de la provincia de Cajamarca.</p>
+    <div class="metaline">
+      <span><b>Proyecto</b> SIMPAC</span>
+      <span><b>Fecha</b> 06 sep 2026</span>
+      <span><b>Método</b> inspección de red (sitios públicos)</span>
+      <span><b>Estado</b> borrador v0.1</span>
+    </div>
+    <nav class="toc" aria-label="Secciones">
+      <a href="#mapa"><span>01</span> Necesidad → Fuente</a>
+      <a href="#motor"><span>02</span> Motor de alertas</a>
+      <a href="#senamhi"><span>03</span> SENAMHI</a>
+      <a href="#ana"><span>04</span> ANA</a>
+      <a href="#cenepred"><span>05</span> CENEPRED</a>
+      <a href="#igp"><span>06</span> IGP</a>
+      <a href="#noaa"><span>07</span> NOAA</a>
+      <a href="#enfen"><span>08</span> ENFEN</a>
+      <a href="#buenas"><span>09</span> Buenas prácticas</a>
+      <a href="#limites"><span>10</span> Limitaciones</a>
+    </nav>
+  </header>
+
+  <!-- 01 MAPA -->
+  <section id="mapa">
+    <div class="col">
+      <p class="eyebrow"><span class="secnum">01</span> &nbsp;Cobertura</p>
+      <h2>De cada necesidad de la app a su fuente</h2>
+      <p>Cada fila conecta una función de SIMPAC con el endpoint que la alimenta. Todos son públicos y sin autenticación; los marcados como tiempo real se actualizan por hora o por evento.</p>
+    </div>
+    <div class="tablewrap">
+      <table style="min-width:760px">
+        <thead><tr><th>Necesidad de SIMPAC</th><th>Fuente</th><th>Endpoint</th><th>T. real</th></tr></thead>
+        <tbody>
+          <tr><td>Lluvia horaria por estación (umbral de lluvia)</td><td>SENAMHI · est. automáticas</td><td><span class="mono">map_red_graf.php</span></td><td><span class="rt si">sí · horario</span></td></tr>
+          <tr><td>Nivel/caudal de ríos + umbrales de alerta</td><td>ANA · ONRH</td><td><span class="mono">ServicioReportes.asmx/ReporteNacionalCaudal</span></td><td><span class="rt si">sí · horario</span></td></tr>
+          <tr><td>Avisos oficiales de corto plazo (lluvia/viento)</td><td>SENAMHI</td><td><span class="mono">?p=aviso-meteorologico</span></td><td><span class="rt si">sí · por evento</span></td></tr>
+          <tr><td>Emergencias hídricas / activación de quebradas</td><td>ANA · ONRH</td><td><span class="mono">VisorPorCuenca IdVar=39 / 106</span></td><td><span class="rt si">sí</span></td></tr>
+          <tr><td>Inventario y ubicación de estaciones</td><td>SENAMHI</td><td><span class="mono">mapa-estaciones-2/?dp=cajamarca</span></td><td><span class="rt">estático</span></td></tr>
+          <tr><td>Mapas de anomalías (precipitación / TSM)</td><td>SENAMHI · IDESEP</td><td><span class="mono">GeoNetwork CSW / REST</span></td><td><span class="rt">diario/estacional</span></td></tr>
+          <tr><td>Capas de peligro y riesgo (contexto y cruce)</td><td>CENEPRED · SIGRID</td><td><span class="mono">ArcGIS REST (MapServer)</span></td><td><span class="rt">referencia</span></td></tr>
+          <tr><td>Índice El Niño Costero (contexto)</td><td>IGP</td><td><span class="mono">datos/ICEN.txt</span></td><td><span class="rt">mensual</span></td></tr>
+          <tr><td>Índice ENSO global — ONI (contexto)</td><td>NOAA · CPC</td><td><span class="mono">oni.ascii.txt</span></td><td><span class="rt">mensual</span></td></tr>
+          <tr><td>Estado de alerta El Niño Costero</td><td>ENFEN</td><td><span class="mono">wp-json / comunicados</span></td><td><span class="rt">por comunicado</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- 02 MOTOR -->
+  <section id="motor">
+    <div class="col">
+      <p class="eyebrow"><span class="secnum">02</span> &nbsp;Cómo se convierte el dato en alerta</p>
+      <h2>El motor de umbrales</h2>
+      <p>El núcleo de SIMPAC es comparar los datos en tiempo real contra umbrales por zona. Dos entradas cuantitativas (lluvia horaria de SENAMHI y caudal de ANA, que ya trae sus propios umbrales) más el aviso oficial de SENAMHI producen un nivel de alerta que alimenta el titular, el mapa y la notificación push.</p>
+    </div>
+    <figure>
+      <div class="figbox">
+        <svg viewBox="0 0 900 340" role="img" aria-label="Motor de alertas: la lluvia horaria de SENAMHI y el caudal de ANA (con sus umbrales de alerta y emergencia), junto al aviso oficial de SENAMHI, entran a un motor de umbrales por zona que produce un nivel de alerta; ese nivel alimenta el mapa/titular y la notificación push geolocalizada, y se cruza con los reportes ciudadanos.">
+          <defs>
+            <marker id="a" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="var(--muted)"/></marker>
+            <marker id="ah" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="var(--accent)"/></marker>
+          </defs>
+          <text x="120" y="24" class="t-mono" font-size="11" text-anchor="middle">ENTRADAS (tiempo real)</text>
+          <rect class="n-box" x="24" y="40" width="200" height="54" rx="3"/>
+          <text class="t-hd" x="124" y="62" text-anchor="middle" font-size="12">SENAMHI · lluvia mm/h</text>
+          <text class="t-mono" x="124" y="80" text-anchor="middle" font-size="9">map_red_graf.php</text>
+          <rect class="n-box" x="24" y="106" width="200" height="60" rx="3"/>
+          <text class="t-hd" x="124" y="128" text-anchor="middle" font-size="12">ANA · caudal m³/s</text>
+          <text class="t-mono" x="124" y="145" text-anchor="middle" font-size="9">ReporteNacionalCaudal</text>
+          <text class="t-mono" x="124" y="158" text-anchor="middle" font-size="9">(VALOR · UALERTA · UEMERG.)</text>
+          <rect class="n-box" x="24" y="178" width="200" height="54" rx="3"/>
+          <text class="t-hd" x="124" y="200" text-anchor="middle" font-size="12">SENAMHI · aviso oficial</text>
+          <text class="t-mono" x="124" y="218" text-anchor="middle" font-size="9">nivel amarillo/naranja/rojo</text>
+
+          <!-- engine -->
+          <rect class="n-hi" x="330" y="96" width="180" height="86" rx="3"/>
+          <text class="t-hd" x="420" y="130" text-anchor="middle" font-size="13">Motor de umbrales</text>
+          <text class="t-lb" x="420" y="149" text-anchor="middle" font-size="10">por zona (Cajamarca)</text>
+          <text class="t-lb" x="420" y="164" text-anchor="middle" font-size="10">normal · aviso · alerta · emerg.</text>
+
+          <line class="s-flow" x1="224" y1="67" x2="326" y2="120" marker-end="url(#a)"/>
+          <line class="s-flow" x1="224" y1="136" x2="326" y2="139" marker-end="url(#a)"/>
+          <line class="s-flow" x1="224" y1="205" x2="326" y2="158" marker-end="url(#a)"/>
+
+          <!-- outputs -->
+          <text x="700" y="24" class="t-mono" font-size="11" text-anchor="middle">SALIDAS</text>
+          <rect class="n-soft" x="600" y="46" width="200" height="50" rx="3"/>
+          <text class="t-hd" x="700" y="68" text-anchor="middle" font-size="12">Mapa + titular (web)</text>
+          <text class="t-mono" x="700" y="85" text-anchor="middle" font-size="9">React + Leaflet</text>
+          <rect class="n-soft" x="600" y="112" width="200" height="54" rx="3"/>
+          <text class="t-hd" x="700" y="134" text-anchor="middle" font-size="12">Push geolocalizada</text>
+          <text class="t-mono" x="700" y="151" text-anchor="middle" font-size="9">Firebase (app móvil)</text>
+          <rect class="n-box" x="600" y="182" width="200" height="54" rx="3" stroke-dasharray="4 3"/>
+          <text class="t-hd" x="700" y="204" text-anchor="middle" font-size="12">Reportes ciudadanos</text>
+          <text class="t-mono" x="700" y="221" text-anchor="middle" font-size="9">cruce / validación (fase 2)</text>
+
+          <line class="s-hi" x1="510" y1="128" x2="596" y2="71" marker-end="url(#ah)"/>
+          <line class="s-hi" x1="510" y1="139" x2="596" y2="139" marker-end="url(#ah)"/>
+          <line class="s-flow" x1="700" y1="182" x2="700" y2="168" marker-end="url(#a)"/>
+          <text class="t-mono" x="700" y="258" text-anchor="middle" font-size="9">el nivel oficial pondera la confianza del reporte</text>
+        </svg>
+      </div>
+      <figcaption><b>Regla base del caudal (ANA):</b> <code>estado = VALOR ≥ UEMERGENCIA ? emergencia : VALOR ≥ UALERTA ? alerta : normal</code>. <b>Lluvia (SENAMHI):</b> umbral configurable por estación (mm/h y acumulado). El aviso oficial eleva el nivel cuando aplica a la zona.</figcaption>
+    </figure>
+  </section>
+
+  <!-- 03 SENAMHI -->
+  <section id="senamhi">
+    <div class="col">
+      <p class="eyebrow"><span class="secnum">03</span> &nbsp;SENAMHI</p>
+      <h2>Estaciones, datos horarios y avisos</h2>
+
+      <h3>Inventario de estaciones <span class="mono">· HTML con JSON embebido</span></h3>
+      <pre>GET https://www.senamhi.gob.pe/mapas/mapa-estaciones-2/?dp=cajamarca</pre>
+      <p>Trae un array JS <code>PruebaTest</code> con ~90 estaciones de Cajamarca:</p>
+      <pre>{"nom":"AUGUSTO WEBERBAUER","cate":"MAP","lat":-7.1675,"lon":-78.49309,
+ "ico":"M","cod":"107028","estado":"REAL"}</pre>
+      <ul class="clean">
+        <li><code>ico</code>: <code>M</code> meteorológica · <code>H</code> hidrológica.</li>
+        <li><code>estado</code>: <code>REAL</code> (convencional 07/13/19h) · <code>DIFERIDO</code> · <code>AUTOMATICA</code> (telemetría horaria).</li>
+        <li>Claves: Weberbauer <code>107028</code>, Granja Porcón <code>107002</code>; automáticas con código hex (Cutervo <code>4726A602</code>, etc.).</li>
+      </ul>
+
+      <h3>Datos horarios en tiempo real por estación <span class="mono">· sin CAPTCHA</span></h3>
+      <pre>GET https://www.senamhi.gob.pe/mapas/mapa-estaciones-2/map_red_graf.php
+    ?cod={cod}&estado={estado}&tipo_esta={M|H}&cate={cate}&cod_old={cod_old}</pre>
+      <p>Devuelve HTML con la serie de Highcharts embebida (últimas ~48 h): <code>xAxis.categories</code> = timestamps <code>YYYY/MM/DD - HH</code>; <code>series[].data</code> = <strong>Precipitación (mm/hora)</strong> y <strong>Temperatura (°C)</strong> en estaciones meteorológicas automáticas (nivel/caudal en hidrológicas). Es la entrada directa del umbral de lluvia.</p>
+
+      <h3>Avisos meteorológicos <span class="mono">· tabla HTML</span></h3>
+      <pre>GET https://www.senamhi.gob.pe/?p=aviso-meteorologico</pre>
+      <p>Columnas: <code>Aviso · Nro (emitido/vigente) · Emisión · Inicio · Fin · Duración · Nivel</code>. <strong>Nivel</strong> = <span style="color:var(--watch)">AMARILLO</span> / <span style="color:var(--alert)">NARANJA</span> / <span style="color:var(--high)">ROJO</span>. Detalle: <code>?p=aviso-meteorologico-vigente&a={año}&b={id}&c=00&d=SENA</code>. Filtrar por títulos de "SIERRA NORTE" / Cajamarca.</p>
+
+      <h3>Mapas de anomalías <span class="mono">· IDESEP / GeoNetwork</span></h3>
+      <p>Catálogo geoespacial en <code>idesep.senamhi.gob.pe/geonetwork/srv/api/…</code> (CSW + REST). Shapefiles dentro de <code>.zip</code> → GeoPandas → GeoJSON → Leaflet. Detalle en la pre-documentación general.</p>
+
+      <div class="note warn"><p><b>Límite:</b> el histórico mensual tabular (pestaña "Tabla", desde 2021-10) está protegido por <b>CAPTCHA (Cloudflare Turnstile)</b>. No se automatiza ni se evade; para histórico usar PISCO o descarga oficial. El gráfico horario de las últimas 48 h sí es libre.</p></div>
+    </div>
+  </section>
+
+  <!-- 04 ANA -->
+  <section id="ana">
+    <div class="col">
+      <p class="eyebrow"><span class="secnum">04</span> &nbsp;ANA — Autoridad Nacional del Agua</p>
+      <h2>Caudales de ríos con umbrales</h2>
+      <p>App ASP.NET (SNIRH / Observatorio ONRH); los datos salen de web services <code>.asmx</code> vía POST que devuelven JSON.</p>
+
+      <h3>Reporte nacional de caudales <span class="mono">· el más valioso</span></h3>
+      <pre>POST https://snirh.ana.gob.pe/onrh/ServicioReportes.asmx/ReporteNacionalCaudal
+   (página: https://snirh.ana.gob.pe/onrh/Reportes.aspx?R=PRIOS)</pre>
+      <p>Array JSON, un objeto por estación hidrológica:</p>
+      <pre>{ "DEPARTAMENTO":"Cajamarca", "RIO":"Cañad", "ESTACION":"Cañad",
+  "VALOR":"0.25", "UNIDADMEDIDA":"m³/s",
+  "UALERTA":"78.58", "UEMERGENCIA":"122.99",
+  "TENDENCIA":"Descendente", "HORA":"20:00",
+  "LONGITUD":"-78.9973", "LATITUD":"-6.649", "OPERADOR":"SENAMHI" }</pre>
+      <ul class="clean">
+        <li><strong>Cajamarca</strong>: estaciones "Cañad" (río Cañad) y "Yónan Gore" (río Jequetepeque); Mashcón y Namora en el mapa.</li>
+        <li>Alerta directa comparando <code>VALOR</code> contra <code>UALERTA</code> / <code>UEMERGENCIA</code>. JSON limpio, sin CAPTCHA.</li>
+      </ul>
+
+      <h3>Capas temáticas (mapa) <span class="mono">· visor por cuenca</span></h3>
+      <pre>Visor:   https://snirh.ana.gob.pe/VisorPorCuenca/?IdVar={N}
+Puntos:  POST …/VisorPorCuenca/ServicioGeneral.asmx/ListarMapaGEO
+         → [{I:id, D:nombre, O:tipo, C:[lon,lat]}]</pre>
+      <p>IdVar útiles: <strong>228</strong> ríos monitoreados · <strong>46</strong> embalses · <strong>39</strong> emergencias hídricas · <strong>106</strong> SAMAQ (activación de quebradas / huaycos) · 220 puntos críticos. Emergencias (39) y SAMAQ (106) son ideales para <strong>cruzar con reportes ciudadanos</strong>.</p>
+    </div>
+  </section>
+
+  <!-- 05 CENEPRED -->
+  <section id="cenepred">
+    <div class="col">
+      <p class="eyebrow"><span class="secnum">05</span> &nbsp;CENEPRED — SIGRID</p>
+      <h2>Capas de peligro y riesgo (referencia)</h2>
+      <p>Geoportal <code>sigrid.cenepred.gob.pe/sigridv3/</code>; visor con <strong>API JS de ArcGIS 3.41</strong>.</p>
+      <pre>Visor de escenario: /sigridv3/mapa?id={idEscenario}&boletin={n}
+Config:  POST /sigridv3/entorno/traer  →  { extension, mapa_base, shape(WKT),
+         capas_activas: "cartografiaPeligros=[…]; cartografiaRiesgos=[…];
+                         elementosExpuestos=[…]; …" }</pre>
+      <p>Las capas se sirven por <strong>ArcGIS REST (MapServer / FeatureServer)</strong> — consumibles con <code>identify</code>/<code>query</code> o como WMS. Hay muchos escenarios de riesgo de Cajamarca (p. ej. deslizamiento en Contumazá, fuente INGEMMET). Uso en SIMPAC: capa de contexto de riesgo y para el <strong>cruce</strong> (¿el reporte cae en zona de peligro alto?). No es tiempo real.</p>
+    </div>
+  </section>
+
+  <!-- 06 IGP -->
+  <section id="igp">
+    <div class="col">
+      <p class="eyebrow"><span class="secnum">06</span> &nbsp;IGP</p>
+      <h2>Índice Costero El Niño (ICEN)</h2>
+      <pre>http://met.igp.gob.pe/datos/ICEN.txt        # oficial (ENFEN 2024)
+http://met.igp.gob.pe/datos/ICEN_91_20.txt  # base 1991-2020 (= base NOAA)
+http://met.igp.gob.pe/datos/ICENr.txt       # ITCEN: valor reciente/provisional
+http://met.igp.gob.pe/datos/EC.txt          # índices E y C (Takahashi)</pre>
+      <p>Texto plano: comentarios con <code>%</code>, luego <code>yy  mm  ICEN</code> (mensual desde 1950). Actual: 2026-05 = <strong>+1.98</strong> (cálidas). Categorías para el semáforo: neutro (−0.4, 0.4) · cálido débil [0.4, 1.0) · moderado [1.0, 1.7) · fuerte [1.7, 3.0) · extraordinario ≥ 3.0.</p>
+      <div class="note warn"><p><b>HTTP-only</b> (Apache 2.2, puerto 80). Una web HTTPS no puede hacer <code>fetch</code> a http (mixed content) → el <b>backend debe descargar/proxyear</b> el archivo y cachearlo a diario.</p></div>
+    </div>
+  </section>
+
+  <!-- 07 NOAA -->
+  <section id="noaa">
+    <div class="col">
+      <p class="eyebrow"><span class="secnum">07</span> &nbsp;NOAA — Climate Prediction Center</p>
+      <h2>ONI — contexto ENSO global</h2>
+      <pre>https://www.cpc.ncep.noaa.gov/data/indices/oni.ascii.txt   # ONI mensual
+https://www.cpc.ncep.noaa.gov/data/indices/wksst8110.for   # TSM semanal Niño 1+2/3/3.4/4</pre>
+      <p>ONI en texto plano, columnas <code>SEAS · YR · TOTAL · ANOM</code> (ANOM = ONI, base 1991-2020). HTTPS, sin auth, la fuente más fácil de ingerir. Actual: JJA-2026 = <strong>+1.80</strong> (El Niño).</p>
+    </div>
+  </section>
+
+  <!-- 08 ENFEN -->
+  <section id="enfen">
+    <div class="col">
+      <p class="eyebrow"><span class="secnum">08</span> &nbsp;ENFEN</p>
+      <h2>Estado de alerta El Niño Costero</h2>
+      <p>Sitio <code>enfen.imarpe.gob.pe</code> sobre <strong>WordPress</strong> (enlaces de descarga <code>?wpdmdl=</code>). Vías de adquisición:</p>
+      <pre>GET https://enfen.imarpe.gob.pe/wp-json/wp/v2/posts?per_page=10&_fields=id,date,title,link
+    # comunicados; PDFs vía ?wpdmdl={id}</pre>
+      <p>Aporta el <strong>estado cualitativo de alerta</strong> (Vigilancia / Alerta) de El Niño/La Niña Costero. El valor numérico del índice ya se obtiene del IGP (sección 06), que es la fuente operacional definida por ENFEN.</p>
+      <div class="note warn"><p><b>Límite de la sesión:</b> ENFEN no fue accesible desde este entorno (DNS/red: navegación denegada y <code>curl</code> con código 000). Es un bloqueo del entorno, no del sitio; reintentar desde el servidor de producción.</p></div>
+    </div>
+  </section>
+
+  <!-- 09 BUENAS -->
+  <section id="buenas">
+    <div class="col">
+      <p class="eyebrow"><span class="secnum">09</span> &nbsp;Uso responsable</p>
+      <h2>Buenas prácticas de adquisición</h2>
+      <ul class="clean">
+        <li><strong>Caché + rate limit</strong>: guardar cada respuesta y espaciar las peticiones; ninguna de estas fuentes es de alta frecuencia (se actualizan por hora). No martillar los servidores del Estado.</li>
+        <li><strong>User-Agent identificable</strong> y revisión de términos de uso y <code>robots.txt</code> de cada sitio.</li>
+        <li><strong>Backend como proxy</strong>: obligatorio para IGP (HTTP-only) y conveniente para todos (evita CORS y oculta el origen al cliente).</li>
+        <li><strong>Conectores aislados con pruebas</strong>: las APIs internas y el scraping cambian sin aviso; un módulo por fuente contiene el daño.</li>
+        <li><strong>Atribución visible</strong> de la fuente en cada dato mostrado.</li>
+        <li><strong>Sin evadir CAPTCHA</strong>: el histórico tabular de SENAMHI queda fuera de alcance por diseño.</li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- 10 LIMITES -->
+  <section id="limites" style="border-bottom:none">
+    <div class="col">
+      <p class="eyebrow"><span class="secnum">10</span> &nbsp;Pendientes</p>
+      <h2>Limitaciones de esta pasada</h2>
+      <ul class="clean">
+        <li><strong>ENFEN</strong>: inaccesible desde el entorno de captura; validar <code>wp-json</code> desde producción.</li>
+        <li><strong>SENAMHI histórico</strong>: CAPTCHA en la tabla mensual; para series largas evaluar PISCO / descarga oficial.</li>
+        <li><strong>CENEPRED</strong>: falta capturar la URL exacta del MapServer de cada capa (activar una capa en el visor y leer la petición ArcGIS).</li>
+        <li><strong>ANA</strong>: confirmar el reporte de embalses y el formato del payload POST (parámetros) de cada <code>.asmx</code>.</li>
+        <li>Verificar todos los endpoints en <strong>temporada de lluvias</strong> (dic–abr), cuando los umbrales realmente disparan.</li>
+      </ul>
+    </div>
+  </section>
+
+  <footer>
+    <div class="col">
+      <p><strong>Fuentes y Endpoints — SIMPAC</strong> · borrador v0.1. Endpoints capturados el 06 sep 2026 por inspección de red de sitios públicos; sujetos a cambios del lado de cada organismo.</p>
+    </div>
+  </footer>
+</div>
+
+<script>
+  (function(){
+    var root=document.documentElement, btn=document.getElementById('themeToggle'), stored=null;
+    try{stored=localStorage.getItem('simpac-theme');}catch(e){}
+    if(stored==='dark'||stored==='light') root.setAttribute('data-theme',stored);
+    function cur(){var t=root.getAttribute('data-theme'); if(t)return t; return (window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches)?'dark':'light';}
+    function lab(){btn.textContent=cur()==='dark'?'Claro':'Oscuro';} lab();
+    btn.addEventListener('click',function(){var n=cur()==='dark'?'light':'dark'; root.setAttribute('data-theme',n); try{localStorage.setItem('simpac-theme',n);}catch(e){} lab();});
+  })();
+</script>
