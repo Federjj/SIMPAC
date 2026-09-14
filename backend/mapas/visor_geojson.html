@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Visor de Datos Senamhi - Leaflet</title>
+    <!-- CSS de Leaflet -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
+    <style>
+        body { 
+            margin: 0; 
+            padding: 0; 
+            font-family: system-ui, -apple-system, sans-serif; 
+            display: flex; 
+            flex-direction: column; 
+            height: 100vh; 
+            background-color: #f8f9fa;
+        }
+        #header { 
+            background: #0f172a; 
+            color: white; 
+            padding: 1rem 2rem; 
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        h2 { margin: 0; font-size: 1.25rem; font-weight: 500;}
+        #map { 
+            flex-grow: 1; 
+            width: 100%; 
+            z-index: 1;
+        }
+        .control-panel { 
+            position: absolute; 
+            top: 90px; 
+            right: 20px; 
+            z-index: 1000; 
+            background: white; 
+            padding: 20px; 
+            border-radius: 8px; 
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+            border: 1px solid #e2e8f0;
+        }
+        input[type="file"] { 
+            margin-top: 12px; 
+            font-size: 0.9rem;
+        }
+        .instructions {
+            font-size: 0.85rem;
+            color: #64748b;
+            margin-top: 8px;
+            max-width: 250px;
+        }
+    </style>
+</head>
+<body>
+    <div id="header">
+        <h2>Visor GeoJSON de Pruebas</h2>
+    </div>
+    
+    <div class="control-panel">
+        <label for="fileInput"><strong>Cargar archivo .geojson:</strong></label><br>
+        <input type="file" id="fileInput" accept=".geojson,application/json">
+        <div class="instructions">Sube el archivo resultante de tu script de Python para visualizar sus geometrías.</div>
+    </div>
+
+    <div id="map"></div>
+
+    <!-- JS de Leaflet -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+    
+    <script>
+        // Inicializar el mapa centrado en Cajamarca por defecto
+        const map = L.map('map').setView([-7.1638, -78.5003], 7);
+        
+        // Cargar la capa base de OpenStreetMap
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+        }).addTo(map);
+
+        let geojsonLayer;
+
+        // Escuchar el evento de carga del archivo
+        document.getElementById('fileInput').addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = function(event) {
+                try {
+                    const geojsonData = JSON.parse(event.target.result);
+                    
+                    // Si ya existía una capa cargada, la eliminamos para no sobreponer
+                    if (geojsonLayer) {
+                        map.removeLayer(geojsonLayer);
+                    }
+
+                    // Crear la capa GeoJSON con estilos y popups
+                    geojsonLayer = L.geoJSON(geojsonData, {
+                        style: function (feature) {
+                            return { 
+                                color: "#3b82f6", 
+                                weight: 2, 
+                                fillOpacity: 0.4,
+                                fillColor: "#60a5fa"
+                            };
+                        },
+                        onEachFeature: function (feature, layer) {
+                            // Si el feature tiene propiedades, iteramos sobre ellas para armar el popup
+                            if (feature.properties) {
+                                let popupContent = "<div style='max-height: 200px; overflow-y: auto;'><b>Atributos:</b><br><table style='width: 100%; border-collapse: collapse; margin-top: 5px;'>";
+                                for (let key in feature.properties) {
+                                    // Filtrar campos nulos o vacíos para mantenerlo limpio
+                                    if(feature.properties[key] !== null && feature.properties[key] !== "") {
+                                        popupContent += `<tr style='border-bottom: 1px solid #eee;'>
+                                                            <td style='padding: 3px; font-size: 0.85rem; color: #475569;'><i>${key}</i></td>
+                                                            <td style='padding: 3px; font-size: 0.85rem;'><b>${feature.properties[key]}</b></td>
+                                                         </tr>`;
+                                    }
+                                }
+                                popupContent += "</table></div>";
+                                layer.bindPopup(popupContent);
+                            }
+                        }
+                    }).addTo(map);
+
+                    // Hacer zoom automático para que todos los datos encajen en la pantalla
+                    map.fitBounds(geojsonLayer.getBounds());
+                    
+                } catch (err) {
+                    alert("Ocurrió un error al leer el archivo. Asegúrate de que sea un GeoJSON válido.");
+                    console.error("Error parseando el GeoJSON:", err);
+                }
+            };
+            
+            // Leer el archivo como texto plano
+            reader.readAsText(file);
+        });
+    </script>
+</body>
+</html>
