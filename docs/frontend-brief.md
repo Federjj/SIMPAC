@@ -69,13 +69,63 @@ Foto instantánea del estado de Cajamarca. De arriba a abajo:
 
 **Datos:** `GET /api/snapshot`.
 
-### 4.2. Mapa interactivo
-- Base OSM de Cajamarca. Marcadores de **estaciones** (meteo/hidro) y **ríos** por estado.
-- **Capas conmutables:** estaciones meteo · ríos/caudales · zonas de riesgo (CENEPRED, v2) ·
-  reportes ciudadanos (v2). **Leyenda** con semáforo y tipos de marcador. Buscador por nombre.
-- **Popup:** nombre, tipo, valor + unidad, estado, hora, tendencia, "ver detalle".
+### 4.2. Mapa interactivo — **pantalla principal, estilo Waze** ⭐
+Es LA pantalla central de SIMPAC (como en Waze, el mapa *es* el home). Al entrar se centra en la
+ubicación del usuario (GPS o zona elegida). El panel de Panorama (4.1) va como *bottom-sheet*
+deslizable encima del mapa, no como página aparte.
 
-**Datos:** `GET /api/estaciones`, `GET /api/caudales`.
+**Capas (de abajo hacia arriba), todas conmutables con una leyenda:**
+1. **Mapa base** OSM de Cajamarca, limpio y orientado a la acción.
+2. **Zonas sombreadas** (el diferencial sobre Waze — círculos/polígonos translúcidos):
+   - 🔴 **Alto riesgo** — polígonos de peligro de CENEPRED/SIGRID (deslizamiento, huayco, inundación).
+   - 🔵 **Lluvia/precipitación activa** — círculos o *heatmap* alrededor de estaciones con lluvia
+     en la última hora (intensidad = opacidad/color), a partir de los datos horarios de SENAMHI.
+   - 🟠 **Inundación / caudal alto** — círculos alrededor de ríos en estado alerta/emergencia (ANA).
+3. **Incidentes ciudadanos** (los "baches/tráfico" de Waze, aquí desastres) — pines por tipo:
+   huayco, inundación, lluvia intensa, deslizamiento, vía bloqueada. Con contador de confirmaciones
+   y color según estado de confianza.
+4. **Usuarios cercanos** ("wazers") — íconos de usuarios activos cerca. ⚠️ **Privacidad:** posición
+   **aproximada** (ajustada a zona/manzana), nunca exacta; opt-in. Mostrar solo un contador y
+   posiciones difusas, no rastros individuales.
+5. **Estaciones oficiales** (las 93 ya cargadas) — capa conmutable, marcador meteo/hidro por estado.
+
+**Controles estilo Waze:**
+- Botón flotante grande **“＋ Reportar”** (abre el flujo de la sección 6).
+- Botón **recentrar en mi ubicación**.
+- Toggle de capas + **leyenda** (semáforo + tipos de pin + significado de cada sombreado).
+- **Tap en un pin** → tarjeta emergente: qué es, cuándo, a qué distancia, confirmar / ver detalle.
+
+**Datos:** `GET /api/estaciones`, `GET /api/caudales`, `GET /api/alertas` (zonas y ríos en alerta);
+lluvia por estación desde `GET /api/lluvia?cod=`; incidentes y usuarios desde el backend propio
+(Supabase: `report`, posiciones aproximadas de `perfil`). Las zonas sombreadas se derivan de esos
+datos (no hay una capa "oficial" de círculos; se generan en el cliente/servidor).
+
+> **Nota de diseño:** las 3 clases de sombreado deben distinguirse claramente entre sí y de los
+> pines de incidente — usar color + patrón/borde, no solo color, y mantenerlas translúcidas para
+> no tapar el mapa ni los pines.
+
+**Taxonomía de incidentes (pines) e íconos sugeridos:**
+
+| Tipo | Ícono sugerido | Color base |
+|---|---|---|
+| Huayco / deslizamiento | ladera con flujo ↓ | marrón |
+| Inundación | ola / casa con agua | azul |
+| Lluvia intensa | nube con lluvia | celeste |
+| Vía bloqueada | barrera / cono | gris |
+| Otro | signo de exclamación | neutro |
+
+Cada pin lleva un badge con el nº de confirmaciones y cambia de opacidad según su **estado de
+confianza** (sin confirmar = translúcido → confirmado = sólido; descartado = se atenúa/oculta).
+
+**Cómo se calculan las zonas sombreadas** (para front/datos — no vienen "dibujadas" de la fuente):
+- 🔵 **Lluvia:** por cada estación automática con `precip_mm > 0` en la última hora, un círculo
+  (radio escalado por intensidad, p. ej. 3–8 km) con opacidad ∝ mm/h; o un *heatmap* ponderado por
+  esos puntos. Fuente: `/api/lluvia` por estación + coordenadas de `/api/estaciones`.
+- 🟠 **Inundación/caudal:** círculo alrededor de cada río en estado alerta/emergencia
+  (`/api/caudales` o `/api/alertas`); naranja = alerta, rojo = emergencia.
+- 🔴 **Riesgo:** polígonos de peligro de CENEPRED/SIGRID como GeoJSON (capa estática de
+  referencia). Mientras no se integre SIGRID, se puede omitir o usar un placeholder.
+- Todas translúcidas (~20–35 % de opacidad) y por debajo de los pines.
 
 ### 4.3. Detalle de estación
 - Cabecera: nombre, distrito, tipo, código, fuente.
@@ -166,10 +216,15 @@ Solo para técnicos de Defensa Civil / administradores:
 ## 10. Componentes reutilizables
 
 Titular de estado · Badge de nivel (4 estados) · Tarjeta de índice (ONI/ICEN) · Marcador de
-mapa por estado (meteo/hidro/río/reporte) · Popup de estación · Gráfico de serie (barras+línea
+estación por estado (meteo/hidro) · Popup de estación · Gráfico de serie (barras+línea
 y línea con umbrales) · Tarjeta de alerta · Tarjeta de reporte (con confianza y confirmar) ·
 Burbuja de chat efímero (con contador de expiración) · Leyenda del mapa · Chip de fuente+hora ·
 Franja de disclaimer legal · Selector de zona/ubicación · Cabecera con estado de sesión.
+
+**Del mapa estilo Waze (4.2):** Pin de incidente por tipo (huayco/inundación/lluvia/deslizamiento/
+vía bloqueada) · Overlay de zona sombreada en 3 variantes (riesgo 🔴 / lluvia 🔵 / inundación 🟠) ·
+Ícono de usuario cercano + contador de “usuarios cerca” · Botón flotante “＋ Reportar” · Botón
+recentrar en mi ubicación · Tarjeta emergente de pin (qué/cuándo/distancia/confirmar).
 
 ---
 
