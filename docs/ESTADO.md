@@ -1,11 +1,11 @@
 # SIMPAC — Estado del proyecto
 
-> Panel vivo de "dónde estamos". Actualizado: **2026-09-10**.
+> Panel vivo de "dónde estamos". Actualizado: **2026-09-15**.
 > Repo: `github.com/Federjj/SIMPAC` (monorepo, rama `main`).
 
 ## Resumen en una línea
-Backend prototipo funcionando con datos reales en tiempo real; **base de datos Supabase creada,
-con esquema y datos cargados**; falta construir la UI (en diseño) y conectar la ingesta a Supabase.
+Backend + Supabase con datos reales; **frontend React (página Mapa) funcionando** y conectado a
+Supabase. Faltan las demás páginas del front y correr la ingesta automática.
 
 ---
 
@@ -19,7 +19,7 @@ con esquema y datos cargados**; falta construir la UI (en diseño) y conectar la
 
 **Base de datos (Supabase)**
 - [x] Proyecto **DATASYMPAC** (ref `clrnommkjyksnyrtnisf`, región São Paulo).
-- [x] **Esquema aplicado**: 9 tablas + **PostGIS** + **RLS** (`supabase/schema.sql`).
+- [x] **Esquema aplicado**: 11 tablas + **PostGIS** + **RLS** (`supabase/schema.sql`).
 - [x] **Datos cargados**: 93 estaciones (27 automáticas) con geometría (y columnas `lat`/`lon`) ·
       13 ríos de Cajamarca con caudal y umbrales (hoy) · 48 h de lluvia de UNC Cajamarca (muestra) ·
       ICEN 1.98 / ONI 1.8 · capa de **anomalías de precipitación** (muestra Cajamarca, tabla `mapa`).
@@ -27,6 +27,13 @@ con esquema y datos cargados**; falta construir la UI (en diseño) y conectar la
       vía la API REST de Supabase (RLS de lectura pública funcionando).
 - [x] **MCP de Supabase** conectado en modo escritura (Claude puede leer/editar la BD).
 - [x] **Código de ingesta a Supabase** listo (`backend/store_supabase.py`) — solo falta credencial.
+
+**Frontend (React + Vite + Leaflet)** — `frontend/`
+- [x] Página **Mapa** funcionando y conectada a Supabase: estaciones/ríos/zonas reales, estilo Waze,
+      íconos (no emojis), paleta saturada, tipografía formal.
+- [x] **Geolocalización** (con permiso) + **selector de ciudades del Perú** (Cajamarca por defecto).
+- [x] Componentes: `Sidebar`, `MapView`, `LayersPanel`, `StatusPanel`, `CitySelector`.
+      Correr: `npm --prefix frontend install && npm --prefix frontend run dev` → localhost:5173.
 
 **Documentación** (`docs/`)
 - [x] `README-tecnico.md`, `fuentes-y-endpoints.html`, `frontend-brief.md`, `stack-tecnologico.md`,
@@ -41,8 +48,9 @@ con esquema y datos cargados**; falta construir la UI (en diseño) y conectar la
   BD actualizada: tablas `voto` y `comentario` en vez de `confirmation`; sin roles admin.
 
 ## 🔄 En progreso / parcial
-- [ ] **UI** — en diseño. Concepto: **mapa estilo Waze** (usuarios cercanos + incidentes tipo
-      huayco/inundación + **zonas sombreadas** de riesgo/lluvia/inundación). Ver `frontend-brief.md` §4.2.
+- [ ] **Frontend** — página Mapa lista; faltan las demás (Alertas, Comunidad, Chat, Cuenta, crear
+      reporte) + **react-router** para la navegación de la barra lateral. Ver `frontend-brief.md`.
+- [ ] Incidentes/usuarios en el mapa son **demo**; se conectan a `report`/`voto` cuando haya login (v2).
 - [ ] **Lluvia histórica completa en la BD** — hoy hay solo una estación de muestra; el resto entra
       solo cuando corra el job de ingesta a Supabase.
 
@@ -59,8 +67,9 @@ con esquema y datos cargados**; falta construir la UI (en diseño) y conectar la
 - [ ] Reescribir la API en **FastAPI** sobre el mismo `store` (la actual es prototipo desechable).
 - [ ] Calibrar los **umbrales de lluvia** (hoy placeholders en `alerts.py`) con Defensa Civil.
 
-**Frontend / móvil (Kevin)**
-- [ ] **Web**: React + Vite + Leaflet consumiendo la API; maquetar el mapa Waze del brief con Claude Design.
+**Frontend / móvil**
+- [x] **Web (Mapa)**: React + Vite + Leaflet conectado a Supabase (ya está).
+- [ ] **Web (resto)**: páginas Alertas, Comunidad, Chat, Cuenta, crear reporte + react-router.
 - [ ] **App móvil**: arrancar `appmobile/` (React Native); GPS + push.
 - [ ] Crear el proyecto **Firebase (FCM)** para push y conseguir la server key.
 

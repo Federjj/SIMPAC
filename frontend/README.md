@@ -1,16 +1,33 @@
 # SIMPAC — Frontend
 
-Web en **React + Vite + Leaflet** que consume la BD de Supabase. La BD **ya está creada y con
-datos reales** (ver `docs/ESTADO.md`), así que se puede maquetar contra datos de verdad desde el día 1.
-El diseño de pantallas está en `docs/frontend-brief.md` (mapa estilo Waze).
+Web en **React + Vite + Leaflet** que consume la BD de Supabase. La **página Mapa ya está construida
+y funcionando** con datos reales; el diseño de las demás pantallas está en `docs/frontend-brief.md`
+(estilo Waze).
 
 ## Arranque
+El proyecto ya existe (React + Vite). Solo:
 ```bash
-npm create vite@latest . -- --template react   # (o el setup que prefieras)
-npm install @supabase/supabase-js leaflet
-cp .env.example .env          # trae la URL + publishable key (públicas)
+npm install
+npm run dev          # http://localhost:5173
 ```
-El cliente ya está en `src/lib/supabaseClient.js`.
+El `.env` con las llaves públicas ya está (`.env.example` de respaldo). Cliente: `src/lib/supabaseClient.js`.
+
+## Estructura
+```
+src/
+  App.jsx · main.jsx · index.css · icons.jsx
+  lib/        supabaseClient.js · queries.js
+  data/       cities.js (ciudades del Perú) · incidents.js (demo)
+  components/ Sidebar · MapView · LayersPanel · StatusPanel · CitySelector
+```
+
+## Página Mapa (hecha)
+- Leaflet + OSM centrado en Cajamarca; **geolocalización** (con permiso) y **selector de ciudades
+  del Perú** (Cajamarca por defecto).
+- Marcadores: estaciones y ríos (círculo con ícono), incidentes (rombo por tipo), **usuarios
+  cercanos (pin tipo Waze)** y **tu ubicación (flecha de navegación)**.
+- Capas conmutables, zonas sombreadas, botón Reportar, panel de estado.
+- Incidentes y usuarios son **demo** hasta que haya login (v2 → tablas `report` / `voto`).
 
 ## Qué tabla alimenta cada parte del mapa (brief §4.2)
 

@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "simpac-web",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["--prefix", "D:/Documents/Repos/VigiaFEN/frontend", "run", "dev"],
+      "port": 5173
+    }
+  ]
+}

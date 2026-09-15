@@ -1,0 +1,263 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SIMPAC — Mapa</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&display=swap">
+<style>
+  :root{
+    --ink:#0A1120; --ink2:#0F1A30; --panel:#0E1728; --line:#1E2B44;
+    --text:#EAF0FA; --muted:#8695B0;
+    --primary:#2E5BFF;                 /* azul eléctrico */
+    --n-normal:#12B886; --n-aviso:#F5A302; --n-alerta:#FF6A00; --n-emerg:#F02D5A;
+    --met:#2E5BFF; --hid:#12B8A6;      /* estación meteo / hidro */
+    --inc-inund:#1C7ED6; --inc-lluvia:#22B8CF; --inc-huayco:#E8590C; --inc-via:#F03E3E;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%}
+  body{font-family:"IBM Plex Sans",system-ui,sans-serif;color:var(--text);background:var(--ink);display:flex;overflow:hidden}
+  a{color:inherit}
+
+  /* ---------- sidebar ---------- */
+  .side{width:264px;flex:none;background:var(--ink);border-right:1px solid var(--line);display:flex;flex-direction:column;height:100vh}
+  .brand{padding:18px 20px 14px}
+  .brand .logo{font-weight:700;font-size:1.5rem;letter-spacing:.5px}
+  .brand .logo b{color:var(--primary)}
+  .brand .sub{color:var(--muted);font-size:.78rem;margin-top:2px}
+  .estado{margin:6px 16px 10px;border:1px solid var(--n-alerta);background:rgba(255,106,0,.10);border-radius:12px;padding:10px 14px;display:flex;align-items:center;gap:10px}
+  .estado .dot{width:12px;height:12px;border-radius:3px;transform:rotate(45deg);background:var(--n-alerta)}
+  .estado .lab{font-size:.72rem;color:var(--muted);text-transform:uppercase;letter-spacing:.06em}
+  .estado .val{font-weight:600;color:var(--n-alerta)}
+  nav{padding:8px 12px;display:flex;flex-direction:column;gap:4px}
+  nav a{display:flex;align-items:center;gap:12px;padding:11px 14px;border-radius:10px;color:var(--muted);text-decoration:none;font-weight:500;font-size:.95rem}
+  nav a svg{width:20px;height:20px;flex:none}
+  nav a:hover{background:var(--ink2);color:var(--text)}
+  nav a.active{background:var(--primary);color:#fff}
+  nav a .badge{margin-left:auto;background:var(--n-emerg);color:#fff;font-size:.72rem;font-weight:600;border-radius:999px;min-width:20px;height:20px;display:grid;place-items:center;padding:0 5px}
+  .side .foot{margin-top:auto;border-top:1px solid var(--line);padding:14px 16px}
+  .live{font-size:.68rem;color:var(--muted);letter-spacing:.1em;text-transform:uppercase;display:flex;align-items:center;gap:6px;margin-bottom:10px}
+  .live .pulse{width:8px;height:8px;border-radius:50%;background:var(--n-alerta);box-shadow:0 0 0 0 rgba(255,106,0,.6);animation:p 1.8s infinite}
+  @keyframes p{0%{box-shadow:0 0 0 0 rgba(255,106,0,.5)}70%{box-shadow:0 0 0 8px rgba(255,106,0,0)}100%{box-shadow:0 0 0 0 rgba(255,106,0,0)}}
+  .metrics{display:flex;gap:8px}
+  .metric{flex:1;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:8px 10px}
+  .metric b{font-size:1.05rem;font-variant-numeric:tabular-nums}
+  .metric .u{color:var(--met);font-size:.68rem;font-weight:600}
+  .metric .t{color:var(--muted);font-size:.68rem}
+  .emerg{font-size:.72rem;color:var(--muted);margin:12px 0}
+  .emerg b{color:var(--n-aviso)}
+  .btn-login{width:100%;background:var(--primary);color:#fff;border:none;border-radius:10px;padding:12px;font-weight:600;font-family:inherit;font-size:.9rem;display:flex;align-items:center;justify-content:center;gap:8px;cursor:pointer}
+
+  /* ---------- main / map ---------- */
+  .main{position:relative;flex:1;height:100vh}
+  #map{position:absolute;inset:0;background:#0c1526}
+  .leaflet-container{background:#0c1526;font-family:inherit}
+  .chip{position:absolute;top:16px;left:16px;z-index:600;background:rgba(10,17,32,.85);backdrop-filter:blur(6px);border:1px solid var(--line);border-radius:999px;padding:7px 14px;display:flex;align-items:center;gap:8px;font-weight:600;font-size:.85rem}
+  .chip b{color:var(--primary)} .chip .st{color:var(--n-alerta);font-weight:600;font-size:.8rem}
+  .chip .d{width:7px;height:7px;border-radius:50%;background:var(--n-alerta)}
+  .tools{position:absolute;top:16px;right:16px;z-index:600;display:flex;flex-direction:column;gap:8px}
+  .tool{width:42px;height:42px;border-radius:12px;background:rgba(10,17,32,.9);border:1px solid var(--line);color:var(--text);display:grid;place-items:center;cursor:pointer}
+  .tool:hover{border-color:var(--primary)}
+  .tool svg{width:20px;height:20px}
+  .report{position:absolute;left:16px;bottom:16px;z-index:600;background:var(--n-emerg);color:#fff;border:none;border-radius:12px;padding:12px 18px;font-weight:600;font-family:inherit;display:flex;align-items:center;gap:8px;cursor:pointer;box-shadow:0 6px 20px -6px rgba(240,45,90,.6)}
+  .report svg{width:18px;height:18px}
+
+  .layers{position:absolute;top:16px;right:70px;z-index:601;width:230px;background:rgba(12,20,38,.96);backdrop-filter:blur(8px);border:1px solid var(--line);border-radius:14px;padding:14px 16px}
+  .layers h4{margin:0 0 10px;font-size:.72rem;letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}
+  .lrow{display:flex;align-items:center;gap:10px;padding:6px 0;font-size:.9rem}
+  .lrow svg{width:18px;height:18px;color:var(--muted)}
+  .lrow .sw{margin-left:auto;position:relative;width:36px;height:20px;flex:none}
+  .lrow input{display:none}
+  .sw i{position:absolute;inset:0;background:var(--line);border-radius:999px;transition:.15s}
+  .sw i::after{content:"";position:absolute;top:2px;left:2px;width:16px;height:16px;border-radius:50%;background:#fff;transition:.15s}
+  .lrow input:checked + i{background:var(--primary)} .lrow input:checked + i::after{left:18px}
+  .legend{border-top:1px solid var(--line);margin-top:8px;padding-top:10px;display:flex;flex-direction:column;gap:6px;font-size:.8rem;color:var(--muted)}
+  .legend span{display:flex;align-items:center;gap:8px}
+  .legend .c{width:12px;height:12px;border-radius:50%}
+
+  /* markers */
+  .mk{display:grid;place-items:center;border-radius:50%;border:3px solid #fff;box-shadow:0 2px 8px rgba(0,0,0,.4)}
+  .mk svg{width:16px;height:16px;color:#fff}
+  .mk.diamond{border-radius:8px;transform:rotate(45deg)} .mk.diamond svg{transform:rotate(-45deg)}
+
+  /* bottom status */
+  .status{position:absolute;left:0;right:0;bottom:0;z-index:600;background:var(--ink);border-top:2px solid var(--n-alerta)}
+  .status .grip{width:44px;height:4px;border-radius:3px;background:var(--line);margin:8px auto 4px}
+  .status .head{display:flex;align-items:center;gap:10px;padding:2px 20px 8px}
+  .status .head .k{font-size:.7rem;color:var(--muted);letter-spacing:.08em;text-transform:uppercase}
+  .status .head h3{margin:0;font-size:1.05rem}
+  .status .head .tag{margin-left:auto;border:1px solid var(--n-alerta);color:var(--n-alerta);border-radius:999px;padding:4px 12px;font-size:.8rem;font-weight:600;display:flex;gap:6px;align-items:center}
+  .cards{display:flex;gap:12px;padding:0 20px 12px}
+  .card{flex:1;border:1px solid var(--line);border-radius:12px;padding:12px 14px;display:flex;gap:12px;align-items:center}
+  .card .ic{width:34px;height:34px;border-radius:9px;display:grid;place-items:center;flex:none}
+  .card .ic svg{width:18px;height:18px;color:#fff}
+  .card b{font-size:1.15rem;font-variant-numeric:tabular-nums} .card .t{color:var(--muted);font-size:.74rem}
+  .veral{display:flex;align-items:center;gap:8px;color:var(--n-alerta);font-weight:600;font-size:.9rem;padding:10px 20px;border-top:1px solid var(--line);cursor:pointer}
+  .veral svg{width:16px;height:16px}
+
+  /* incident popup */
+  .leaflet-popup-content-wrapper{background:var(--ink);color:var(--text);border:1px solid var(--line);border-radius:14px}
+  .leaflet-popup-tip{background:var(--ink);border:1px solid var(--line)}
+  .leaflet-popup-content{margin:14px 16px;font-family:inherit;width:260px!important}
+  .pop h4{margin:0 0 4px;display:flex;align-items:center;gap:8px;font-size:1rem}
+  .pop .meta{color:var(--muted);font-size:.78rem;margin-bottom:8px}
+  .pop p{margin:0 0 12px;font-size:.9rem;line-height:1.4}
+  .pop .acts{display:flex;gap:8px}
+  .vote{display:flex;align-items:center;gap:6px;border:1px solid var(--line);background:var(--panel);color:var(--text);border-radius:9px;padding:7px 12px;font-family:inherit;font-weight:600;cursor:pointer}
+  .vote svg{width:15px;height:15px}
+  .vote.up{color:var(--n-normal)} .vote.down{color:var(--n-emerg)}
+  .vote-fill{flex:1;background:var(--primary);color:#fff;border:none;border-radius:9px;font-weight:600;font-family:inherit;cursor:pointer}
+</style>
+</head>
+<body>
+  <!-- SIDEBAR -->
+  <aside class="side">
+    <div class="brand">
+      <div class="logo">SIM<b>PAC</b></div>
+      <div class="sub">Monitoreo · Cajamarca</div>
+    </div>
+    <div class="estado"><span class="dot"></span><div><div class="lab">Estado actual</div><div class="val" id="estadoVal">Alerta</div></div></div>
+    <nav>
+      <a class="active" href="#"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 20l-5.4 1.8V6L9 4m0 16l6 2m-6-2V4m6 18l5.4-1.8V4.2L15 6m0 16V6m0 0L9 4"/></svg> Mapa</a>
+      <a href="#"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 9v4m0 4h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg> Alertas <span class="badge">3</span></a>
+      <a href="#"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 11l18-5v12L3 14v-3zM11.6 16.8a3 3 0 1 1-5.8-1.6"/></svg> Comunidad</a>
+      <a href="#"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg> Chat</a>
+      <a href="#"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2M12 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8z"/></svg> Cuenta</a>
+    </nav>
+    <div class="foot">
+      <div class="live"><span class="pulse"></span> En vivo · 09:30</div>
+      <div class="metrics">
+        <div class="metric"><b id="mLluvia">2.4</b><div class="u">mm/hr</div><div class="t">Lluvia</div></div>
+        <div class="metric"><b id="mRio">48.2</b><div class="u">m³/s</div><div class="t">Río</div></div>
+      </div>
+      <div class="emerg">Referencial · Emergencias: <b>105 / 116</b></div>
+      <button class="btn-login"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4M10 17l5-5-5-5M15 12H3"/></svg> Iniciar sesión</button>
+    </div>
+  </aside>
+
+  <!-- MAP -->
+  <div class="main">
+    <div id="map"></div>
+    <div class="chip"><b>SIMPAC</b><span class="d"></span><span class="st">Alerta</span></div>
+    <div class="tools">
+      <button class="tool" id="btnLayers" title="Capas"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2 2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg></button>
+      <button class="tool" id="btnLocate" title="Mi ubicación"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 2v3m0 14v3m10-10h-3M5 12H2"/></svg></button>
+    </div>
+    <div class="layers" id="layersPanel" hidden>
+      <h4>Capas del mapa</h4>
+      <label class="lrow"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4.5 8-11a8 8 0 1 0-16 0c0 6.5 8 11 8 11z"/><circle cx="12" cy="11" r="3"/></svg> Estaciones <span class="sw"><input type="checkbox" checked data-l="est"><i></i></span></label>
+      <label class="lrow"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7c4 4 6-2 9 1s5 1 9-2M3 17c4 4 6-2 9 1s5 1 9-2"/></svg> Ríos <span class="sw"><input type="checkbox" checked data-l="rio"><i></i></span></label>
+      <label class="lrow"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0zM12 9v4m0 4h.01"/></svg> Incidentes <span class="sw"><input type="checkbox" checked data-l="inc"><i></i></span></label>
+      <label class="lrow"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-3-3.9M9 21v-2a4 4 0 0 1 3-3.9M12 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6z"/></svg> Usuarios cercanos <span class="sw"><input type="checkbox" data-l="usr"><i></i></span></label>
+      <label class="lrow"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 8v4m0 4h.01"/></svg> Zonas de riesgo <span class="sw"><input type="checkbox" checked data-l="zona"><i></i></span></label>
+      <div class="legend">
+        <span><span class="c" style="background:var(--n-emerg)"></span> Zona inundación</span>
+        <span><span class="c" style="background:var(--n-alerta)"></span> Zona alerta</span>
+        <span><span class="c" style="background:var(--inc-lluvia)"></span> Lluvia activa</span>
+      </div>
+    </div>
+    <button class="report"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 5v14M5 12h14"/></svg> Reportar</button>
+
+    <!-- STATUS -->
+    <div class="status">
+      <div class="grip"></div>
+      <div class="head">
+        <div><div class="k">Estado · 09:30</div><h3 id="titular">Lluvias intensas. Tome precauciones</h3></div>
+        <span class="tag"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg> Alerta</span>
+      </div>
+      <div class="cards">
+        <div class="card"><div class="ic" style="background:var(--met)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 16.6A5 5 0 0 0 18 7h-1.3A7 7 0 1 0 4 15M8 19v2m4-3v3m4-4v2"/></svg></div><div><b id="cLluvia">2.4</b> <span class="t">mm/hr Lluvia</span></div></div>
+        <div class="card"><div class="ic" style="background:var(--hid)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12h4l3 8 4-16 3 8h4"/></svg></div><div><b id="cRio">48.2</b> <span class="t">m³/s Río</span></div></div>
+        <div class="card"><div class="ic" style="background:var(--n-aviso)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 14.76V5a2 2 0 1 0-4 0v9.76a4 4 0 1 0 4 0z"/></svg></div><div><b id="cTemp">14°C</b> <span class="t">Temperatura</span></div></div>
+      </div>
+      <div class="veral"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg> Ver alertas vigentes (3)</div>
+    </div>
+  </div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+const SUPA_URL="https://clrnommkjyksnyrtnisf.supabase.co";
+const SUPA_KEY="sb_publishable_CL400oeEyfBoEEJdv49Lxg_kCYu-I1g";
+const H={apikey:SUPA_KEY,Authorization:"Bearer "+SUPA_KEY};
+const api=(p)=>fetch(`${SUPA_URL}/rest/v1/${p}`,{headers:H}).then(r=>r.json());
+
+const map=L.map('map',{zoomControl:false}).setView([-7.16,-78.51],12);
+L.control.zoom({position:'bottomright'}).addTo(map);
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:18,attribution:'© OpenStreetMap'}).addTo(map);
+
+const groups={est:L.layerGroup().addTo(map),rio:L.layerGroup().addTo(map),inc:L.layerGroup().addTo(map),usr:L.layerGroup(),zona:L.layerGroup().addTo(map)};
+
+function mk(color,svg,diamond){return L.divIcon({className:'',html:`<div class="mk${diamond?' diamond':''}" style="width:34px;height:34px;background:${color}">${svg}</div>`,iconSize:[34,34],iconAnchor:[17,17]})}
+const ICON={
+  drop:'<svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2"><path d="M12 22a7 7 0 0 0 7-7c0-5-7-13-7-13S5 10 5 15a7 7 0 0 0 7 7z"/></svg>',
+  wave:'<svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2"><path d="M3 12c3 3 5-2 9 0s5 2 9 0"/></svg>',
+  rain:'<svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2"><path d="M8 19v2m4-3v3m4-4v2M18 15a4 4 0 0 0-1-7.9A6 6 0 1 0 6 13"/></svg>',
+  slide:'<svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2"><path d="M3 20h18L14 6l-4 7-3-3z"/></svg>',
+  road:'<svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2"><path d="M4 19 20 5M4 5l16 14"/></svg>',
+  pinp:'<svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2"><circle cx="12" cy="10" r="3"/><path d="M12 21s7-6 7-11a7 7 0 1 0-14 0c0 5 7 11 7 11z"/></svg>'
+};
+const ESTADO_COL={normal:getcv('--n-normal'),alerta:getcv('--n-alerta'),emergencia:getcv('--n-emerg')};
+function getcv(v){return getComputedStyle(document.documentElement).getPropertyValue(v).trim()}
+
+// --- Estaciones (datos reales) ---
+api('estacion?select=cod,nombre,tipo,estado,lat,lon').then(rows=>{
+  (rows||[]).forEach(e=>{
+    if(e.lat==null) return;
+    const col = e.tipo==='H' ? getcv('--hid') : getcv('--met');
+    L.marker([e.lat,e.lon],{icon:mk(col,ICON.pinp)}).addTo(groups.est)
+      .bindPopup(`<div class="pop"><h4>${e.nombre}</h4><div class="meta">${e.tipo==='H'?'Estación hidrológica':'Estación meteorológica'} · ${e.estado}</div></div>`);
+  });
+}).catch(err=>console.error('estacion',err));
+
+// --- Ríos / caudal (datos reales) + zona si en alerta ---
+api('lectura_caudal?select=estacion,rio,valor,unidad,estado,lat,lon').then(rows=>{
+  (rows||[]).forEach(c=>{
+    if(c.lat==null) return;
+    const col=ESTADO_COL[c.estado]||getcv('--hid');
+    L.marker([c.lat,c.lon],{icon:mk(col,ICON.wave)}).addTo(groups.rio)
+      .bindPopup(`<div class="pop"><h4>${c.estacion}</h4><div class="meta">Río ${c.rio} · ${c.estado}</div><p>Caudal: <b>${c.valor} ${c.unidad}</b></p></div>`);
+    if(c.estado==='alerta'||c.estado==='emergencia')
+      L.circle([c.lat,c.lon],{radius:2500,color:col,weight:1,fillColor:col,fillOpacity:.18}).addTo(groups.zona);
+  });
+}).catch(err=>console.error('caudal',err));
+
+// --- Zonas demo alrededor de Cajamarca ciudad (para el estado "alerta") ---
+L.circle([-7.157,-78.512],{radius:1400,color:getcv('--n-emerg'),weight:1,fillColor:getcv('--n-emerg'),fillOpacity:.16}).addTo(groups.zona);
+L.circle([-7.17,-78.52],{radius:2200,color:getcv('--n-alerta'),weight:1,fillColor:getcv('--n-alerta'),fillOpacity:.12}).addTo(groups.zona);
+L.circle([-7.15,-78.50],{radius:1800,color:getcv('--inc-lluvia'),weight:1,fillColor:getcv('--inc-lluvia'),fillOpacity:.14}).addTo(groups.zona);
+
+// --- Incidentes (demo; en producción vienen de la tabla report) ---
+const INC=[
+ {t:'Vía bloqueada',ic:ICON.road,c:getcv('--inc-via'),ll:[-7.150,-78.505],a:'Rosa T.',h:'Hace 1 hora',km:'2.3 km',d:'La vía a Baños del Inca está bloqueada por derrumbe.',up:8,dn:0},
+ {t:'Lluvia intensa',ic:ICON.rain,c:getcv('--inc-lluvia'),ll:[-7.163,-78.498],a:'Carlos M.',h:'Hace 15 min',km:'0.8 km',d:'Lluvia muy fuerte en el Jr. Inca. Hay charcos grandes.',up:12,dn:1},
+ {t:'Inundación',ic:ICON.drop,c:getcv('--inc-inund'),ll:[-7.172,-78.515],a:'María L.',h:'Hace 3 horas',km:'1.5 km',d:'El río desbordó en el sector Los Baños.',up:15,dn:1},
+ {t:'Huayco',ic:ICON.slide,c:getcv('--inc-huayco'),ll:[-7.145,-78.53],a:'Jorge P.',h:'Hace 2 horas',km:'4.1 km',d:'Deslizamiento de lodo en la carretera.',up:6,dn:0},
+];
+INC.forEach(i=>{
+  L.marker(i.ll,{icon:mk(i.c,i.ic,true)}).addTo(groups.inc).bindPopup(
+   `<div class="pop"><h4>${i.t}</h4><div class="meta">${i.a} · ${i.h} · ${i.km}</div><p>${i.d}</p>
+    <div class="acts"><button class="vote up"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 10v11M18 21H7V10l4-8a2 2 0 0 1 2 2v4h5a2 2 0 0 1 2 2.4l-1.4 6A2 2 0 0 1 18 21z"/></svg> ${i.up}</button>
+    <button class="vote down"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 14V3M6 3h11v11l-4 8a2 2 0 0 1-2-2v-4H6a2 2 0 0 1-2-2.4l1.4-6A2 2 0 0 1 6 3z"/></svg> ${i.dn}</button>
+    <button class="vote-fill">Ver reporte →</button></div></div>`);
+});
+
+// --- usuarios cercanos demo ---
+[[-7.16,-78.507],[-7.168,-78.503],[-7.155,-78.518]].forEach(ll=>{
+  L.marker(ll,{icon:mk(getcv('--primary'),ICON.pinp)}).addTo(groups.usr);
+});
+
+// contexto El Niño (dato real) al titular-metric
+api('indice?select=fuente,valor,categoria').then(r=>{}).catch(()=>{});
+
+// toggles
+document.getElementById('btnLayers').onclick=()=>{const p=document.getElementById('layersPanel');p.hidden=!p.hidden};
+document.querySelectorAll('.lrow input').forEach(cb=>cb.onchange=()=>{const g=groups[cb.dataset.l];cb.checked?g.addTo(map):map.removeLayer(g)});
+document.getElementById('btnLocate').onclick=()=>map.setView([-7.16,-78.51],13);
+
+// asegura que los tiles cubran todo el contenedor (evita el mapa "a medias")
+window.addEventListener('load',()=>setTimeout(()=>map.invalidateSize(),150));
+setTimeout(()=>map.invalidateSize(),500);
+</script>
+</body>
+</html>
