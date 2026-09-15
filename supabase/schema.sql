@@ -120,13 +120,21 @@ create table if not exists report (
 );
 create index if not exists report_geom_idx on report using gist (geom);
 
-create table if not exists confirmation (
+create table if not exists voto (
   id        bigint generated always as identity primary key,
   report_id bigint references report(id) on delete cascade,
   autor     uuid references auth.users(id),
-  sigue     boolean,                    -- true "sigue pasando" | false "ya no"
+  valor     smallint not null check (valor in (-1, 1)),  -- 1 = like, -1 = dislike
   creado_en timestamptz default now(),
   unique (report_id, autor)
+);
+
+create table if not exists comentario (
+  id        bigint generated always as identity primary key,
+  report_id bigint references report(id) on delete cascade,
+  autor     uuid references auth.users(id),
+  texto     text not null,
+  creado_en timestamptz default now()
 );
 
 create table if not exists message (
@@ -179,13 +187,16 @@ drop policy if exists "lectura publica mapa" on mapa;
 create policy "lectura publica mapa" on mapa for select using (true);
 
 -- --- Comunidad ---
-alter table perfil       enable row level security;
-alter table report       enable row level security;
-alter table confirmation enable row level security;
-alter table message      enable row level security;
+alter table perfil     enable row level security;
+alter table report     enable row level security;
+alter table voto       enable row level security;
+alter table comentario enable row level security;
+alter table message    enable row level security;
 
-grant select, insert, update on perfil, report, confirmation, message to authenticated;
-grant select on report to anon;   -- los reportes se ven en el mapa público
+grant select, insert, update on perfil, report, message to authenticated;
+grant select, insert, update, delete on voto to authenticated;
+grant insert on comentario to authenticated;
+grant select on report, voto, comentario to anon;   -- reportes, votos y comentarios visibles en el mapa público
 
 -- perfil: cada quien ve/edita el suyo
 drop policy if exists "perfil propio select" on perfil;
@@ -203,11 +214,19 @@ create policy "report crea autor" on report for insert with check (auth.uid() = 
 drop policy if exists "report edita autor" on report;
 create policy "report edita autor" on report for update using (auth.uid() = autor);
 
--- confirmation: lectura para autenticados; crea el autor
-drop policy if exists "conf lectura" on confirmation;
-create policy "conf lectura" on confirmation for select using (auth.role() = 'authenticated');
-drop policy if exists "conf crea autor" on confirmation;
-create policy "conf crea autor" on confirmation for insert with check (auth.uid() = autor);
+-- voto (like/dislike) y comentario: lectura pública; escribe el autor
+drop policy if exists "voto lectura" on voto;
+create policy "voto lectura" on voto for select using (true);
+drop policy if exists "voto crea autor" on voto;
+create policy "voto crea autor" on voto for insert with check (auth.uid() = autor);
+drop policy if exists "voto edita autor" on voto;
+create policy "voto edita autor" on voto for update using (auth.uid() = autor);
+drop policy if exists "voto borra autor" on voto;
+create policy "voto borra autor" on voto for delete using (auth.uid() = autor);
+drop policy if exists "coment lectura" on comentario;
+create policy "coment lectura" on comentario for select using (true);
+drop policy if exists "coment crea autor" on comentario;
+create policy "coment crea autor" on comentario for insert with check (auth.uid() = autor);
 
 -- message (chat efímero): autenticados leen los no expirados; crea el autor
 drop policy if exists "msg lectura vigente" on message;

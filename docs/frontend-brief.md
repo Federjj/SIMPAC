@@ -15,8 +15,10 @@
 - **Producto:** SIMPAC — centraliza datos hidrometeorológicos de **Cajamarca (Perú)**, avisa de
   **lluvias/crecidas** con anticipación y suma una **capa comunitaria** (reportes + chat) tipo
   Waze para el detalle calle a calle.
-- **Usuarios/roles:** visitante (sin cuenta) · ciudadano/agricultor · técnico de Defensa Civil
-  · administrador. **Alfabetismo de datos bajo** → todo debe entenderse de un vistazo.
+- **Usuarios/roles:** visitante (sin cuenta) · ciudadano/agricultor. **Sin roles de
+  administración ni moderadores humanos** — la validación de reportes la hace la propia comunidad
+  (la app es intermediaria de información, no juez). **Alfabetismo de datos bajo** → todo debe
+  entenderse de un vistazo.
 - **Plataformas:** web responsive + app Android. Diseñar **mobile-first**.
 - **Idioma:** español (Perú). Nombre del producto: *por decidir* (placeholder).
 - **Principio rector:** en 5 segundos el usuario sabe **¿hay peligro? ¿dónde? ¿qué hago?**
@@ -49,10 +51,9 @@
 |---|---|---|
 | A. Núcleo de datos | Panorama · Mapa · Detalle de estación · Alertas · Contexto El Niño · Histórico | v1 |
 | B. Cuentas | Registro · Login · Recuperar · Perfil · Mi zona · Preferencias de notificación | v2 |
-| C. Comunidad | Crear reporte · Reportes en mapa · Detalle + confirmar · Reputación | v2 |
-| D. Chat en tiempo real | Canal por zona · Mensaje efímero · Reportar/moderar mensaje | v3 |
+| C. Comunidad | Crear reporte · Reportes en mapa · Detalle + votar (like/dislike) + comentar | v2 |
+| D. Chat en tiempo real | Canal por zona · Mensaje efímero · Reportar mensaje | v3 |
 | E. Notificaciones | Onboarding de permisos · Push · Centro de notificaciones | v3 (móvil) |
-| F. Administración | Dashboard admin · Edición de umbrales · Moderación · Estado de conectores · Alerta manual · Usuarios | v2–v3 |
 
 ---
 
@@ -82,8 +83,8 @@ deslizable encima del mapa, no como página aparte.
      en la última hora (intensidad = opacidad/color), a partir de los datos horarios de SENAMHI.
    - 🟠 **Inundación / caudal alto** — círculos alrededor de ríos en estado alerta/emergencia (ANA).
 3. **Incidentes ciudadanos** (los "baches/tráfico" de Waze, aquí desastres) — pines por tipo:
-   huayco, inundación, lluvia intensa, deslizamiento, vía bloqueada. Con contador de confirmaciones
-   y color según estado de confianza.
+   huayco, inundación, lluvia intensa, deslizamiento, vía bloqueada. Con contador de
+   **likes/dislikes** y color según cómo lo valora la comunidad.
 4. **Usuarios cercanos** ("wazers") — íconos de usuarios activos cerca. ⚠️ **Privacidad:** posición
    **aproximada** (ajustada a zona/manzana), nunca exacta; opt-in. Mostrar solo un contador y
    posiciones difusas, no rastros individuales.
@@ -93,7 +94,7 @@ deslizable encima del mapa, no como página aparte.
 - Botón flotante grande **“＋ Reportar”** (abre el flujo de la sección 6).
 - Botón **recentrar en mi ubicación**.
 - Toggle de capas + **leyenda** (semáforo + tipos de pin + significado de cada sombreado).
-- **Tap en un pin** → tarjeta emergente: qué es, cuándo, a qué distancia, confirmar / ver detalle.
+- **Tap en un pin** → tarjeta emergente: qué es, cuándo, a qué distancia, **like/dislike**, comentar / ver detalle.
 
 **Datos:** `GET /api/estaciones`, `GET /api/caudales`, `GET /api/alertas` (zonas y ríos en alerta);
 lluvia por estación desde `GET /api/lluvia?cod=`; incidentes y usuarios desde el backend propio
@@ -114,8 +115,8 @@ datos (no hay una capa "oficial" de círculos; se generan en el cliente/servidor
 | Vía bloqueada | barrera / cono | gris |
 | Otro | signo de exclamación | neutro |
 
-Cada pin lleva un badge con el nº de confirmaciones y cambia de opacidad según su **estado de
-confianza** (sin confirmar = translúcido → confirmado = sólido; descartado = se atenúa/oculta).
+Cada pin lleva un badge con **likes/dislikes** y su opacidad refleja la **valoración de la
+comunidad** (saldo de votos): más apoyo = más sólido; muy rechazado = se atenúa.
 
 **Cómo se calculan las zonas sombreadas** (para front/datos — no vienen "dibujadas" de la fuente):
 - 🔵 **Lluvia:** por cada estación automática con `precip_mm > 0` en la última hora, un círculo
@@ -163,16 +164,23 @@ Diseñar los estados **logueado / no logueado** y el gate de "necesitas cuenta p
 
 ## 6. C — Comunidad / reportes ciudadanos (v2)
 
-- **Crear reporte:** tipo (inundación, huaico, lluvia intensa, deslizamiento…), ubicación
-  (mapa/GPS), foto opcional, comentario corto. Aviso de que es comunitario y no oficial.
-- **Reportes en el mapa:** marcadores diferenciados de las estaciones; agrupación por cercanía.
-- **Detalle de reporte:** contenido, autor (o anónimo), hora, distancia, y **confirmación**
-  ("sigue pasando" / "ya no") + contador de confirmaciones.
-- **Estado de confianza del reporte:** sin confirmar / confirmado (según corroboración +
-  cruce con datos oficiales de la zona) — mostrarlo visualmente.
-- **Reputación** del usuario (nivel/insignias por reportes confirmados).
+La **comunidad valida**, no la app ni un moderador: cada quien sube su reporte con foto y los
+demás lo **votan (like/dislike)** y **comentan**. SIMPAC solo es el intermediario que muestra la
+información; la veracidad la juzga la gente.
 
-**Datos:** backend propio (Supabase: `report`, `confirmation`, `user`).
+- **Crear reporte:** tipo (inundación, huayco, lluvia intensa, deslizamiento…), ubicación
+  (mapa/GPS), **foto** opcional, comentario corto. Aviso de que es comunitario y no oficial.
+- **Reportes en el mapa:** marcadores diferenciados de las estaciones; agrupación por cercanía.
+- **Detalle de reporte:** contenido, foto, autor (o anónimo), hora, distancia, **botones
+  like / dislike** con sus contadores, y **hilo de comentarios**.
+- **Orden/priorización:** los reportes con mejor saldo de votos se ven más arriba/sólidos; los muy
+  rechazados se atenúan. **No hay aprobación manual.**
+
+**Datos:** backend propio (Supabase: `report`, `voto`, `comentario`).
+
+> **Opcional (no bloquea nada):** además del voto, se puede mostrar un badge automático
+> *"coincide con dato oficial"* si el reporte cae en una zona con alerta de SENAMHI/ANA — es solo
+> una señal extra de contexto; la validación la sigue haciendo la comunidad.
 
 ---
 
@@ -180,8 +188,9 @@ Diseñar los estados **logueado / no logueado** y el gate de "necesitas cuenta p
 
 - **Canal por zona/barrio:** mensajes en tiempo real entre usuarios cercanos.
 - **Mensajes efímeros:** expiran (indicar tiempo restante); pensados para emergencias en curso.
-- **Moderación:** botón reportar mensaje; estados de mensaje oculto/eliminado; filtro de
-  contenido. Diseñar el aviso de normas de convivencia.
+- **Autocontrol, sin moderadores:** filtro automático de groserías + rate limit; botón *reportar*
+  y *ocultar/bloquear* a nivel de usuario; normas de convivencia visibles. No hay cola de
+  moderación humana.
 - Adjuntar ubicación o foto a un mensaje.
 
 **Datos:** Supabase Realtime (`message` con expiración).
@@ -199,49 +208,33 @@ Diseñar los estados **logueado / no logueado** y el gate de "necesitas cuenta p
 
 ---
 
-## 9. F — Administración (v2–v3)
-
-Solo para técnicos de Defensa Civil / administradores:
-- **Dashboard admin:** salud del sistema, últimas ingestas, nº de alertas/reportes.
-- **Edición de umbrales:** configurar por estación/zona los umbrales de lluvia (mm/h y
-  acumulado) y de caudal; ver el efecto. *(Los de caudal vienen de ANA; los de lluvia son
-  propios y hoy son placeholders a calibrar.)*
-- **Moderación:** cola de reportes y mensajes reportados; aprobar/ocultar/eliminar.
-- **Estado de conectores:** por fuente (SENAMHI/ANA/IGP/NOAA), última corrida, éxito/error.
-- **Envío de alerta manual:** publicar una alerta/aviso a una zona (con confirmación).
-- **Gestión de usuarios y roles.**
-
----
-
-## 10. Componentes reutilizables
+## 9. Componentes reutilizables
 
 Titular de estado · Badge de nivel (4 estados) · Tarjeta de índice (ONI/ICEN) · Marcador de
 estación por estado (meteo/hidro) · Popup de estación · Gráfico de serie (barras+línea
-y línea con umbrales) · Tarjeta de alerta · Tarjeta de reporte (con confianza y confirmar) ·
+y línea con umbrales) · Tarjeta de alerta · Tarjeta de reporte (con like/dislike y comentarios) ·
 Burbuja de chat efímero (con contador de expiración) · Leyenda del mapa · Chip de fuente+hora ·
 Franja de disclaimer legal · Selector de zona/ubicación · Cabecera con estado de sesión.
 
 **Del mapa estilo Waze (4.2):** Pin de incidente por tipo (huayco/inundación/lluvia/deslizamiento/
 vía bloqueada) · Overlay de zona sombreada en 3 variantes (riesgo 🔴 / lluvia 🔵 / inundación 🟠) ·
 Ícono de usuario cercano + contador de “usuarios cerca” · Botón flotante “＋ Reportar” · Botón
-recentrar en mi ubicación · Tarjeta emergente de pin (qué/cuándo/distancia/confirmar).
+recentrar en mi ubicación · Tarjeta emergente de pin (qué/cuándo/distancia · like·dislike·comentar).
 
 ---
 
-## 11. Roles — qué ve cada uno
+## 10. Roles — qué ve cada uno
 
-| | Visitante | Ciudadano | Técnico DC | Admin |
-|---|---|---|---|---|
-| Panorama, mapa, alertas, detalle | ✓ | ✓ | ✓ | ✓ |
-| Crear/confirmar reportes | — | ✓ | ✓ | ✓ |
-| Chat de zona | — | ✓ | ✓ | ✓ |
-| Recibir push personalizado | — | ✓ | ✓ | ✓ |
-| Editar umbrales / alerta manual / moderar | — | — | ✓ | ✓ |
-| Gestión de usuarios / conectores | — | — | — | ✓ |
+| | Visitante | Ciudadano |
+|---|---|---|
+| Ver panorama, mapa, alertas, detalle | ✓ | ✓ |
+| Crear reportes · votar (like/dislike) · comentar | — | ✓ |
+| Chat de zona | — | ✓ |
+| Recibir push personalizado | — | ✓ |
 
 ---
 
-## 12. Contenido real de ejemplo (usar esto, no lorem ipsum)
+## 11. Contenido real de ejemplo (usar esto, no lorem ipsum)
 
 Datos en vivo del 2026-09-06 (temporada seca → todo "normal"):
 - **Contexto:** ONI `+1.80 · El Niño`; ICEN `+1.98 · Cálido fuerte`.
@@ -250,8 +243,8 @@ Datos en vivo del 2026-09-06 (temporada seca → todo "normal"):
 - **Estación meteo (Cutervo):** última hora `2026/09/06 - 21`, precip `0.0 mm`, temp `13.3 °C`.
 - **Alerta de ejemplo (para el estado "con peligro"):** *Emergencia — Río Mashcón (Cajamarca):
   caudal 19.2 m³/s, supera el umbral de emergencia (18). Tendencia ascendente. 21:00 · ANA.*
-- **Reporte de ejemplo:** *Inundación en Jr. Los Sauces, Baños del Inca — 2 confirmaciones —
-  hace 15 min — "confirmado" (hay alerta oficial en la zona).*
+- **Reporte de ejemplo:** *Inundación en Jr. Los Sauces, Baños del Inca — 👍 12 / 👎 1 —
+  3 comentarios — hace 15 min.*
 
 > Diseñar **dos estados del Home**: en **calma** (como hoy) y en **emergencia** (con la alerta
 > de ejemplo), para cubrir ambos extremos del semáforo.

@@ -22,7 +22,7 @@ El cliente ya está en `src/lib/supabaseClient.js`.
 | Titular / contexto El Niño | `indice` (`fuente,periodo,valor,categoria`) | ICEN y ONI |
 | Alertas vigentes | `alerta` (`tipo,referencia,nivel,detalle`) | hoy 0 (estiaje) |
 | Capa de anomalías (mapas SENAMHI) | `mapa` (`titulo,variable,periodo,geojson`) | el `geojson` va directo a `L.geoJSON(...)` en Leaflet |
-| Reportes / chat (comunidad) | `report`, `confirmation`, `message` | **requieren usuario autenticado** (fase 2) |
+| Reportes + votos + comentarios (comunidad) | `report`, `voto` (like/dislike), `comentario`, `message` | lectura pública; **crear/votar/comentar requiere login** (fase 2) |
 
 > **Coordenadas:** usa las columnas `lat` / `lon` (ya vienen listas). La columna `geom` es PostGIS
 > y no hace falta tocarla en el cliente.

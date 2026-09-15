@@ -34,6 +34,12 @@ con esquema y datos cargados**; falta construir la UI (en diseño) y conectar la
 
 ---
 
+## 🧩 Decisiones del equipo (15 sep)
+- **Fuera** el apartado de administración para técnicos de Defensa Civil y la **moderación humana**
+  (nada de contratar moderadores). Simplifica la app y evita tocar población/muestra en el informe.
+- **La comunidad valida los reportes**: like/dislike + comentarios (la app es intermediaria, no juez).
+  BD actualizada: tablas `voto` y `comentario` en vez de `confirmation`; sin roles admin.
+
 ## 🔄 En progreso / parcial
 - [ ] **UI** — en diseño. Concepto: **mapa estilo Waze** (usuarios cercanos + incidentes tipo
       huayco/inundación + **zonas sombreadas** de riesgo/lluvia/inundación). Ver `frontend-brief.md` §4.2.
