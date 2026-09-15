@@ -20,8 +20,11 @@ con esquema y datos cargados**; falta construir la UI (en diseño) y conectar la
 **Base de datos (Supabase)**
 - [x] Proyecto **DATASYMPAC** (ref `clrnommkjyksnyrtnisf`, región São Paulo).
 - [x] **Esquema aplicado**: 9 tablas + **PostGIS** + **RLS** (`supabase/schema.sql`).
-- [x] **Datos cargados**: 93 estaciones (27 automáticas) con geometría · 13 ríos de Cajamarca con
-      caudal y umbrales (hoy) · 48 h de lluvia de UNC Cajamarca (muestra) · ICEN 1.98 / ONI 1.8.
+- [x] **Datos cargados**: 93 estaciones (27 automáticas) con geometría (y columnas `lat`/`lon`) ·
+      13 ríos de Cajamarca con caudal y umbrales (hoy) · 48 h de lluvia de UNC Cajamarca (muestra) ·
+      ICEN 1.98 / ONI 1.8 · capa de **anomalías de precipitación** (muestra Cajamarca, tabla `mapa`).
+- [x] **Lectura del frontend verificada**: la publishable key lee estaciones/caudales/índices/mapa
+      vía la API REST de Supabase (RLS de lectura pública funcionando).
 - [x] **MCP de Supabase** conectado en modo escritura (Claude puede leer/editar la BD).
 - [x] **Código de ingesta a Supabase** listo (`backend/store_supabase.py`) — solo falta credencial.
 

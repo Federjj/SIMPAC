@@ -81,6 +81,17 @@ create table if not exists alerta (
 );
 create index if not exists alerta_vigente_idx on alerta (vigente, nivel);
 
+create table if not exists mapa (
+  id         bigint generated always as identity primary key,
+  uuid       text,                        -- identificador del registro en GeoNetwork (opcional)
+  titulo     text not null,
+  variable   text,                        -- precipitacion, temperatura, ...
+  periodo    text,                        -- ej. "2026-08" o "mensual"
+  fuente     text default 'SENAMHI/IDESEP',
+  geojson    jsonb not null,              -- FeatureCollection (shapefile -> GeoJSON)
+  ts_captura timestamptz default now()
+);
+
 -- ===========================================================================
 -- B) COMUNIDAD (usuarios, reportes, confirmaciones, chat) — fases v2/v3
 --    La autenticación la maneja Supabase Auth (tabla auth.users).
@@ -162,6 +173,10 @@ drop policy if exists "lectura publica indice"    on indice;
 create policy "lectura publica indice"    on indice        for select using (true);
 drop policy if exists "lectura publica alerta"    on alerta;
 create policy "lectura publica alerta"    on alerta        for select using (true);
+alter table mapa enable row level security;
+grant select on mapa to anon, authenticated;
+drop policy if exists "lectura publica mapa" on mapa;
+create policy "lectura publica mapa" on mapa for select using (true);
 
 -- --- Comunidad ---
 alter table perfil       enable row level security;

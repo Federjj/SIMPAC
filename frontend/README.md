@@ -21,6 +21,7 @@ El cliente ya está en `src/lib/supabaseClient.js`.
 | Gráfico de lluvia (detalle) | `lectura_lluvia` (`ts,precip_mm,temp_c` where `cod=…`) | ordenar por `medido_en` |
 | Titular / contexto El Niño | `indice` (`fuente,periodo,valor,categoria`) | ICEN y ONI |
 | Alertas vigentes | `alerta` (`tipo,referencia,nivel,detalle`) | hoy 0 (estiaje) |
+| Capa de anomalías (mapas SENAMHI) | `mapa` (`titulo,variable,periodo,geojson`) | el `geojson` va directo a `L.geoJSON(...)` en Leaflet |
 | Reportes / chat (comunidad) | `report`, `confirmation`, `message` | **requieren usuario autenticado** (fase 2) |
 
 > **Coordenadas:** usa las columnas `lat` / `lon` (ya vienen listas). La columna `geom` es PostGIS
@@ -45,6 +46,10 @@ const { data: lluvia } = await supabase
 
 // contexto El Niño (titular)
 const { data: indices } = await supabase.from("indice").select("*");
+
+// capa de anomalías para el mapa (GeoJSON listo para Leaflet)
+const { data: mapas } = await supabase.from("mapa").select("titulo,geojson");
+// L.geoJSON(mapas[0].geojson).addTo(map)
 ```
 
 ## Notas
