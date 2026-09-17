@@ -27,9 +27,9 @@
 | Gráficos (frontend) | **Recharts / Chart.js** | series de lluvia/caudal | evaluar |
 | Framework web | **React + Vite** | SPA (página Mapa lista) | hecho |
 | App móvil | **React Native** (o Kotlin + MapLibre) | Android + GPS | evaluar |
-| Worker / ingesta | **Celery + beat** (sobre Redis) | ingesta horaria nacional + caché | hecho *(scaffold)* |
-| Contenedores | **Docker + docker-compose** | frontend · backend · worker · redis | hecho *(compose validado)* |
-| Caché / cola | **Redis** | snapshot cacheado + broker de Celery | hecho *(scaffold)* |
+| Worker / ingesta | **Celery + beat** (sobre Redis) | ingesta horaria nacional + caché | hecho *(corriendo; beat activo)* |
+| Contenedores | **Docker + docker-compose** | frontend · backend · worker · redis | hecho *(stack corriendo)* |
+| Caché / cola | **Redis** | snapshot cacheado + broker de Celery | hecho *(refresco cada 5 min OK)* |
 | Interpretación (NLG) | **API de un LLM** | titular en lenguaje natural | evaluar |
 | Diseño de UI | **Claude Design** | maquetas | decidido *(en curso)* |
 | Control de versiones | **Git + GitHub** (monorepo) | código y docs | hecho |

@@ -338,6 +338,25 @@ docker compose up --build
 - El frontend recibe las llaves públicas por *build-args*; `SUPABASE_DB_URL` (secreto) solo lo usa
   el worker vía `.env` (nunca en git ni en la imagen).
 
+> **Gotcha (worker + Redis):** un cliente `redis.asyncio` ata su pool al event loop donde se usa
+> primero. El worker corre cada tarea con `asyncio.run()` (loop nuevo y cerrado en cada corrida),
+> así que **no** puede compartir un cliente global — daba `RuntimeError: Event loop is closed`.
+> Solución: el worker crea/cierra un cliente Redis **por corrida** (`cache._redis_ctx`), y la API
+> (loop persistente de uvicorn) inyecta **uno** de larga vida por `lifespan`. Ver `backend/cache.py`.
+
+### 8.1. Seguridad: llave anon pública y RLS
+- Supabase expone dos llaves: la **publishable/anon** (va en el frontend, es **pública por
+  diseño** — visible en el navegador y en el bundle) y la **secret/service_role** (solo backend,
+  **bypasea RLS**, jamás al cliente ni a git).
+- La anon key **viaja en cada request** (header `apikey`); no es un secreto que robar: cualquiera
+  que abra la web la ve. La protección real es **RLS**, no ocultar la llave. Todo va por **HTTPS**,
+  así que un intermediario no la lee en tránsito, pero igual es pública.
+- Estado verificado con el *advisor* de Supabase: **RLS activo en todas las tablas de datos**. Los
+  únicos avisos son internos de PostGIS (`spatial_ref_sys` sin RLS, extensión `postgis` en `public`,
+  funciones `st_estimatedextent`) = datos de referencia públicos, riesgo bajo.
+- Pendiente menor: revisar/revocar `EXECUTE` de la función `rls_auto_enable()` (es `SECURITY
+  DEFINER` y hoy es llamable por el rol `anon` vía RPC).
+
 ---
 
 ## 9. Estrategia de adquisición y buenas prácticas

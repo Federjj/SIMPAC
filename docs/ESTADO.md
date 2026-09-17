@@ -1,12 +1,13 @@
 # SIMPAC — Estado del proyecto
 
-> Panel vivo de "dónde estamos". Actualizado: **2026-09-15**.
+> Panel vivo de "dónde estamos". Actualizado: **2026-09-16**.
 > Repo: `github.com/Federjj/SIMPAC` (monorepo, rama `main`).
 
 ## Resumen en una línea
 Backend + Supabase con datos reales (**ríos a nivel nacional**); **frontend React (Mapa)
-funcionando**; **stack dockerizado** (frontend, backend async, worker, redis). Falta correr el
-stack con la credencial de BD y construir las demás páginas del front.
+funcionando**; **stack dockerizado y corriendo** (frontend, backend async, worker Celery, redis)
+con el worker refrescando la caché sin errores. Falta poblar todo a nivel nacional con el job de
+ingesta (credencial de BD) y construir las demás páginas del front.
 
 ---
 
@@ -40,13 +41,27 @@ stack con la credencial de BD y construir las demás páginas del front.
 **Infraestructura (Docker)** — `docker-compose.yml`
 - [x] Stack de 4 servicios: **frontend** (nginx), **backend** (FastAPI **async**), **worker**
       (Celery + beat), **redis** (caché + cola). `docker compose config` validado.
+- [x] **Stack corriendo**: redis + worker (con beat) + API arriba; el **beat** dispara `refresh_cache`
+      cada 5 min y **refresca el snapshot en Redis sin errores** (138 caudales, 2 en alerta).
+- [x] **Bug del worker corregido**: el cliente `redis.asyncio` era global y reventaba con
+      `Event loop is closed` en cada corrida de Celery. Ahora el worker crea/cierra un cliente Redis
+      **por corrida** y la API usa uno persistente por `lifespan` (`backend/cache.py`, `backend/app.py`).
 - [x] API async con caché en Redis (snapshot) para aguantar varios usuarios.
 - [x] `store_supabase.py` reescrito **nacional + concurrente** (ThreadPool) — lo corre el worker cada hora.
-- [ ] **Falta correr el stack**: `cp .env.docker.example .env`, poner `SUPABASE_DB_URL`, `docker compose up --build`.
+- [ ] **Falta la ingesta nacional completa**: poner `SUPABASE_DB_URL` en `.env` para que la tarea
+      `ingesta` (horaria) pueble estaciones/lluvia de los 24 dptos. La caché ya sirve lo cargado por MCP.
+
+**Seguridad (verificada 16 sep)**
+- [x] **RLS activo en todas las tablas de datos** (confirmado con el *advisor* de Supabase). Únicos
+      avisos: internos de PostGIS (`spatial_ref_sys`, extensión en `public`, `st_estimatedextent`).
+- [x] Aclarado el modelo de llaves: la **anon key es pública por diseño** (va en el frontend y en
+      cada request); la protección real es RLS. La **secret key** nunca sale del backend. Detalle en
+      `README-tecnico.md` §8.1.
 
 **Documentación** (`docs/`)
 - [x] `README-tecnico.md`, `fuentes-y-endpoints.html`, `frontend-brief.md`, `stack-tecnologico.md`,
       `pre-documentacion-general.html`, y este `ESTADO.md`.
+- [x] **Sin emojis** en toda la documentación y el código (solo texto e íconos SVG).
 
 ---
 
@@ -68,9 +83,11 @@ stack con la credencial de BD y construir las demás páginas del front.
 ## Siguiente (por hacer)
 
 **Backend / datos**
-- [ ] **Levantar el stack** (`docker compose up --build`) con `SUPABASE_DB_URL` en `.env` → el worker
-      puebla todo a nivel nacional (estaciones de los 24 dptos + caudales) y refresca la caché solo.
-      Ya no hace falta cron: el **beat** de Celery programa la ingesta horaria.
+- [x] **Levantar el stack** (`docker compose up --build`): ya corre; el **beat** de Celery programa
+      la ingesta horaria y el refresco de caché (sin cron).
+- [ ] **Poner `SUPABASE_DB_URL` en `.env`** para que la tarea `ingesta` pueble a nivel nacional
+      (estaciones de los 24 dptos + lluvia). Hoy la caché sirve lo que ya se cargó por MCP.
+- [ ] **Revocar `EXECUTE`** de la función `rls_auto_enable()` al rol `anon` (aviso del advisor).
 - [ ] Conector de **avisos SENAMHI** (scraping de tabla) → alertas oficiales al motor.
 - [ ] Reescribir la API en **FastAPI** sobre el mismo `store` (la actual es prototipo desechable).
 - [ ] Calibrar los **umbrales de lluvia** (hoy placeholders en `alerts.py`) con Defensa Civil.
@@ -93,5 +110,10 @@ stack con la credencial de BD y construir las demás páginas del front.
 - **Token de Supabase con full-access** en variable de entorno: funciona, pero ideal reducir su
   scope al proyecto cuando se pueda. Se puede revocar en cualquier momento.
 - **Advisor de Supabase**: `spatial_ref_sys` (tabla interna de PostGIS) sale sin RLS — dato público
-  de referencia, riesgo bajo; se puede activar RLS si el jurado lo pide.
+  de referencia, riesgo bajo. Pendiente menor: `rls_auto_enable()` es `SECURITY DEFINER` y hoy la
+  puede llamar `anon` por RPC; revocarle el `EXECUTE`.
+- **La anon key es pública por diseño** (no es fuga): viaja en cada request y se ve en el navegador;
+  lo que protege es **RLS**, que está activo en todas las tablas de datos.
 - **Umbrales de lluvia = placeholder**, deben calibrarse antes de confiar en las alertas de lluvia.
+- **Worker corriendo como root** en el contenedor: solo un `SecurityWarning` de Celery, inofensivo
+  en Docker; si se quiere limpio, correrlo con un usuario no-root en el Dockerfile.
