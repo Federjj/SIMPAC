@@ -1,0 +1,40 @@
+# SIMPAC — stack completo. Levantar con:  docker compose up --build
+# Necesita un archivo .env en la raíz (copia .env.docker.example).
+services:
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    ports: ["6379:6379"]
+
+  backend:                       # API async (FastAPI)
+    build: { context: ., dockerfile: backend/Dockerfile }
+    restart: unless-stopped
+    environment:
+      REDIS_URL: redis://redis:6379/0
+      SUPABASE_URL: ${SUPABASE_URL}
+      SUPABASE_PUBLISHABLE_KEY: ${SUPABASE_PUBLISHABLE_KEY}
+    ports: ["8000:8000"]
+    depends_on: [redis]
+
+  worker:                        # ingesta + caché (Celery worker + beat)
+    build: { context: ., dockerfile: backend/Dockerfile }
+    restart: unless-stopped
+    command: celery -A backend.celery_app worker --beat --loglevel=info
+    environment:
+      REDIS_URL: redis://redis:6379/0
+      SUPABASE_URL: ${SUPABASE_URL}
+      SUPABASE_PUBLISHABLE_KEY: ${SUPABASE_PUBLISHABLE_KEY}
+      SUPABASE_DB_URL: ${SUPABASE_DB_URL}
+      SIMPAC_LLUVIA_DEPTS: ${SIMPAC_LLUVIA_DEPTS:-cajamarca}
+    depends_on: [redis]
+
+  frontend:                      # React build servido por nginx
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+      args:
+        VITE_SUPABASE_URL: ${SUPABASE_URL}
+        VITE_SUPABASE_PUBLISHABLE_KEY: ${SUPABASE_PUBLISHABLE_KEY}
+    restart: unless-stopped
+    ports: ["8080:80"]
+    depends_on: [backend]

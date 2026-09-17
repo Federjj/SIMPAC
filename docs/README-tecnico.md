@@ -299,7 +299,48 @@ Acumular estas pasadas es lo que construye el histórico propio para el modelo p
 
 ---
 
-## 8. Estrategia de adquisición y buenas prácticas
+## 8. Despliegue con Docker (producción)
+
+Stack completo en `docker-compose.yml` (4 servicios):
+
+| Servicio | Qué es | Puerto |
+|---|---|---|
+| `frontend` | React build servido por **nginx** | 8080 |
+| `backend` | API **FastAPI async** (`backend/app.py`) | 8000 |
+| `worker` | **Celery + beat**: ingesta horaria + refresco de caché | — |
+| `redis` | caché (snapshot) + cola/broker de Celery | 6379 |
+
+### ¿Por qué esta arquitectura? (van a entrar varias personas a la vez)
+- **Redis (caché):** con muchos usuarios no queremos que *cada* visita consulte Supabase y las
+  fuentes. El worker deja un *snapshot* en memoria (Redis) y la API lo sirve en milisegundos; así
+  la web no se satura ni nos rate-limitea SENAMHI/ANA en picos de tráfico.
+- **Worker (Celery + beat):** bajar datos de las fuentes es lento y a veces falla (ANA es
+  intermitente). Eso corre **en segundo plano**, aparte de la web, cada hora; si la ingesta tarda o
+  falla, la web sigue rápida con lo último cacheado. `beat` es el "reloj" que dispara la tarea.
+- **Backend async (FastAPI):** atiende muchas peticiones a la vez sin bloquearse esperando I/O
+  (`async`/`await` + consultas en paralelo). Un backend síncrono se traba bajo concurrencia.
+- **Redis también como cola/broker:** deja listo repartir tareas pesadas entre **varios workers**
+  (p. ej. envío masivo de notificaciones push) sin bloquear la API.
+- **Docker Compose:** los 4 servicios se levantan igual en cualquier máquina con un comando; para
+  escalar se suben réplicas del backend/worker detrás del mismo Redis.
+
+**Levantar:**
+```bash
+cp .env.docker.example .env      # pon SUPABASE_DB_URL (secreto) en .env
+docker compose up --build
+```
+- Web en `http://localhost:8080`, API en `http://localhost:8000` (`/health`, `/api/snapshot`).
+- El **worker** corre `store_supabase.run()` (nacional, concurrente con ThreadPool) cada hora y
+  refresca el snapshot en Redis cada 5 min — sin cron (lo programa el **beat** de Celery).
+- **Async / rendimiento:** la API es async (`httpx.AsyncClient` + `redis.asyncio`, consultas en
+  paralelo con `asyncio.gather`) y sirve el snapshot **cacheado en Redis**, para aguantar varios
+  usuarios sin golpear Supabase en cada request.
+- El frontend recibe las llaves públicas por *build-args*; `SUPABASE_DB_URL` (secreto) solo lo usa
+  el worker vía `.env` (nunca en git ni en la imagen).
+
+---
+
+## 9. Estrategia de adquisición y buenas prácticas
 
 Orden de preferencia por estabilidad: **API/archivo abierto → API interna (sniffing) →
 scraping HTML/PDF.**
@@ -323,7 +364,7 @@ Reglas:
 
 ---
 
-## 9. Pendientes
+## 10. Pendientes
 
 - [ ] Conector de **avisos** SENAMHI (scraping de tabla + filtro Cajamarca).
 - [ ] Conector **ENFEN** (`wp-json`) validado desde producción.

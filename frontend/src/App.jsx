@@ -10,7 +10,7 @@ import { IcLayers, IcLocate, IcPlus } from "./icons.jsx";
 const METRICS = { lluvia: "2.4", rio: "48.2", temp: "14°C" };
 
 export default function App() {
-  const [visible, setVisible] = useState({ est: true, rio: true, inc: true, usr: false, zona: true });
+  const [visible, setVisible] = useState({ est: false, rio: true, inc: true, usr: false, zona: true });
   const [showLayers, setShowLayers] = useState(false);
   const [city, setCity] = useState(DEFAULT_CITY.name);
   const [focus, setFocus] = useState({ lat: DEFAULT_CITY.lat, lon: DEFAULT_CITY.lon, zoom: 14 });

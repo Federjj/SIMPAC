@@ -1,11 +1,11 @@
-# Los prototipos de conectores usan SOLO la librería estándar (urllib), así que
-# `python backend/demo.py` corre sin instalar nada.
-#
-# Dependencias recomendadas cuando se construya el backend real (API + jobs):
-#   fastapi
-#   uvicorn[standard]
-#   httpx            # cliente HTTP con timeouts/reintentos (reemplaza urllib)
-#   geopandas        # shapefile -> GeoJSON (mapas de anomalías de SENAMHI/IDESEP)
-#   shapely
-#   psycopg[binary]  # PostgreSQL + PostGIS
-#   apscheduler      # o cron / GitHub Actions para los jobs de ingesta
+# Dependencias de producción (backend API + worker).
+# Los prototipos sueltos (demo.py, ingest.py, api.py) siguen corriendo solo con la
+# librería estándar; estas son para el stack en Docker.
+fastapi>=0.115
+uvicorn[standard]>=0.30
+celery>=5.4
+redis>=5.0
+httpx>=0.27
+psycopg[binary]>=3.2
+# Para ingesta de mapas (shapefile -> GeoJSON) se necesitaría además:
+#   geopandas  shapely   (hacen la imagen bastante más pesada; se añaden cuando toque)

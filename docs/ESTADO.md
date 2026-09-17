@@ -4,8 +4,9 @@
 > Repo: `github.com/Federjj/SIMPAC` (monorepo, rama `main`).
 
 ## Resumen en una línea
-Backend + Supabase con datos reales; **frontend React (página Mapa) funcionando** y conectado a
-Supabase. Faltan las demás páginas del front y correr la ingesta automática.
+Backend + Supabase con datos reales (**ríos a nivel nacional**); **frontend React (Mapa)
+funcionando**; **stack dockerizado** (frontend, backend async, worker, redis). Falta correr el
+stack con la credencial de BD y construir las demás páginas del front.
 
 ---
 
@@ -23,6 +24,7 @@ Supabase. Faltan las demás páginas del front y correr la ingesta automática.
 - [x] **Datos cargados**: 93 estaciones (27 automáticas) con geometría (y columnas `lat`/`lon`) ·
       13 ríos de Cajamarca con caudal y umbrales (hoy) · 48 h de lluvia de UNC Cajamarca (muestra) ·
       ICEN 1.98 / ONI 1.8 · capa de **anomalías de precipitación** (muestra Cajamarca, tabla `mapa`).
+- [x] **Ríos a nivel NACIONAL**: 138 estaciones de caudal en 23 departamentos (2 en emergencia, Loreto).
 - [x] **Lectura del frontend verificada**: la publishable key lee estaciones/caudales/índices/mapa
       vía la API REST de Supabase (RLS de lectura pública funcionando).
 - [x] **MCP de Supabase** conectado en modo escritura (Claude puede leer/editar la BD).
@@ -34,6 +36,13 @@ Supabase. Faltan las demás páginas del front y correr la ingesta automática.
 - [x] **Geolocalización** (con permiso) + **selector de ciudades del Perú** (Cajamarca por defecto).
 - [x] Componentes: `Sidebar`, `MapView`, `LayersPanel`, `StatusPanel`, `CitySelector`.
       Correr: `npm --prefix frontend install && npm --prefix frontend run dev` → localhost:5173.
+
+**Infraestructura (Docker)** — `docker-compose.yml`
+- [x] Stack de 4 servicios: **frontend** (nginx), **backend** (FastAPI **async**), **worker**
+      (Celery + beat), **redis** (caché + cola). `docker compose config` validado.
+- [x] API async con caché en Redis (snapshot) para aguantar varios usuarios.
+- [x] `store_supabase.py` reescrito **nacional + concurrente** (ThreadPool) — lo corre el worker cada hora.
+- [ ] **Falta correr el stack**: `cp .env.docker.example .env`, poner `SUPABASE_DB_URL`, `docker compose up --build`.
 
 **Documentación** (`docs/`)
 - [x] `README-tecnico.md`, `fuentes-y-endpoints.html`, `frontend-brief.md`, `stack-tecnologico.md`,
@@ -59,10 +68,9 @@ Supabase. Faltan las demás páginas del front y correr la ingesta automática.
 ## ⬜ Siguiente (por hacer)
 
 **Backend / datos**
-- [ ] **Correr la ingesta a Supabase** — el código ya está (`backend/store_supabase.py`); solo falta
-      `pip install "psycopg[binary]"` y setear `SUPABASE_DB_URL` (connection string; en variable de
-      entorno, no al chat ni a git). Con eso se pobla todo automáticamente.
-- [ ] Programar el **job horario** (cron / Programador de tareas / GitHub Actions) para acumular histórico.
+- [ ] **Levantar el stack** (`docker compose up --build`) con `SUPABASE_DB_URL` en `.env` → el worker
+      puebla todo a nivel nacional (estaciones de los 24 dptos + caudales) y refresca la caché solo.
+      Ya no hace falta cron: el **beat** de Celery programa la ingesta horaria.
 - [ ] Conector de **avisos SENAMHI** (scraping de tabla) → alertas oficiales al motor.
 - [ ] Reescribir la API en **FastAPI** sobre el mismo `store` (la actual es prototipo desechable).
 - [ ] Calibrar los **umbrales de lluvia** (hoy placeholders en `alerts.py`) con Defensa Civil.

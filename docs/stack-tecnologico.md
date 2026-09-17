@@ -13,7 +13,7 @@
 |---|---|---|---|
 | Lenguaje backend | **Python 3.10+** | conectores, ingesta, API | ✅ |
 | Lenguaje frontend | **TypeScript / JavaScript** | web y app | 🔵 |
-| API backend | **FastAPI** | REST + WebSockets | 🔵 *(prototipo con `http.server` stdlib ✅)* |
+| API backend | **FastAPI (async)** | API REST cacheada | ✅ *(dockerizado; prototipo stdlib también)* |
 | Cliente HTTP | `urllib` → **httpx** | consumo de fuentes | ✅ → 🔵 |
 | Base de datos | **PostgreSQL + PostGIS** (vía **Supabase**) | datos relacionales + geoespaciales | 🔵 *(prototipo SQLite ✅)* |
 | Autenticación | **Supabase Auth** | cuentas y roles | 🔵 |
@@ -25,13 +25,15 @@
 | ETL geoespacial | **GeoPandas + Shapely** | shapefile → GeoJSON | 🔵 |
 | Mapas (frontend) | **Leaflet + GeoJSON** | visualización en mapa | 🔵 |
 | Gráficos (frontend) | **Recharts / Chart.js** | series de lluvia/caudal | 🟡 |
-| Framework web | **React + Vite** | SPA | 🔵 |
+| Framework web | **React + Vite** | SPA (página Mapa lista) | ✅ |
 | App móvil | **React Native** (o Kotlin + MapLibre) | Android + GPS | 🟡 |
-| Jobs / ingesta | **cron / Programador de tareas / APScheduler / GitHub Actions** | pasadas horarias | ✅ *(manual)* → 🔵 |
+| Worker / ingesta | **Celery + beat** (sobre Redis) | ingesta horaria nacional + caché | ✅ *(scaffold)* |
+| Contenedores | **Docker + docker-compose** | frontend · backend · worker · redis | ✅ *(compose validado)* |
+| Caché / cola | **Redis** | snapshot cacheado + broker de Celery | ✅ *(scaffold)* |
 | Interpretación (NLG) | **API de un LLM** | titular en lenguaje natural | 🟡 |
 | Diseño de UI | **Claude Design** | maquetas | 🔵 *(en curso)* |
 | Control de versiones | **Git + GitHub** (monorepo) | código y docs | ✅ |
-| Despliegue | **Vercel/Netlify** (web) · **Supabase** (BD/back) · **Render/Railway** (jobs) | hosting | 🟡 |
+| Despliegue | **Docker compose** (frontend/backend/worker/redis) · Supabase (BD) | hosting | 🔵 |
 
 ---
 
