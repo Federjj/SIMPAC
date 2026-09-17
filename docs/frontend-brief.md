@@ -70,7 +70,7 @@ Foto instantánea del estado de Cajamarca. De arriba a abajo:
 
 **Datos:** `GET /api/snapshot`.
 
-### 4.2. Mapa interactivo — **pantalla principal, estilo Waze** ⭐
+### 4.2. Mapa interactivo — **pantalla principal, estilo Waze**
 Es LA pantalla central de SIMPAC (como en Waze, el mapa *es* el home). Al entrar se centra en la
 ubicación del usuario (GPS o zona elegida). El panel de Panorama (4.1) va como *bottom-sheet*
 deslizable encima del mapa, no como página aparte.
@@ -78,14 +78,14 @@ deslizable encima del mapa, no como página aparte.
 **Capas (de abajo hacia arriba), todas conmutables con una leyenda:**
 1. **Mapa base** OSM de Cajamarca, limpio y orientado a la acción.
 2. **Zonas sombreadas** (el diferencial sobre Waze — círculos/polígonos translúcidos):
-   - 🔴 **Alto riesgo** — polígonos de peligro de CENEPRED/SIGRID (deslizamiento, huayco, inundación).
-   - 🔵 **Lluvia/precipitación activa** — círculos o *heatmap* alrededor de estaciones con lluvia
+   - **Alto riesgo** — polígonos de peligro de CENEPRED/SIGRID (deslizamiento, huayco, inundación).
+   - **Lluvia/precipitación activa** — círculos o *heatmap* alrededor de estaciones con lluvia
      en la última hora (intensidad = opacidad/color), a partir de los datos horarios de SENAMHI.
-   - 🟠 **Inundación / caudal alto** — círculos alrededor de ríos en estado alerta/emergencia (ANA).
+   - **Inundación / caudal alto** — círculos alrededor de ríos en estado alerta/emergencia (ANA).
 3. **Incidentes ciudadanos** (los "baches/tráfico" de Waze, aquí desastres) — pines por tipo:
    huayco, inundación, lluvia intensa, deslizamiento, vía bloqueada. Con contador de
    **likes/dislikes** y color según cómo lo valora la comunidad.
-4. **Usuarios cercanos** ("wazers") — íconos de usuarios activos cerca. ⚠️ **Privacidad:** posición
+4. **Usuarios cercanos** ("wazers") — íconos de usuarios activos cerca. **Privacidad:** posición
    **aproximada** (ajustada a zona/manzana), nunca exacta; opt-in. Mostrar solo un contador y
    posiciones difusas, no rastros individuales.
 5. **Estaciones oficiales** (las 93 ya cargadas) — capa conmutable, marcador meteo/hidro por estado.
@@ -119,12 +119,12 @@ Cada pin lleva un badge con **likes/dislikes** y su opacidad refleja la **valora
 comunidad** (saldo de votos): más apoyo = más sólido; muy rechazado = se atenúa.
 
 **Cómo se calculan las zonas sombreadas** (para front/datos — no vienen "dibujadas" de la fuente):
-- 🔵 **Lluvia:** por cada estación automática con `precip_mm > 0` en la última hora, un círculo
+- **Lluvia:** por cada estación automática con `precip_mm > 0` en la última hora, un círculo
   (radio escalado por intensidad, p. ej. 3–8 km) con opacidad ∝ mm/h; o un *heatmap* ponderado por
   esos puntos. Fuente: `/api/lluvia` por estación + coordenadas de `/api/estaciones`.
-- 🟠 **Inundación/caudal:** círculo alrededor de cada río en estado alerta/emergencia
+- **Inundación/caudal:** círculo alrededor de cada río en estado alerta/emergencia
   (`/api/caudales` o `/api/alertas`); naranja = alerta, rojo = emergencia.
-- 🔴 **Riesgo:** polígonos de peligro de CENEPRED/SIGRID como GeoJSON (capa estática de
+- **Riesgo:** polígonos de peligro de CENEPRED/SIGRID como GeoJSON (capa estática de
   referencia). Mientras no se integre SIGRID, se puede omitir o usar un placeholder.
 - Todas translúcidas (~20–35 % de opacidad) y por debajo de los pines.
 
@@ -217,7 +217,7 @@ Burbuja de chat efímero (con contador de expiración) · Leyenda del mapa · Ch
 Franja de disclaimer legal · Selector de zona/ubicación · Cabecera con estado de sesión.
 
 **Del mapa estilo Waze (4.2):** Pin de incidente por tipo (huayco/inundación/lluvia/deslizamiento/
-vía bloqueada) · Overlay de zona sombreada en 3 variantes (riesgo 🔴 / lluvia 🔵 / inundación 🟠) ·
+vía bloqueada) · Overlay de zona sombreada en 3 variantes (riesgo / lluvia / inundación) ·
 Ícono de usuario cercano + contador de “usuarios cerca” · Botón flotante “＋ Reportar” · Botón
 recentrar en mi ubicación · Tarjeta emergente de pin (qué/cuándo/distancia · like·dislike·comentar).
 
@@ -227,10 +227,10 @@ recentrar en mi ubicación · Tarjeta emergente de pin (qué/cuándo/distancia �
 
 | | Visitante | Ciudadano |
 |---|---|---|
-| Ver panorama, mapa, alertas, detalle | ✓ | ✓ |
-| Crear reportes · votar (like/dislike) · comentar | — | ✓ |
-| Chat de zona | — | ✓ |
-| Recibir push personalizado | — | ✓ |
+| Ver panorama, mapa, alertas, detalle | | |
+| Crear reportes · votar (like/dislike) · comentar | — | |
+| Chat de zona | — | |
+| Recibir push personalizado | — | |
 
 ---
 
@@ -243,7 +243,7 @@ Datos en vivo del 2026-09-06 (temporada seca → todo "normal"):
 - **Estación meteo (Cutervo):** última hora `2026/09/06 - 21`, precip `0.0 mm`, temp `13.3 °C`.
 - **Alerta de ejemplo (para el estado "con peligro"):** *Emergencia — Río Mashcón (Cajamarca):
   caudal 19.2 m³/s, supera el umbral de emergencia (18). Tendencia ascendente. 21:00 · ANA.*
-- **Reporte de ejemplo:** *Inundación en Jr. Los Sauces, Baños del Inca — 👍 12 / 👎 1 —
+- **Reporte de ejemplo:** *Inundación en Jr. Los Sauces, Baños del Inca — 12 a favor / 1 en contra —
   3 comentarios — hace 15 min.*
 
 > Diseñar **dos estados del Home**: en **calma** (como hoy) y en **emergencia** (con la alerta

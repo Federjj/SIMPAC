@@ -10,7 +10,7 @@ stack con la credencial de BD y construir las demás páginas del front.
 
 ---
 
-## ✅ Hecho
+## Hecho
 
 **Datos / backend (prototipo, corre sin instalar nada)**
 - [x] Conectores en vivo: **SENAMHI** (estaciones + lluvia horaria), **ANA** (caudales+umbrales),
@@ -50,13 +50,13 @@ stack con la credencial de BD y construir las demás páginas del front.
 
 ---
 
-## 🧩 Decisiones del equipo (15 sep)
+## Decisiones del equipo (15 sep)
 - **Fuera** el apartado de administración para técnicos de Defensa Civil y la **moderación humana**
   (nada de contratar moderadores). Simplifica la app y evita tocar población/muestra en el informe.
 - **La comunidad valida los reportes**: like/dislike + comentarios (la app es intermediaria, no juez).
   BD actualizada: tablas `voto` y `comentario` en vez de `confirmation`; sin roles admin.
 
-## 🔄 En progreso / parcial
+## En progreso / parcial
 - [ ] **Frontend** — página Mapa lista; faltan las demás (Alertas, Comunidad, Chat, Cuenta, crear
       reporte) + **react-router** para la navegación de la barra lateral. Ver `frontend-brief.md`.
 - [ ] Incidentes/usuarios en el mapa son **demo**; se conectan a `report`/`voto` cuando haya login (v2).
@@ -65,7 +65,7 @@ stack con la credencial de BD y construir las demás páginas del front.
 
 ---
 
-## ⬜ Siguiente (por hacer)
+## Siguiente (por hacer)
 
 **Backend / datos**
 - [ ] **Levantar el stack** (`docker compose up --build`) con `SUPABASE_DB_URL` en `.env` → el worker
@@ -83,11 +83,11 @@ stack con la credencial de BD y construir las demás páginas del front.
 
 ---
 
-## 🧭 Reparto (para no duplicar)
+## Reparto (para no duplicar)
 - **Tú (Fabricio) + Claude:** datos, conectores, Supabase/BD, backend, documentación.
 - **Kevin:** frontend web + app móvil + cuenta Firebase.
 
-## ⚠️ Notas y riesgos activos
+## Notas y riesgos activos
 - **ANA es intermitente** (hoy 500/timeout). Es el organismo, no el código; por eso cada fuente
   está aislada y el seed sigue aunque una falle.
 - **Token de Supabase con full-access** en variable de entorno: funciona, pero ideal reducir su

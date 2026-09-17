@@ -149,7 +149,7 @@ serie = senamhi.datos_horarios(autos[0])
 print(serie.ultimo, serie.precip_acumulada(24))
 ```
 
-> ⚠️ **Histórico bloqueado por CAPTCHA.** La pestaña "Tabla" (mensual, desde 2021-10) usa
+> **Histórico bloqueado por CAPTCHA.** La pestaña "Tabla" (mensual, desde 2021-10) usa
 > Cloudflare Turnstile y postea a `__dt_est_tp_0s3n@mH1.php`. **No se automatiza ni se evade.**
 > Para series largas usar PISCO o la descarga oficial. El gráfico de 48 h sí es libre.
 
@@ -160,7 +160,7 @@ GET https://www.senamhi.gob.pe/?p=aviso-meteorologico
 Columnas: `Aviso · Nro · Emisión · Inicio · Fin · Duración · Nivel`. Filtrar títulos de
 "SIERRA NORTE"/Cajamarca. (Conector pendiente — es scraping de tabla.)
 
-### 5.2. ANA — caudales de ríos (⭐ inundaciones)
+### 5.2. ANA — caudales de ríos (inundaciones)
 
 ```
 POST https://snirh.ana.gob.pe/onrh/ServicioReportes.asmx/ReporteNacionalCaudal
@@ -204,7 +204,7 @@ http://met.igp.gob.pe/datos/ICEN.txt        # yy  mm  ICEN  (líneas '%' = comen
 http://met.igp.gob.pe/datos/ICEN_91_20.txt  # base 1991-2020 (= base NOAA)
 http://met.igp.gob.pe/datos/ICENr.txt       # ITCEN: valor reciente/provisional
 ```
-> ⚠️ **HTTP-only** (Apache 2.2, puerto 80). Una web servida por HTTPS **no puede** hacer
+> **HTTP-only** (Apache 2.2, puerto 80). Una web servida por HTTPS **no puede** hacer
 > `fetch` a `http://` (mixed content). El **backend descarga y proxyea** el archivo (cachear
 > a diario). Categorías del semáforo en `igp.categoria()`.
 

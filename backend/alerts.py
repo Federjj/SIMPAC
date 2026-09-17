@@ -5,7 +5,7 @@ Motor de umbrales de SIMPAC (prototipo).
   (UALERTA / UEMERGENCIA) → el estado ya viene calculado en el conector.
 - Lluvia (SENAMHI): umbrales configurables sobre la precipitación acumulada.
 
-⚠️ Los umbrales de lluvia de abajo son PLACEHOLDERS y deben calibrarse con
+Los umbrales de lluvia de abajo son PLACEHOLDERS y deben calibrarse con
 Defensa Civil / SENAMHI para Cajamarca (varían por microcuenca). Se dejan
 explícitos y en un solo lugar a propósito.
 """

@@ -1,7 +1,7 @@
 # SIMPAC — Stack tecnológico
 
 > Tecnologías del proyecto por capa, con su **estado**:
-> ✅ implementado (prototipo) · 🔵 decidido · 🟡 a evaluar.
+> **hecho** = implementado (prototipo) · **decidido** = decidido, por construir · **evaluar** = a evaluar.
 > SIMPAC = plataforma web + app Android que centraliza datos hidrometeorológicos de Cajamarca,
 > emite alertas de lluvia/crecidas y suma una capa comunitaria (reportes + chat) tipo Waze.
 
@@ -11,29 +11,29 @@
 
 | Capa | Tecnología | Para qué | Estado |
 |---|---|---|---|
-| Lenguaje backend | **Python 3.10+** | conectores, ingesta, API | ✅ |
-| Lenguaje frontend | **TypeScript / JavaScript** | web y app | 🔵 |
-| API backend | **FastAPI (async)** | API REST cacheada | ✅ *(dockerizado; prototipo stdlib también)* |
-| Cliente HTTP | `urllib` → **httpx** | consumo de fuentes | ✅ → 🔵 |
-| Base de datos | **PostgreSQL + PostGIS** (vía **Supabase**) | datos relacionales + geoespaciales | 🔵 *(prototipo SQLite ✅)* |
-| Autenticación | **Supabase Auth** | cuentas y roles | 🔵 |
-| Tiempo real (in-app) | **Supabase Realtime** | chat y alertas en vivo | 🔵 |
-| Almacenamiento | **Supabase Storage** | fotos de reportes | 🔵 |
-| Notificaciones push | **Firebase Cloud Messaging (FCM)** | avisos al celular | 🔵 |
-| Scraping HTML | **BeautifulSoup4** | avisos SENAMHI, tablas | 🔵 |
-| Parsing de PDF | **pdfplumber** | comunicados ENFEN | 🔵 |
-| ETL geoespacial | **GeoPandas + Shapely** | shapefile → GeoJSON | 🔵 |
-| Mapas (frontend) | **Leaflet + GeoJSON** | visualización en mapa | 🔵 |
-| Gráficos (frontend) | **Recharts / Chart.js** | series de lluvia/caudal | 🟡 |
-| Framework web | **React + Vite** | SPA (página Mapa lista) | ✅ |
-| App móvil | **React Native** (o Kotlin + MapLibre) | Android + GPS | 🟡 |
-| Worker / ingesta | **Celery + beat** (sobre Redis) | ingesta horaria nacional + caché | ✅ *(scaffold)* |
-| Contenedores | **Docker + docker-compose** | frontend · backend · worker · redis | ✅ *(compose validado)* |
-| Caché / cola | **Redis** | snapshot cacheado + broker de Celery | ✅ *(scaffold)* |
-| Interpretación (NLG) | **API de un LLM** | titular en lenguaje natural | 🟡 |
-| Diseño de UI | **Claude Design** | maquetas | 🔵 *(en curso)* |
-| Control de versiones | **Git + GitHub** (monorepo) | código y docs | ✅ |
-| Despliegue | **Docker compose** (frontend/backend/worker/redis) · Supabase (BD) | hosting | 🔵 |
+| Lenguaje backend | **Python 3.10+** | conectores, ingesta, API | hecho |
+| Lenguaje frontend | **TypeScript / JavaScript** | web y app | decidido |
+| API backend | **FastAPI (async)** | API REST cacheada | hecho *(dockerizado; prototipo stdlib también)* |
+| Cliente HTTP | `urllib` → **httpx** | consumo de fuentes | hecho → decidido |
+| Base de datos | **PostgreSQL + PostGIS** (vía **Supabase**) | datos relacionales + geoespaciales | decidido *(prototipo SQLite hecho)* |
+| Autenticación | **Supabase Auth** | cuentas y roles | decidido |
+| Tiempo real (in-app) | **Supabase Realtime** | chat y alertas en vivo | decidido |
+| Almacenamiento | **Supabase Storage** | fotos de reportes | decidido |
+| Notificaciones push | **Firebase Cloud Messaging (FCM)** | avisos al celular | decidido |
+| Scraping HTML | **BeautifulSoup4** | avisos SENAMHI, tablas | decidido |
+| Parsing de PDF | **pdfplumber** | comunicados ENFEN | decidido |
+| ETL geoespacial | **GeoPandas + Shapely** | shapefile → GeoJSON | decidido |
+| Mapas (frontend) | **Leaflet + GeoJSON** | visualización en mapa | decidido |
+| Gráficos (frontend) | **Recharts / Chart.js** | series de lluvia/caudal | evaluar |
+| Framework web | **React + Vite** | SPA (página Mapa lista) | hecho |
+| App móvil | **React Native** (o Kotlin + MapLibre) | Android + GPS | evaluar |
+| Worker / ingesta | **Celery + beat** (sobre Redis) | ingesta horaria nacional + caché | hecho *(scaffold)* |
+| Contenedores | **Docker + docker-compose** | frontend · backend · worker · redis | hecho *(compose validado)* |
+| Caché / cola | **Redis** | snapshot cacheado + broker de Celery | hecho *(scaffold)* |
+| Interpretación (NLG) | **API de un LLM** | titular en lenguaje natural | evaluar |
+| Diseño de UI | **Claude Design** | maquetas | decidido *(en curso)* |
+| Control de versiones | **Git + GitHub** (monorepo) | código y docs | hecho |
+| Despliegue | **Docker compose** (frontend/backend/worker/redis) · Supabase (BD) | hosting | decidido |
 
 ---
 
