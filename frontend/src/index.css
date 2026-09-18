@@ -42,6 +42,18 @@
   body {
     @apply bg-background text-foreground font-sans antialiased;
     margin: 0;
+    accent-color: hsl(var(--primary));
+  }
+  /* Nada de azul del navegador: seleccion de texto y tap en negro/neutro */
+  ::selection {
+    background: hsl(var(--primary));
+    color: hsl(var(--primary-foreground));
+  }
+  * {
+    -webkit-tap-highlight-color: transparent;
+  }
+  :focus-visible {
+    outline-color: hsl(var(--ring));
   }
 }
 
