@@ -31,12 +31,20 @@ ingesta (credencial de BD) y construir las demás páginas del front.
 - [x] **MCP de Supabase** conectado en modo escritura (Claude puede leer/editar la BD).
 - [x] **Código de ingesta a Supabase** listo (`backend/store_supabase.py`) — solo falta credencial.
 
-**Frontend (React + Vite + Leaflet)** — `frontend/`
-- [x] Página **Mapa** funcionando y conectada a Supabase: estaciones/ríos/zonas reales, estilo Waze,
-      íconos (no emojis), paleta saturada, tipografía formal.
+**Frontend (React + Vite + Tailwind + shadcn/ui + Leaflet)** — `frontend/`
+- [x] Página **Mapa** con **solo datos reales**: estaciones y ríos/caudales de Supabase; el círculo
+      de zona aparece únicamente alrededor de ríos en **alerta/emergencia** (dato de ANA). Íconos
+      lucide (no emojis).
+- [x] **Quitado todo lo demo** del mapa: zonas sombreadas ficticias, capa "usuarios cercanos"
+      (descartada) e incidentes de ejemplo. La capa de incidentes queda lista pero vacía hasta
+      conectar reportes reales.
+- [x] **Rediseño UI con Tailwind + shadcn/ui** (tema claro neutral estilo template: Geist, primario
+      casi negro): sidebar, panel de estado, panel de capas con switches, selector de ciudad, tooltips.
+      Mapa con tiles **Stadia Alidade Smooth** (limpio + detallado) y `ResizeObserver`. Responsive
+      (mobile-first) verificado en desktop y móvil.
 - [x] **Geolocalización** (con permiso) + **selector de ciudades del Perú** (Cajamarca por defecto).
-- [x] Componentes: `Sidebar`, `MapView`, `LayersPanel`, `StatusPanel`, `CitySelector`.
-      Correr: `npm --prefix frontend install && npm --prefix frontend run dev` → localhost:5173.
+- [x] Componentes: `Sidebar`, `MapView`, `LayersPanel`, `StatusPanel`, `CitySelector` + `components/ui/`
+      (shadcn). Correr: `npm --prefix frontend install && npm --prefix frontend run dev` → localhost:5173.
 
 **Infraestructura (Docker)** — `docker-compose.yml`
 - [x] Stack de 4 servicios: **frontend** (nginx), **backend** (FastAPI **async**), **worker**
@@ -70,11 +78,17 @@ ingesta (credencial de BD) y construir las demás páginas del front.
   (nada de contratar moderadores). Simplifica la app y evita tocar población/muestra en el informe.
 - **La comunidad valida los reportes**: like/dislike + comentarios (la app es intermediaria, no juez).
   BD actualizada: tablas `voto` y `comentario` en vez de `confirmation`; sin roles admin.
+- **Solo datos reales en el mapa**: se eliminó todo lo de demostración (zonas ficticias, usuarios
+  cercanos, incidentes de ejemplo). Los incidentes serán **reportes reales** de la comunidad.
+- **Reporte tipo Waze** (por construir): selector rápido de tipo con subtipos, p. ej.
+  Inundación · Huayco/Deslizamiento · Lluvia intensa · Vía bloqueada · Atasco (leve/moderado/detenido)
+  · Bache · Accidente. (Policía y similares quedan opcionales; el foco es clima/agua + impacto en vías.)
 
 ## En progreso / parcial
 - [ ] **Frontend** — página Mapa lista; faltan las demás (Alertas, Comunidad, Chat, Cuenta, crear
       reporte) + **react-router** para la navegación de la barra lateral. Ver `frontend-brief.md`.
-- [ ] Incidentes/usuarios en el mapa son **demo**; se conectan a `report`/`voto` cuando haya login (v2).
+- [ ] **Incidentes reales**: la capa queda vacía hasta conectar la tabla `report` de Supabase (con
+      login) y construir el flujo de creación (reporte tipo Waze). "Usuarios cercanos" se descartó.
 - [ ] **Lluvia histórica completa en la BD** — hoy hay solo una estación de muestra; el resto entra
       solo cuando corra el job de ingesta a Supabase.
 

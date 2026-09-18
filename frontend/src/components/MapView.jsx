@@ -1,14 +1,12 @@
 import { useEffect, useRef } from "react";
 import L from "leaflet";
 import { getEstaciones, getCaudales } from "../lib/queries";
-import { DEMO_INCIDENTS, DEMO_USERS } from "../data/incidents";
 
 const C = {
-  met: "#2E5BFF", hid: "#12B8A6",
-  normal: "#12B886", alerta: "#FF6A00", emergencia: "#F02D5A",
-  primary: "#2E5BFF",
-  inc: { inundacion: "#1C7ED6", lluvia: "#22B8CF", huayco: "#E8590C", via: "#F03E3E" },
-  zInund: "#F02D5A", zAlerta: "#FF6A00", zLluvia: "#22B8CF",
+  met: "#3BA5EB", hid: "#3B3BEB",
+  normal: "#3BEB40", alerta: "#F58E27", emergencia: "#DB0404",
+  primary: "#111111",
+  inc: { inundacion: "#3B3BEB", lluvia: "#3BA5EB", huayco: "#F58E27", via: "#EB3B3B" },
 };
 
 const SVG = {
@@ -18,18 +16,8 @@ const SVG = {
   lluvia: '<svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2"><path d="M8 19v2m4-3v3m4-4v2M18 15a4 4 0 0 0-1-7.9A6 6 0 1 0 6 13"/></svg>',
   huayco: '<svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2"><path d="M3 20h18L14 6l-4 7-3-3z"/></svg>',
   via: '<svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2"><path d="M4 19 20 5M4 5l16 14"/></svg>',
-  person: '<svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M5 21v-1a7 7 0 0 1 14 0v1"/></svg>',
   nav: '<svg viewBox="0 0 24 24" fill="#fff" stroke="#fff" stroke-width="1" stroke-linejoin="round"><path d="M3 11l19-9-9 19-2-8-8-2z"/></svg>',
 };
-
-// pin tipo Waze (gota) para usuarios; distinto de los círculos de estaciones.
-function pinIcon(color, svg) {
-  return L.divIcon({
-    className: "",
-    html: `<div class="mkpin" style="background:${color}">${svg}</div>`,
-    iconSize: [30, 30], iconAnchor: [15, 28],
-  });
-}
 
 function icon(color, svg, diamond) {
   return L.divIcon({
@@ -49,13 +37,20 @@ export default function MapView({ visible, onReady, focus, userPos }) {
   useEffect(() => {
     const map = L.map(elRef.current, { zoomControl: false }).setView([-7.16, -78.51], 13);
     L.control.zoom({ position: "bottomright" }).addTo(map);
-    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-      maxZoom: 18, attribution: "© OpenStreetMap",
-    }).addTo(map);
+    // Stadia Alidade Smooth: claro y limpio (tipo Positron) pero con detalle de
+    // calles. Gratis en localhost; al desplegar a un dominio real requiere una
+    // API key gratuita de Stadia (?api_key=...).
+    L.tileLayer(
+      "https://tiles.stadiamaps.com/tiles/alidade_smooth/{z}/{x}/{y}{r}.png",
+      {
+        maxZoom: 20,
+        attribution:
+          '© <a href="https://stadiamaps.com/">Stadia Maps</a> © <a href="https://openmaptiles.org/">OpenMapTiles</a> © <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+      }
+    ).addTo(map);
 
     const g = {
-      est: L.layerGroup(), rio: L.layerGroup(), inc: L.layerGroup(),
-      usr: L.layerGroup(), zona: L.layerGroup(),
+      est: L.layerGroup(), rio: L.layerGroup(), inc: L.layerGroup(), zona: L.layerGroup(),
     };
     mapRef.current = map;
     groupsRef.current = g;
@@ -80,39 +75,24 @@ export default function MapView({ visible, onReady, focus, userPos }) {
         L.marker([c.lat, c.lon], { icon: icon(col, SVG.wave) })
           .bindPopup(`<div class="pop"><h4>${c.estacion}</h4><div class="meta">Río ${c.rio} · ${c.estado}</div><p>Caudal: <b>${c.valor} ${c.unidad}</b></p></div>`)
           .addTo(g.rio);
+        // Zona real: círculo solo alrededor de ríos en alerta/emergencia (dato ANA).
         if (c.estado === "alerta" || c.estado === "emergencia")
           L.circle([c.lat, c.lon], { radius: 2500, color: col, weight: 1, fillColor: col, fillOpacity: 0.18 }).addTo(g.zona);
       });
     }).catch((err) => console.error("caudales", err));
 
-    // zonas demo (estado "alerta" en la ciudad)
-    L.circle([-7.157, -78.512], { radius: 1400, color: C.zInund, weight: 1, fillColor: C.zInund, fillOpacity: 0.16 }).addTo(g.zona);
-    L.circle([-7.17, -78.52], { radius: 2200, color: C.zAlerta, weight: 1, fillColor: C.zAlerta, fillOpacity: 0.12 }).addTo(g.zona);
-    L.circle([-7.15, -78.5], { radius: 1800, color: C.zLluvia, weight: 1, fillColor: C.zLluvia, fillOpacity: 0.14 }).addTo(g.zona);
-
-    // incidentes demo
-    DEMO_INCIDENTS.forEach((i) => {
-      L.marker([i.lat, i.lon], { icon: icon(C.inc[i.tipo], SVG[i.tipo], true) })
-        .bindPopup(
-          `<div class="pop"><h4>${i.titulo}</h4><div class="meta">${i.autor} · ${i.hace} · ${i.km}</div><p>${i.desc}</p>
-           <div class="acts">
-             <button class="vote up">▲ ${i.up}</button>
-             <button class="vote down">▼ ${i.down}</button>
-             <button class="vote-fill">Ver reporte →</button>
-           </div></div>`
-        )
-        .addTo(g.inc);
-    });
-
-    // usuarios cercanos demo (pin de persona tipo Waze)
-    DEMO_USERS.forEach((ll) => L.marker(ll, { icon: pinIcon("#7048E8", SVG.person) })
-      .bindPopup('<div class="pop"><h4>Usuario cercano</h4><div class="meta">En tu zona</div></div>')
-      .addTo(g.usr));
+    // Los incidentes ciudadanos (g.inc) se llenaran con reportes reales de
+    // Supabase (tabla `report`) cuando exista el flujo de creacion + login.
 
     const t = setTimeout(() => map.invalidateSize(), 300);
+    // Recalcula el tamano cuando el contenedor pasa de oculto a visible
+    // (evita el mapa "gris" al montarse en un panel/tab sin tamano).
+    const ro = new ResizeObserver(() => map.invalidateSize());
+    ro.observe(elRef.current);
 
     return () => {
       clearTimeout(t);
+      ro.disconnect();
       if (onReady) onReady(null);
       map.remove();
       mapRef.current = null;
@@ -150,5 +130,5 @@ export default function MapView({ visible, onReady, focus, userPos }) {
     }
   }, [userPos]);
 
-  return <div ref={elRef} className="mapcanvas" />;
+  return <div ref={elRef} className="absolute inset-0" />;
 }

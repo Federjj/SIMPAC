@@ -23,9 +23,10 @@
 | Scraping HTML | **BeautifulSoup4** | avisos SENAMHI, tablas | decidido |
 | Parsing de PDF | **pdfplumber** | comunicados ENFEN | decidido |
 | ETL geoespacial | **GeoPandas + Shapely** | shapefile → GeoJSON | decidido |
-| Mapas (frontend) | **Leaflet + GeoJSON** | visualización en mapa | decidido |
+| Mapas (frontend) | **Leaflet** (tiles Esri Light Gray, sin API key) | visualización en mapa | hecho |
 | Gráficos (frontend) | **Recharts / Chart.js** | series de lluvia/caudal | evaluar |
 | Framework web | **React + Vite** | SPA (página Mapa lista) | hecho |
+| UI / estilos | **Tailwind CSS + shadcn/ui** (Radix + lucide) | sistema de diseño y componentes | hecho |
 | App móvil | **React Native** (o Kotlin + MapLibre) | Android + GPS | evaluar |
 | Worker / ingesta | **Celery + beat** (sobre Redis) | ingesta horaria nacional + caché | hecho *(corriendo; beat activo)* |
 | Contenedores | **Docker + docker-compose** | frontend · backend · worker · redis | hecho *(stack corriendo)* |
@@ -65,7 +66,10 @@
 - Un **conector aislado por fuente**, con caché y rate-limit (ver `docs/README-tecnico.md`).
 
 ### 2.4. Frontend web
-- **React + Vite** (TypeScript). **Leaflet + GeoJSON** para el mapa (soporte nativo de GeoJSON).
+- **React + Vite** (JavaScript). **Leaflet** para el mapa, con tiles **Esri Light Gray** (basemap
+  claro gratuito, sin API key).
+- **Tailwind CSS + shadcn/ui** como sistema de diseño (tema claro estilo dashboard, componentes
+  sobre Radix + iconos lucide, sin emojis). La página Mapa ya está construida y es responsive.
 - Gráficos de series con **Recharts** o **Chart.js** (a definir).
 - Diseño de la interfaz con **Claude Design** (ver `docs/frontend-brief.md`).
 
@@ -115,7 +119,7 @@ VigiaFEN/
 │  ├─ store.py       #   persistencia (SQLite prototipo → PostGIS)
 │  ├─ alerts.py  ingest.py  api.py
 │  └─ requirements.txt
-├─ frontend/         # (por crear) React + Vite + Leaflet
+├─ frontend/         # React + Vite + Tailwind + shadcn/ui + Leaflet (pagina Mapa lista)
 ├─ mobile/           # (por crear) React Native / Android
 └─ docs/             # documentación (este archivo, README-técnico, briefs, endpoints)
 ```
