@@ -27,11 +27,22 @@ function icon(color, svg, diamond) {
   });
 }
 
-export default function MapView({ visible, onReady, focus, userPos }) {
+// Color por anomalía de precipitación (%): seco (naranja/rojo) ↔ húmedo (celeste/azul).
+function anomColor(a) {
+  if (a <= -50) return "#DB0404";
+  if (a <= -20) return "#F58E27";
+  if (a < 20) return "#EBEB3B";
+  if (a < 50) return "#3BA5EB";
+  return "#3B3BEB";
+}
+
+export default function MapView({ visible, onReady, focus, userPos, anomGeo }) {
   const elRef = useRef(null);
   const mapRef = useRef(null);
   const groupsRef = useRef(null);
   const userMkRef = useRef(null);
+  const visibleRef = useRef(visible);
+  useEffect(() => { visibleRef.current = visible; }, [visible]);
 
   // init (una vez)
   useEffect(() => {
@@ -50,7 +61,8 @@ export default function MapView({ visible, onReady, focus, userPos }) {
     ).addTo(map);
 
     const g = {
-      est: L.layerGroup(), rio: L.layerGroup(), inc: L.layerGroup(), zona: L.layerGroup(),
+      est: L.layerGroup(), rio: L.layerGroup(), inc: L.layerGroup(),
+      zona: L.layerGroup(), anom: L.layerGroup(),
     };
     mapRef.current = map;
     groupsRef.current = g;
@@ -110,6 +122,27 @@ export default function MapView({ visible, onReady, focus, userPos }) {
       if (!on && map.hasLayer(g[k])) map.removeLayer(g[k]);
     });
   }, [visible]);
+
+  // capa de anomalías de precipitación (datos reales de la tabla `mapa`)
+  useEffect(() => {
+    const map = mapRef.current, g = groupsRef.current;
+    if (!map || !g) return;
+    g.anom.clearLayers();
+    const feats = anomGeo?.features || [];
+    feats.forEach((f) => {
+      const coords = f.geometry?.coordinates;
+      if (!coords) return;
+      const [lon, lat] = coords;
+      const a = f.properties?.ANOMALIA ?? 0;
+      const p = f.properties || {};
+      L.circleMarker([lat, lon], {
+        radius: 7, color: "#fff", weight: 1.5, fillColor: anomColor(a), fillOpacity: 0.85,
+      })
+        .bindPopup(`<div class="pop"><h4>${p.ESTACION || "Estación"}</h4><div class="meta">${p.DISTRITO || ""} · ${p.PROVINCIA || ""}</div><p>Anomalía de lluvia: <b>${a}%</b><br/>Precip ${p.PREC} mm (normal ${p.NORMAL} mm)</p></div>`)
+        .addTo(g.anom);
+    });
+    if (visibleRef.current?.anom && !map.hasLayer(g.anom)) g.anom.addTo(map);
+  }, [anomGeo]);
 
   // recentra el mapa cuando cambia la ciudad / ubicación
   useEffect(() => {

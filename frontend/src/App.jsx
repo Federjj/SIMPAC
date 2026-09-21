@@ -13,16 +13,42 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { CITIES, DEFAULT_CITY, nearestCity } from "./data/cities";
-
-const METRICS = { lluvia: "2.4", rio: "48.2", temp: "14°C" };
+import { getIndices, getCaudales, getMapaAnomalias } from "./lib/queries";
+import { NIVEL, nivelDeCaudales } from "./lib/nivel";
 
 export default function App() {
-  const [visible, setVisible] = useState({ est: false, rio: true, inc: true, zona: true });
+  const [visible, setVisible] = useState({ est: false, rio: true, inc: true, zona: true, anom: false });
   const [showLayers, setShowLayers] = useState(false);
   const [city, setCity] = useState(DEFAULT_CITY.name);
   const [focus, setFocus] = useState({ lat: DEFAULT_CITY.lat, lon: DEFAULT_CITY.lon, zoom: 14 });
   const [userPos, setUserPos] = useState(null);
   const mapRef = useRef(null);
+
+  // Datos reales del backend (Supabase)
+  const [oni, setOni] = useState(null);
+  const [icen, setIcen] = useState(null);
+  const [alertCount, setAlertCount] = useState(0);
+  const [nivel, setNivel] = useState("normal");
+  const [anomGeo, setAnomGeo] = useState(null);
+
+  useEffect(() => {
+    getIndices()
+      .then((rows) => {
+        setOni(rows.find((r) => r.fuente === "ONI") || null);
+        setIcen(rows.find((r) => r.fuente === "ICEN") || null);
+      })
+      .catch((e) => console.error("indices", e));
+    getCaudales()
+      .then((rows) => {
+        const activos = rows.filter((c) => c.estado === "alerta" || c.estado === "emergencia");
+        setAlertCount(activos.length);
+        setNivel(nivelDeCaudales(rows));
+      })
+      .catch((e) => console.error("caudales", e));
+    getMapaAnomalias()
+      .then((m) => setAnomGeo(m?.geojson || null))
+      .catch((e) => console.error("anomalias", e));
+  }, []);
 
   const toggle = (id) => setVisible((v) => ({ ...v, [id]: !v[id] }));
 
@@ -49,18 +75,32 @@ export default function App() {
 
   useEffect(() => { geolocate(); }, []);
 
+  const nv = NIVEL[nivel];
+  const titular =
+    nivel === "emergencia"
+      ? `${alertCount} río(s) en emergencia por caudal`
+      : nivel === "alerta"
+        ? `${alertCount} río(s) en alerta por caudal`
+        : "Sin alertas de caudal activas";
+
   return (
     <div className="flex h-screen overflow-hidden">
-      <Sidebar active="mapa" metrics={METRICS} />
+      <Sidebar active="mapa" nivel={nivel} alertCount={alertCount} oni={oni} icen={icen} />
 
       <main className="relative flex-1 h-screen">
-        <MapView visible={visible} focus={focus} userPos={userPos} onReady={(m) => (mapRef.current = m)} />
+        <MapView
+          visible={visible}
+          focus={focus}
+          userPos={userPos}
+          anomGeo={anomGeo}
+          onReady={(m) => (mapRef.current = m)}
+        />
 
         {/* Chip de marca + estado */}
         <div className="absolute left-4 top-4 z-[600] flex items-center gap-2 rounded-full border border-border bg-card/85 px-3.5 py-1.5 text-sm font-semibold shadow-lg backdrop-blur">
           <span className="text-primary">SIMPAC</span>
-          <span className="h-1.5 w-1.5 rounded-full bg-nivel-alerta" />
-          <span className="text-nivel-alerta">Alerta</span>
+          <span className={`h-1.5 w-1.5 rounded-full ${nv.dot}`} />
+          <span className={nv.text}>{nv.label}</span>
         </div>
 
         {/* Selector de ciudad */}
@@ -111,7 +151,13 @@ export default function App() {
           Reportar
         </Button>
 
-        <StatusPanel titular="Lluvias intensas. Tome precauciones" metrics={METRICS} />
+        <StatusPanel
+          titular={titular}
+          nivel={nivel}
+          alertCount={alertCount}
+          oni={oni}
+          icen={icen}
+        />
       </main>
     </div>
   );

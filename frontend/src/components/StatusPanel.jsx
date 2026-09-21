@@ -1,6 +1,11 @@
-import { CloudRain, Waves, Thermometer, TriangleAlert, ChevronRight, Plus } from "lucide-react";
+import { Thermometer, Waves, TriangleAlert, ChevronRight, Plus } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
+import { NIVEL } from "@/lib/nivel";
+
+const NIVEL_HEX = { normal: "#3BEB40", alerta: "#F58E27", emergencia: "#DB0404" };
+const fmt = (v) => (v == null ? "—" : (v >= 0 ? "+" : "") + v);
 
 function Metric({ Icon, color, value, label }) {
   return (
@@ -11,23 +16,24 @@ function Metric({ Icon, color, value, label }) {
       >
         <Icon className="h-4 w-4 sm:h-[18px] sm:w-[18px]" />
       </div>
-      <div className="leading-tight">
+      <div className="min-w-0 leading-tight">
         <div className="text-base font-semibold tabular-nums sm:text-lg">{value}</div>
-        <div className="text-[0.68rem] text-muted-foreground sm:text-[0.72rem]">{label}</div>
+        <div className="truncate text-[0.68rem] text-muted-foreground sm:text-[0.72rem]">{label}</div>
       </div>
     </div>
   );
 }
 
-export default function StatusPanel({ titular, metrics }) {
+export default function StatusPanel({ titular, nivel = "normal", alertCount = 0, oni, icen }) {
+  const nv = NIVEL[nivel];
   return (
     <div className="pointer-events-none absolute inset-x-0 bottom-0 z-[600] p-3 md:p-4">
       <div className="pointer-events-auto mx-auto max-w-3xl overflow-hidden rounded-2xl border border-border bg-card/95 shadow-2xl backdrop-blur">
-        <div className="h-1 w-full bg-nivel-alerta" />
+        <div className={cn("h-1 w-full", nv.strip)} />
         <div className="flex items-start gap-3 px-4 pt-3.5">
           <div className="min-w-0">
             <div className="text-[0.68rem] uppercase tracking-wider text-muted-foreground">
-              Estado · 09:30
+              Estado · Cajamarca
             </div>
             <h3 className="truncate text-base font-semibold md:text-lg">
               {titular}
@@ -35,17 +41,17 @@ export default function StatusPanel({ titular, metrics }) {
           </div>
           <Badge
             variant="outline"
-            className="ml-auto shrink-0 gap-1.5 border-nivel-alerta/50 text-nivel-alerta"
+            className={cn("ml-auto shrink-0 gap-1.5", nv.border, nv.text)}
           >
             <TriangleAlert className="h-3.5 w-3.5" />
-            Alerta
+            {nv.label}
           </Badge>
         </div>
 
         <div className="grid grid-cols-3 gap-2 px-4 py-3 sm:flex">
-          <Metric Icon={CloudRain} color="#3BA5EB" value={metrics.lluvia} label="mm/hr Lluvia" />
-          <Metric Icon={Waves} color="#3B3BEB" value={metrics.rio} label="m³/s Río" />
-          <Metric Icon={Thermometer} color="#F58E27" value={metrics.temp} label="Temperatura" />
+          <Metric Icon={Thermometer} color="#3BA5EB" value={fmt(oni?.valor)} label={`ONI · ${oni?.categoria || "El Niño"}`} />
+          <Metric Icon={Waves} color="#3B3BEB" value={fmt(icen?.valor)} label={`ICEN · ${icen?.categoria || "costero"}`} />
+          <Metric Icon={TriangleAlert} color={NIVEL_HEX[nivel]} value={alertCount} label="ríos en alerta" />
         </div>
 
         {/* Reportar dentro del panel (solo movil; en desktop es el boton flotante) */}
@@ -58,10 +64,10 @@ export default function StatusPanel({ titular, metrics }) {
 
         <Button
           variant="ghost"
-          className="h-auto w-full justify-start gap-2 rounded-none border-t border-border py-3 text-nivel-alerta hover:text-nivel-alerta"
+          className={cn("h-auto w-full justify-start gap-2 rounded-none border-t border-border py-3", nv.text)}
         >
           <TriangleAlert className="h-4 w-4" />
-          Ver alertas vigentes (3)
+          Ver alertas vigentes ({alertCount})
           <ChevronRight className="ml-auto h-4 w-4" />
         </Button>
       </div>

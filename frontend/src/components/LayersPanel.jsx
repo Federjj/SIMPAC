@@ -1,4 +1,4 @@
-import { Radio, Waves, TriangleAlert, ShieldAlert } from "lucide-react";
+import { Radio, Waves, TriangleAlert, ShieldAlert, Droplets } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import { Separator } from "@/components/ui/separator";
 
@@ -7,11 +7,14 @@ const LAYERS = [
   { id: "rio", label: "Ríos", Icon: Waves },
   { id: "inc", label: "Incidentes", Icon: TriangleAlert },
   { id: "zona", label: "Zonas de riesgo", Icon: ShieldAlert },
+  { id: "anom", label: "Anomalías de lluvia", Icon: Droplets },
 ];
 
 const LEGEND = [
-  { color: "#F02D5A", label: "Río en emergencia" },
-  { color: "#FF6A00", label: "Río en alerta" },
+  { color: "#DB0404", label: "Río en emergencia" },
+  { color: "#F58E27", label: "Río en alerta" },
+  { color: "#F58E27", label: "Lluvia bajo lo normal" },
+  { color: "#3BA5EB", label: "Lluvia sobre lo normal" },
 ];
 
 export default function LayersPanel({ visible, onToggle }) {

@@ -24,3 +24,14 @@ export async function getIndices() {
   if (error) throw error;
   return data ?? [];
 }
+
+// Capa de anomalias de precipitacion (FeatureCollection GeoJSON en la tabla mapa).
+export async function getMapaAnomalias() {
+  const { data, error } = await supabase
+    .from("mapa")
+    .select("titulo,variable,periodo,fuente,geojson")
+    .eq("variable", "precipitacion")
+    .limit(1);
+  if (error) throw error;
+  return data?.[0] ?? null;
+}
