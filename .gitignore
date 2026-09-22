@@ -1,26 +1,33 @@
 # Python
 __pycache__/
 *.py[cod]
-.venv/
-venv/
-env/
+/.venv/
+/venv/
+/env/
+celerybeat-schedule*
+
+# Secretos (las plantillas .example sí se versionan)
 .env
+.env.*
 *.env
+!.env.docker.example
+!**/.env.example
 
 # Node / frontend
 node_modules/
 dist/
-build/
+/frontend/build/
 .next/
 
 # Datos cacheados / temporales
 *.log
-cache/
-data/cache/
+/cache/
+/data/cache/
+/*.sql
 
-# GeoJSON generados desde IDESEP/SENAMHI (no se redistribuyen en el repo;
-# viven en la BD y se regeneran con backend/mapas/cargar_fen.py --exportar)
-backend/mapas/*.geojson
+# GeoJSON generados desde IDESEP/SENAMHI: no se redistribuyen en el repo.
+# Viven en la BD y se regeneran con backend/mapas/cargar_fen.py --exportar
+*.geojson
 
 # Base de datos local del prototipo
 *.db

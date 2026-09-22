@@ -5,7 +5,7 @@ Corre una "pasada": trae datos de las fuentes, los guarda en SQLite y recalcula
 las alertas vigentes. Ejecutar periódicamente (cada hora) con cron / Programador
 de tareas de Windows / APScheduler.
 
-    python backend/ingest.py
+    python -m backend.prototipo.ingest
 """
 from __future__ import annotations
 
@@ -14,7 +14,8 @@ from datetime import date
 
 sys.path.insert(0, __file__.rsplit("backend", 1)[0])
 
-from backend import alerts, store
+from backend import alerts
+from backend.prototipo import store
 from backend.connectors import ana, igp, noaa, senamhi
 
 
@@ -42,7 +43,7 @@ def correr() -> dict:
             for ts, p, t in zip(s.timestamps, s.precip_mm, s.temp_c):
                 store.insert_lluvia(conn, e.cod, e.nombre, ts, p, t)
                 resumen["lluvia_filas"] += 1
-            a = alerts.evaluar_lluvia(e.cod, e.nombre, s)
+            a = alerts.evaluar_lluvia(e.cod, e.nombre, s, zona="Cajamarca")
             if a:
                 alertas_vigentes.append(a)
         except Exception as ex:

@@ -17,10 +17,14 @@ from __future__ import annotations
 import json
 import re
 from dataclasses import dataclass, field
+from datetime import datetime, timedelta, timezone
 
 from . import _http
 
 BASE = "https://www.senamhi.gob.pe/mapas/mapa-estaciones-2"
+
+# Las horas de las series son hora local de Perú: UTC-5 fijo, sin horario de verano.
+HORA_PERU = timezone(timedelta(hours=-5), "America/Lima")
 
 
 @dataclass
@@ -62,13 +66,32 @@ class SerieHoraria:
         return round(sum(vals), 2)
 
 
+def parse_ts(ts: str) -> datetime | None:
+    """'YYYY/MM/DD - HH' (hora de Perú) -> datetime con zona horaria; None si no se entiende."""
+    try:
+        fecha, hora = ts.split(" - ")
+        return datetime.strptime(f"{fecha.strip()} {hora.strip()}", "%Y/%m/%d %H").replace(tzinfo=HORA_PERU)
+    except ValueError:
+        return None
+
+
+def _json_de_senamhi(texto: str):
+    # SENAMHI escribe algunas coordenadas sin el 0 inicial ("lat": -.1172), que no es
+    # JSON válido: un solo caso así hacía fallar el departamento entero.
+    return json.loads(re.sub(r'("(?:lat|lon)"\s*:\s*)(-?)\.', r"\g<1>\g<2>0.", texto))
+
+
 def inventario_estaciones(dp: str = "cajamarca") -> list[Estacion]:
-    """Estaciones de un departamento (por defecto Cajamarca)."""
+    """
+    Estaciones de un departamento (por defecto Cajamarca). `dp` es el slug de SENAMHI,
+    con guiones: "la-libertad", "madre-de-dios", "san-martin". Ojo: con un slug que no
+    reconoce, SENAMHI no da error, devuelve TODAS las estaciones del país.
+    """
     html = _http.get(f"{BASE}/?dp={dp}")
     m = re.search(r"var\s+PruebaTest\s*=\s*(\[.*?\]);", html, re.S)
     if not m:
         raise RuntimeError("No se encontró el array PruebaTest en el HTML de SENAMHI")
-    registros = json.loads(m.group(1))
+    registros = _json_de_senamhi(m.group(1))
     out: list[Estacion] = []
     for r in registros:
         out.append(Estacion(

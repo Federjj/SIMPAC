@@ -1,7 +1,7 @@
 """
 Demo de los conectores de SIMPAC. Corre así (Python 3.10+, sin dependencias):
 
-    python backend/demo.py
+    python -m backend.prototipo.demo
 
 Muestra una "foto" en tiempo real de Cajamarca: contexto El Niño (ICEN/ONI),
 caudales de ríos con su estado de alerta, y la lluvia horaria de una estación

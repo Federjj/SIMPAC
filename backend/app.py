@@ -1,14 +1,17 @@
 """
-API de SIMPAC — FastAPI ASINCRONO.
-Sirve un snapshot cacheado en Redis (rapido con muchos usuarios); el frontend
-puede seguir leyendo Supabase directo para lo detallado.
+API de SIMPAC — FastAPI asíncrono.
+
+Sirve un snapshot cacheado en Redis (rápido con muchos usuarios); el frontend
+sigue leyendo Supabase directo para lo detallado. Es de solo lectura: el refresco
+lo hace el worker (tarea refresh_cache), no hay endpoint público para forzarlo.
 """
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+import httpx
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
-from backend.cache import get_snapshot, new_redis, refresh_snapshot
+from backend.snapshot import get_snapshot, new_redis
 
 
 @asynccontextmanager
@@ -21,11 +24,11 @@ async def lifespan(app: FastAPI):
         await app.state.redis.aclose()
 
 
-app = FastAPI(title="SIMPAC API", version="0.1.0", lifespan=lifespan)
+app = FastAPI(title="SIMPAC API", version="0.2.0", lifespan=lifespan)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_methods=["*"],
+    allow_methods=["GET"],
     allow_headers=["*"],
 )
 
@@ -37,11 +40,8 @@ async def health():
 
 @app.get("/api/snapshot")
 async def snapshot():
-    """Contexto El Nino + caudales + resumen (cacheado en Redis)."""
-    return await get_snapshot(client=app.state.redis)
-
-
-@app.post("/api/refresh")
-async def refresh():
-    """Fuerza refresco de la cache (lo usa el worker; util para debug)."""
-    return await refresh_snapshot(client=app.state.redis)
+    """Contexto El Niño + último caudal por estación + alertas vigentes (cacheado en Redis)."""
+    try:
+        return await get_snapshot(client=app.state.redis)
+    except httpx.HTTPError as e:
+        raise HTTPException(status_code=503, detail="Supabase no disponible y aún no hay snapshot") from e

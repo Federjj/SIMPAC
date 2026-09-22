@@ -1,80 +1,91 @@
 # SIMPAC — Frontend
 
-Web en **React + Vite + Leaflet** que consume la BD de Supabase. La **página Mapa ya está construida
-y funcionando** con datos reales; el diseño de las demás pantallas está en `docs/frontend-brief.md`
-(estilo Waze).
+Web en **React + Vite + Tailwind + shadcn/ui + Leaflet** que lee directo de Supabase. La **página
+Mapa ya está construida y funcionando** con datos reales; el diseño de las demás pantallas está en
+`docs/frontend-brief.md` (estilo Waze).
 
 ## Arranque
-El proyecto ya existe (React + Vite). Solo:
 ```bash
 npm install
+cp .env.example .env # llaves públicas de Supabase (en PowerShell: Copy-Item .env.example .env)
 npm run dev          # http://localhost:5173
 ```
-El `.env` con las llaves públicas ya está (`.env.example` de respaldo). Cliente: `src/lib/supabaseClient.js`.
+El `.env` no se sube a git: sin él la app no arranca (`supabaseUrl is required`). Cliente:
+`src/lib/supabaseClient.js`.
+Imports con alias: `@/` = `src/` (p. ej. `import { LAYERS } from "@/map/layers"`).
 
 ## Estructura
 ```
 src/
-  App.jsx · main.jsx · index.css · icons.jsx
-  lib/        supabaseClient.js · queries.js
-  data/       cities.js (ciudades del Perú) · incidents.js (demo)
-  components/ Sidebar · MapView · LayersPanel · StatusPanel · CitySelector
+  App.jsx · main.jsx · index.css
+  components/   Sidebar · MapView · LayersPanel · StatusPanel · CitySelector · ui/ (shadcn)
+  hooks/        usePanorama (índices + alertas, se refresca solo) · useGeolocation · useLayerVisibility
+  map/
+    baseMap.js  mapa base (tiles Stadia, zoom, ResizeObserver)
+    markers.js  íconos SVG, markerIcon(), popupHtml() y escapeHtml()
+    palette.js  colores por nivel, estación y anomalía
+    layers/     una capa por archivo + index.js (LAYERS)
+  lib/          supabaseClient · queries · nivel (semáforo y titular) · reportTypes (taxonomía)
+  data/         cities.js (capitales del Perú)
 ```
 
-## Página Mapa (hecha)
-- Leaflet + OSM centrado en Cajamarca; **geolocalización** (con permiso) y **selector de ciudades
-  del Perú** (Cajamarca por defecto).
-- Marcadores: estaciones y ríos (círculo con ícono), incidentes (rombo por tipo), **usuarios
-  cercanos (pin tipo Waze)** y **tu ubicación (flecha de navegación)**.
-- Capas conmutables, zonas sombreadas, botón Reportar, panel de estado.
-- Incidentes y usuarios son **demo** hasta que haya login (v2 → tablas `report` / `voto`).
+## Capas del mapa
+Cada archivo de `src/map/layers/` exporta la misma forma: `id`, `label`, `Icon`,
+`defaultVisible`, `legend`, `load()` y `render(group, datos)`; opcional `refreshMs`. `MapView`
+carga cada capa la primera vez que se enciende (reintenta si falla) y el panel de capas muestra
+su leyenda. **Sumar una capa** = crear su archivo y agregarla a `layers/index.js`.
 
-## Qué tabla alimenta cada parte del mapa (brief §4.2)
+| Capa | Archivo | Datos |
+|---|---|---|
+| Ríos | `rios.js` | vista `caudal_actual` (última lectura de ayer u hoy por estación) |
+| Zonas de caudal alto | `zonasCaudal.js` | `caudal_actual` en alerta/emergencia |
+| Reportes ciudadanos | `incidentes.js` | `report` (la BD solo entrega los vigentes) |
+| Estaciones | `estaciones.js` | `estacion` |
+| Anomalías de lluvia | `anomalias.js` | `mapa` con `variable = 'precipitacion'` |
+
+**Seguridad:** todo texto que va a un popup pasa por `popupHtml()`, que escapa el HTML. Los
+reportes los escriben usuarios: nunca armar HTML con `${...}` a mano.
+
+## Qué tabla alimenta cada parte
 
 | UI | Tabla / consulta | Notas |
 |---|---|---|
-| Marcadores de estaciones | `estacion` (`cod,nombre,tipo,estado,lat,lon`) | 93 filas; `tipo` M/H, `estado` REAL/AUTOMATICA/DIFERIDO |
-| Ríos + estado (círculos inundación) | `lectura_caudal` (`estacion,rio,valor,unidad,estado,umbral_alerta,umbral_emergencia,lat,lon`) | estado normal/alerta/emergencia |
-| Gráfico de lluvia (detalle) | `lectura_lluvia` (`ts,precip_mm,temp_c` where `cod=…`) | ordenar por `medido_en` |
-| Titular / contexto El Niño | `indice` (`fuente,periodo,valor,categoria`) | ICEN y ONI |
-| Alertas vigentes | `alerta` (`tipo,referencia,nivel,detalle`) | hoy 0 (estiaje) |
-| Capa de anomalías (mapas SENAMHI) | `mapa` (`titulo,variable,periodo,geojson`) | el `geojson` va directo a `L.geoJSON(...)` en Leaflet |
-| Reportes + votos + comentarios (comunidad) | `report`, `voto` (like/dislike), `comentario`, `message` | lectura pública; **crear/votar/comentar requiere login** (fase 2) |
+| Estado, titular y contador | `alerta` (`vigente = true`) | lluvia y caudal; `zona` = departamento |
+| Contexto El Niño | `indice` | ICEN y ONI; `ts_captura` = última corrida de la ingesta (aviso "sin actualizar") |
+| Ríos | `caudal_actual` | **no** `lectura_caudal`: esa es el historial (repite estaciones) |
+| Gráfico de lluvia (detalle) | `lectura_lluvia` (`ts,medido_en,precip_mm,temp_c` where `cod=…`) | ordenar por `medido_en` (ya en hora correcta) |
+| Mapas FEN históricos | `mapa` con `variable = 'FEN'` | pedir primero `titulo,periodo` y luego el `geojson` del evento elegido |
+| Comunidad | `report`, `voto`, `comentario`, `message`, `perfil` | ver abajo |
 
-> **Coordenadas:** usa las columnas `lat` / `lon` (ya vienen listas). La columna `geom` es PostGIS
-> y no hace falta tocarla en el cliente.
+> **Coordenadas:** usa las columnas `lat` / `lon` (vienen listas). `geom` es PostGIS y el Data API
+> la devuelve en hex; no hace falta tocarla en el cliente para leer.
 
-## Ejemplos
+## Comunidad (reportes estilo Waze)
+Todos los ids son **uuid**. **Pedir siempre columnas explícitas, nunca `select("*")`:** la columna
+`autor` de `report` y `comentario` (y `geom` de `message`) no es legible, por privacidad, y un `*`
+falla con permiso denegado. Solo se ven los reportes vigentes; los propios (también vencidos) con
+`supabase.rpc("mis_reportes")`. La BD decide lo que no debe decidir el cliente:
+- **Crear reporte** (con sesión): enviar solo `tipo`, `subtipo` (solo atasco: leve/moderado/detenido),
+  `descripcion`, `foto_url` y `geom` = **posición GPS real** (`useGeolocation`, sin pin manual).
+  `autor`, `estado`, `confianza`, `likes`, `expira_en` (12 h) los pone la BD. Tipos válidos en
+  `src/lib/reportTypes.js` (coinciden con el CHECK de la BD). Máximo 5 reportes por hora.
+- **Votar**: `upsert({ report_id, valor: 1 | -1 }, { onConflict: "report_id,autor" })`. No se puede
+  votar el propio reporte ni uno vencido (ni quitar el voto cuando ya venció). Los contadores
+  del reporte se actualizan solos.
+- **Comentar**: solo en reportes vigentes; máximo 20 comentarios por hora.
+- **Perfil**: se crea solo al registrarse (`auth.signUp({ ..., options: { data: { nombre } } })`).
+- **Chat** (`message`): vence a las 2 h, siempre.
+
 ```js
-import { supabase } from "./lib/supabaseClient";
-
-// estaciones para el mapa
-const { data: estaciones } = await supabase
-  .from("estacion").select("cod,nombre,tipo,estado,lat,lon").limit(1000);
-
-// ríos con su estado (para los círculos de inundación)
-const { data: rios } = await supabase
-  .from("lectura_caudal").select("estacion,rio,valor,unidad,estado,lat,lon");
-
-// serie horaria de lluvia de una estación (para el detalle)
-const { data: lluvia } = await supabase
-  .from("lectura_lluvia").select("ts,precip_mm,temp_c")
-  .eq("cod", "472645F0").order("medido_en");
-
-// contexto El Niño (titular)
-const { data: indices } = await supabase.from("indice").select("*");
-
-// capa de anomalías mensual (puntos por estación): usar getMapaAnomalias() de src/lib/queries.js.
-// Siempre filtrar por variable: sin filtro baja los 5 mapas FEN (~17 MB) en orden arbitrario.
-const { data: mensual } = await supabase.from("mapa").select("titulo,periodo,geojson")
-  .eq("variable", "precipitacion").order("periodo", { ascending: false }).limit(1);
-
-// mapas históricos de eventos El Niño (polígonos con la propiedad RANGO), uno por evento
-const { data: eventos } = await supabase.from("mapa").select("titulo,periodo")
-  .eq("variable", "FEN").order("periodo");   // luego pedir el geojson solo del evento elegido
+// geom desde el GPS, como texto EWKT (ojo: primero lon, después lat)
+await supabase.from("report").insert({
+  tipo: "inundacion",
+  descripcion: "calle anegada",
+  geom: `SRID=4326;POINT(${lon} ${lat})`,
+});
 ```
 
 ## Notas
-- **Lectura pública**: las tablas de datos oficiales se leen con la publishable key (RLS ya configurado).
-- **Escritura** (crear reportes, chat): necesita login con Supabase Auth — se implementa en la fase 2.
-- Mapa base recomendado: OSM (`https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png`).
+- **Lectura pública**: los datos oficiales y los reportes se leen con la publishable key (RLS).
+- **Escritura** (reportes, votos, chat): necesita sesión de Supabase Auth.
+- Mapa base: Stadia Alidade Smooth (en un dominio real necesita su API key gratuita).

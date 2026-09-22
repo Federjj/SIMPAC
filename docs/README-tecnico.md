@@ -13,17 +13,18 @@
 
 ## 1. TL;DR / Quickstart
 
-Los prototipos de conectores usan **solo la librería estándar** de Python (3.10+), así que
-corren sin instalar nada:
+El stack real corre en Docker (§8). Los conectores, el prototipo y las pruebas usan **solo la
+librería estándar** de Python (3.10+), así que corren sin instalar nada (desde la raíz del repo):
 
 ```bash
-python backend/demo.py      # foto rápida en consola (sin BD)
+python -m unittest discover -s backend/tests -t .   # 48 pruebas sin red ni BD
 
-python backend/ingest.py    # trae datos y los guarda en backend/simpac.db (SQLite)
-python backend/api.py       # sirve la API JSON en http://localhost:8000
+python -m backend.prototipo.demo     # foto rápida en consola (sin BD)
+python -m backend.prototipo.ingest   # guarda una pasada en backend/prototipo/simpac.db (SQLite)
+python -m backend.prototipo.api      # API JSON del prototipo en http://localhost:8000
 ```
 
-Salida esperada de `demo.py` (datos en vivo — foto de Cajamarca): contexto El Niño (ONI/ICEN),
+Salida esperada de `demo` (datos en vivo — foto de Cajamarca): contexto El Niño (ONI/ICEN),
 caudales de ríos con su estado de alerta, y la lluvia horaria de una estación automática.
 
 ```
@@ -49,20 +50,29 @@ VigiaFEN/
 │  │  ├─ igp.py          # Índice Costero El Niño (ICEN)
 │  │  ├─ noaa.py         # ONI (contexto ENSO global)
 │  │  └─ idesep.py       # catálogo GeoNetwork de SENAMHI: shapefile -> GeoJSON (no lo importa __init__)
+│  ├─ ingesta/
+│  │  ├─ recolectar.py   # baja de todas las fuentes en paralelo -> Pasada (no toca la BD)
+│  │  ├─ guardar.py      # escribe una Pasada en Supabase (una transacción)
+│  │  └─ departamentos.py # slugs de SENAMHI y nombres canónicos de departamento
 │  ├─ mapas/
 │  │  └─ cargar_fen.py   # carga los mapas históricos de eventos El Niño a la tabla mapa
+│  ├─ prototipo/         # versión sin dependencias (SQLite + http.server), congelada
+│  ├─ tests/             # pruebas sin red (unittest)
 │  ├─ app.py             # API FastAPI async (Docker)
-│  ├─ cache.py           # snapshot en Redis
-│  ├─ celery_app.py      # worker + beat (ingesta horaria, refresco de caché)
-│  ├─ store_supabase.py  # ingesta nacional a Supabase (la corre el worker)
-│  ├─ store.py           # persistencia SQLite (prototipo de la BD)
+│  ├─ celery_app.py      # worker + beat (ingesta horaria, refresco del snapshot)
+│  ├─ config.py          # variables de entorno, en un solo lugar
+│  ├─ db.py              # conexión a Supabase para quien escribe (worker, cargadores)
+│  ├─ snapshot.py        # panorama cacheado en Redis que sirve la API
 │  ├─ alerts.py          # motor de umbrales (lluvia + caudal)
-│  ├─ ingest.py          # job de ingesta (correr cada hora)
-│  ├─ api.py             # API JSON (http.server, sin deps)
-│  ├─ demo.py            # prueba de humo en vivo
-│  └─ requirements.txt
+│  └─ requirements.txt   # + requirements-mapas.txt (geopandas, solo worker)
+├─ frontend/             # React + Vite + Leaflet (ver frontend/README.md)
+├─ supabase/
+│  ├─ migrations/        # historia de la BD: un archivo por cambio, en orden
+│  └─ schema.sql         # foto consolidada del estado final
 └─ docs/
    ├─ README-tecnico.md          (este archivo)
+   ├─ ESTADO.md                  (dónde estamos)
+   ├─ catalogo-idesep.md         (catálogo de mapas de IDESEP)
    ├─ fuentes-y-endpoints.html   (catálogo visual de endpoints)
    └─ pre-documentacion-general.html
 ```
@@ -72,8 +82,9 @@ VigiaFEN/
 ## 3. Arquitectura
 
 Principio: **un conector aislado por organismo** que normaliza su fuente a estructuras
-simples. Los jobs de ingesta corren periódicamente, guardan en PostgreSQL/PostGIS, y la API
-(FastAPI) sirve al frontend (React + Leaflet) y a la app (Firebase push).
+simples. La ingesta (Celery beat, cada hora) guarda en PostgreSQL/PostGIS (Supabase). La web
+(React + Leaflet) lee **Supabase directo** con la llave pública, protegida por RLS. La API
+(FastAPI) sirve un resumen cacheado en Redis para otros consumidores (app móvil, terceros).
 
 ```mermaid
 flowchart LR
@@ -86,7 +97,7 @@ flowchart LR
   end
   subgraph Ingesta
     K[Conectores\n1 por fuente]
-    J[(Jobs horarios\ncron / APScheduler)]
+    J[(Ingesta horaria\nCelery beat)]
   end
   DB[(PostgreSQL\n+ PostGIS)]
   M[Motor de umbrales\npor zona]
@@ -95,8 +106,9 @@ flowchart LR
   F[Firebase\npush geolocalizada]
 
   S & A & I & N & C --> K --> J --> DB
-  DB --> M --> API
-  API --> W
+  J --> M --> DB
+  DB --> W
+  DB --> API
   M --> F
 ```
 
@@ -281,9 +293,14 @@ El upsert usa el índice único `mapa_uuid_key`, así que correrlo varias veces 
 Sale con código 1 si algún evento falla o no aparece en el catálogo.
 
 Para `--exportar` dentro de Docker hay que montar una carpeta del host (con `--rm` el contenedor
-se borra y los archivos con él):
+se borra y los archivos con él). En PowerShell:
+```powershell
+docker compose run --rm -v "${PWD}/backend/mapas:/out" worker python -m backend.mapas.cargar_fen --exportar /out
+```
+En Git Bash hay que desactivar la conversión de rutas de MSYS (si no, `/out` se vuelve
+`C:/Program Files/Git/out`):
 ```bash
-docker compose run --rm -v "$PWD/backend/mapas:/out" worker python -m backend.mapas.cargar_fen --exportar /out
+MSYS_NO_PATHCONV=1 docker compose run --rm -v "$PWD/backend/mapas:/out" worker python -m backend.mapas.cargar_fen --exportar /out
 ```
 geopandas solo está en la imagen del **worker** (`requirements-mapas.txt`, build arg
 `INSTALAR_MAPAS=1`); la imagen de la API no lo trae.
@@ -318,12 +335,35 @@ acumulación propia en la BD) se puede:
 
 ---
 
-## 7. Persistencia, ingesta y API (prototipo)
+## 7. Persistencia, ingesta y API
 
-El prototipo ya tiene el flujo completo **fuentes → ingesta → BD → API**, todo con la
-librería estándar para que corra sin instalar nada.
+### 7.1. Producción (Supabase + worker)
 
-**Persistencia** (`store.py`, SQLite en `backend/simpac.db`). Esquema (refleja el de PostGIS):
+**Ingesta** (`backend/ingesta/`, la corre el worker cada hora):
+1. `recolectar()` baja, en paralelo, el inventario de los 24 departamentos de SENAMHI (982
+   estaciones; ojo, un slug mal escrito no da error: SENAMHI devuelve todo el país), la lluvia
+   horaria de las estaciones automáticas de `SIMPAC_LLUVIA_DEPTS`, el reporte de ANA de **ayer y
+   hoy** (fechas de Perú; el de un día solo trae las estaciones que ya midieron, y de madrugada
+   viene casi vacío) y los índices IGP/NOAA. Cada fuente va protegida por separado: si una
+   falla, queda anotada en `Pasada.fallas` y la corrida sigue.
+2. `guardar()` escribe todo en una transacción. Las horas de SENAMHI se guardan con zona horaria
+   (`medido_en`, UTC-5). **Regla de alertas:** solo se reemplazan las de las estaciones que se
+   volvieron a evaluar con dato (si ANA o una estación no respondió, su alerta se queda) y las
+   que nadie refresca caducan a las 6 h.
+3. El resultado de la tarea Celery es el resumen: `estaciones`, `lluvia`, `caudal`, `alertas`,
+   `fallas`. Corrida suelta: `docker compose run --rm worker python -m backend.ingesta`.
+
+**BD:** la estructura está en `supabase/migrations/` (historia) y `supabase/schema.sql` (foto).
+`lectura_caudal` es el historial; la vista **`caudal_actual`** da la última lectura de ayer u
+hoy de cada estación (es la que usan el mapa y el snapshot). Todo cambio de BD va como
+migración nueva.
+
+### 7.2. Prototipo (sin dependencias, congelado)
+
+`backend/prototipo/` es la primera versión del flujo **fuentes → ingesta → BD → API**, toda con la
+librería estándar. Sirve para mostrar los conectores sin Docker ni Supabase; no se usa en producción.
+
+**Persistencia** (`prototipo/store.py`, SQLite en `backend/prototipo/simpac.db`). Esquema:
 
 | Tabla | Contenido | Clave / dedup |
 |---|---|---|
@@ -333,17 +373,17 @@ librería estándar para que corra sin instalar nada.
 | `indice` | último ONI / ICEN | `fuente` |
 | `alerta` | alertas vigentes (se reescriben cada corrida) | autoincrement |
 
-**Ingesta** (`ingest.py`): una pasada = inventario + lluvia (automáticas) + caudales +
+**Ingesta** (`prototipo/ingest.py`): una pasada = inventario + lluvia (automáticas) + caudales +
 índices + recálculo de alertas. Última corrida real: `93 estaciones, 672 filas de lluvia,
 12 de caudal, 0 alertas` (estiaje). Programarla **cada hora**:
 
 ```bash
-# Linux/mac (cron):     0 * * * *  cd /ruta/VigiaFEN && python backend/ingest.py
-# Windows (Programador de tareas): acción -> python  argumento -> backend\ingest.py
+# Linux/mac (cron):     0 * * * *  cd /ruta/VigiaFEN && python -m backend.prototipo.ingest
+# Windows (Programador de tareas): acción -> python  argumentos -> -m backend.prototipo.ingest
 ```
 Acumular estas pasadas es lo que construye el histórico propio para el modelo predictivo.
 
-**API** (`api.py`, `http.server`, CORS abierto):
+**API** (`prototipo/api.py`, `http.server`, CORS abierto):
 
 | Método | Ruta | Devuelve |
 |---|---|---|
@@ -354,9 +394,8 @@ Acumular estas pasadas es lo que construye el histórico propio para el modelo p
 | GET | `/api/alertas` | alertas vigentes |
 | GET | `/api/contexto` | índices El Niño |
 
-> **Migración a producción:** reemplazar `store.py` por PostgreSQL+PostGIS (mismas firmas) y
-> envolver estas consultas en rutas **FastAPI** async. `api.py` (stdlib) es solo para ver el
-> flujo hoy; no usarlo en prod (sin validación, sin auth, monohilo básico).
+> En producción esto ya lo hacen Supabase (PostgreSQL + PostGIS), `backend/ingesta/` y la API
+> FastAPI (§8). `prototipo/api.py` no se usa en prod (sin validación, sin auth).
 
 ---
 
@@ -372,9 +411,14 @@ Stack completo en `docker-compose.yml` (4 servicios):
 | `redis` | caché (snapshot) + cola/broker de Celery | 6379 |
 
 ### ¿Por qué esta arquitectura? (van a entrar varias personas a la vez)
-- **Redis (caché):** con muchos usuarios no queremos que *cada* visita consulte Supabase y las
-  fuentes. El worker deja un *snapshot* en memoria (Redis) y la API lo sirve en milisegundos; así
-  la web no se satura ni nos rate-limitea SENAMHI/ANA en picos de tráfico.
+- **Nadie consulta las fuentes por visita:** SENAMHI/ANA solo los consulta el worker, una vez por
+  hora, así no nos rate-limitean en picos de tráfico. La **web lee Supabase directo** (RLS, con la
+  llave pública, y un caché en memoria de 60 s por pestaña): cada visita hace unas 5 consultas a
+  Supabase, que es donde está el límite a vigilar si el tráfico crece.
+- **Redis (caché de la API):** el worker deja un *snapshot* (índices, último caudal por estación,
+  alertas vigentes) y la API lo sirve en milisegundos a consumidores que no son la web (app
+  móvil, terceros). Si algún día la web necesita aguantar más, puede leer ese snapshot con un
+  proxy `/api` en nginx en vez de consultar Supabase.
 - **Worker (Celery + beat):** bajar datos de las fuentes es lento y a veces falla (ANA es
   intermitente). Eso corre **en segundo plano**, aparte de la web, cada hora; si la ingesta tarda o
   falla, la web sigue rápida con lo último cacheado. `beat` es el "reloj" que dispara la tarea.
@@ -391,11 +435,14 @@ cp .env.docker.example .env      # pon SUPABASE_DB_URL (secreto) en .env
 docker compose up --build
 ```
 - Web en `http://localhost:8080`, API en `http://localhost:8000` (`/health`, `/api/snapshot`).
-- El **worker** corre `store_supabase.run()` (nacional, concurrente con ThreadPool) cada hora y
-  refresca el snapshot en Redis cada 5 min — sin cron (lo programa el **beat** de Celery).
+- El **worker** corre la ingesta (`backend/ingesta/`, nacional y concurrente) cada hora y refresca
+  el snapshot en Redis cada 5 min — sin cron (lo programa el **beat** de Celery).
+- La API es **de solo lectura**: `GET /health` y `GET /api/snapshot` (índices, último caudal por
+  estación, alertas vigentes). El snapshot vive `SNAPSHOT_TTL` s (900) y hay una copia sin
+  vencimiento que se sirve si Supabase no responde.
 - **Async / rendimiento:** la API es async (`httpx.AsyncClient` + `redis.asyncio`, consultas en
-  paralelo con `asyncio.gather`) y sirve el snapshot **cacheado en Redis**, para aguantar varios
-  usuarios sin golpear Supabase en cada request.
+  paralelo con `asyncio.gather`) y sirve el snapshot **cacheado en Redis**: sus clientes no golpean
+  Supabase en cada request (la web, en cambio, lee Supabase directo).
 - El frontend recibe las llaves públicas por *build-args*; `SUPABASE_DB_URL` (secreto) solo lo usa
   el worker vía `.env` (nunca en git, ni en la imagen, ni en el contenedor de la API).
 - **`SUPABASE_DB_URL` debe ser la del pooler** (`...pooler.supabase.com:5432`, usuario
@@ -411,8 +458,8 @@ docker compose up --build
 > **Gotcha (worker + Redis):** un cliente `redis.asyncio` ata su pool al event loop donde se usa
 > primero. El worker corre cada tarea con `asyncio.run()` (loop nuevo y cerrado en cada corrida),
 > así que **no** puede compartir un cliente global — daba `RuntimeError: Event loop is closed`.
-> Solución: el worker crea/cierra un cliente Redis **por corrida** (`cache._redis_ctx`), y la API
-> (loop persistente de uvicorn) inyecta **uno** de larga vida por `lifespan`. Ver `backend/cache.py`.
+> Solución: el worker crea/cierra un cliente Redis **por corrida** (`snapshot._redis_ctx`), y la API
+> (loop persistente de uvicorn) inyecta **uno** de larga vida por `lifespan`. Ver `backend/snapshot.py`.
 
 ### 8.1. Seguridad: llave anon pública y RLS
 - Supabase expone dos llaves: la **publishable/anon** (va en el frontend, es **pública por
@@ -421,11 +468,25 @@ docker compose up --build
 - La anon key **viaja en cada request** (header `apikey`); no es un secreto que robar: cualquiera
   que abra la web la ve. La protección real es **RLS**, no ocultar la llave. Todo va por **HTTPS**,
   así que un intermediario no la lee en tránsito, pero igual es pública.
-- Estado verificado con el *advisor* de Supabase: **RLS activo en todas las tablas de datos**. Los
-  únicos avisos son internos de PostGIS (`spatial_ref_sys` sin RLS, extensión `postgis` en `public`,
-  funciones `st_estimatedextent`) = datos de referencia públicos, riesgo bajo.
-- Pendiente menor: revisar/revocar `EXECUTE` de la función `rls_auto_enable()` (es `SECURITY
-  DEFINER` y hoy es llamable por el rol `anon` vía RPC).
+- **RLS en todas las tablas** y **permisos por columna** en las de comunidad: el cliente solo puede
+  escribir las columnas que le tocan (p. ej. en `report`: tipo, subtipo, descripción, foto y
+  posición). `estado`, `confianza`, `likes`, vencimientos y fechas los pone la BD, y la reputación
+  la mueven solo los votos (trigger `voto_aplicar`).
+- **Ids uuid** en `report`, `voto`, `comentario` y `message` (y los usuarios, de Supabase Auth): no
+  se pueden recorrer adivinando números.
+- **Privacidad de ubicación:** la columna `autor` de `report` y `comentario` no es legible (con
+  autor + GPS + hora se arma el historial de dónde estuvo alguien), los reportes vencidos dejan de
+  ser públicos y `message` no expone su posición. Cada quien ve los suyos con
+  `rpc('mis_reportes')`. Límites por hora: 5 reportes, 20 comentarios, 30 mensajes.
+- Las funciones de los triggers viven en el esquema `privado` (el Data API no lo expone), son
+  `SECURITY DEFINER` con `search_path` vacío y no se pueden llamar por RPC.
+- `anon`/`authenticated` no tienen TRUNCATE, TRIGGER, REFERENCES ni MAINTAIN, tampoco en tablas
+  futuras (default privileges). `rls_auto_enable()` ya no es llamable.
+- Avisos que quedan en el *advisor*, todos de PostGIS y fuera del alcance del rol postgres: la
+  tabla `spatial_ref_sys` sin RLS. El Data API la dejaba **escribible** por anon; ahora un trigger
+  rechaza esas escrituras. También quedan la extensión en `public` y `st_estimatedextent`.
+- **La ingesta escribe con el rol `postgres`** (dueño de las tablas) vía `SUPABASE_DB_URL`;
+  `service_role` no tiene permisos de escritura en estas tablas.
 
 ---
 
@@ -461,7 +522,9 @@ Reglas:
 - [x] Persistencia + ingesta + API (prototipo SQLite/stdlib, sección 7).
 - [x] Persistencia en **PostgreSQL + PostGIS** (Supabase) con job horario en el worker (Celery beat).
 - [x] Conector **IDESEP** + 5 mapas históricos de eventos El Niño en la tabla `mapa` (sección 5.7).
-- [~] API en **FastAPI** async con caché en Redis (sección 8); falta auth, validación y paginación.
+- [x] API en **FastAPI** async con caché en Redis (sección 8), de solo lectura.
+- [x] Refactor modular del backend y frontend + pruebas sin red (22 sep).
+- [x] Comunidad con **ids uuid**, permisos por columna y votos calculados por la BD (sección 8.1).
 - [ ] Capa de **áreas FEN** en el frontend (polígonos por `RANGO` + selector de evento).
 - [ ] Capa de **lluvia ahora** en el frontend (círculos por mm/h). Datos listos: la ingesta horaria
       ya llena `lectura_lluvia` (14 estaciones automáticas de Cajamarca, verificado el 22 sep).

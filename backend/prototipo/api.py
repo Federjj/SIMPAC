@@ -1,7 +1,7 @@
 """
 API JSON de SIMPAC (prototipo) — servidor de la librería estándar, sin deps.
 
-    python backend/api.py            # sirve en http://localhost:8000
+    python -m backend.prototipo.api  # sirve en http://localhost:8000
 
 Endpoints (todos GET, JSON, con CORS abierto para el frontend en desarrollo):
     GET /api/snapshot          panorama: contexto + resumen + alertas + caudales
@@ -22,7 +22,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse, parse_qs
 
 sys.path.insert(0, __file__.rsplit("backend", 1)[0])
-from backend import store
+from backend.prototipo import store
 
 PORT = 8000
 

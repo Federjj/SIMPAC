@@ -102,7 +102,8 @@
   transform: rotate(-45deg);
 }
 
-/* pin tipo Waze (gota) para usuarios cercanos */
+/* pin tipo Waze (gota) para reportes ciudadanos: la esquina en punta (abajo a la
+   izquierda) girada -45 grados queda abajo al centro, justo sobre el punto GPS */
 .mkpin {
   display: grid;
   place-items: center;
@@ -111,12 +112,12 @@
   border: 3px solid #fff;
   box-shadow: 0 2px 8px rgba(15, 23, 42, 0.3);
   border-radius: 50% 50% 50% 0;
-  transform: rotate(45deg);
+  transform: rotate(-45deg);
 }
 .mkpin svg {
   width: 15px;
   height: 15px;
-  transform: rotate(-45deg);
+  transform: rotate(45deg);
 }
 
 /* flecha de navegacion = tu ubicacion */
@@ -177,6 +178,24 @@
   margin: 0 0 12px;
   font-size: 0.9rem;
   line-height: 1.45;
+}
+.pop .filas {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 3px 12px;
+  margin: 0;
+  font-size: 0.85rem;
+}
+.pop .filas dt {
+  color: hsl(var(--muted-foreground));
+}
+.pop .filas dd {
+  margin: 0;
+  font-weight: 600;
+}
+.pop .nota {
+  margin: 8px 0 0;
+  font-size: 0.85rem;
 }
 .pop .acts {
   display: flex;

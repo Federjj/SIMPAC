@@ -13,6 +13,7 @@ services:
       REDIS_URL: redis://redis:6379/0
       SUPABASE_URL: ${SUPABASE_URL}
       SUPABASE_PUBLISHABLE_KEY: ${SUPABASE_PUBLISHABLE_KEY}
+      SNAPSHOT_TTL: ${SNAPSHOT_TTL:-900}
     ports: ["8000:8000"]
     depends_on: [redis]
 
@@ -30,6 +31,7 @@ services:
       SUPABASE_PUBLISHABLE_KEY: ${SUPABASE_PUBLISHABLE_KEY}
       SUPABASE_DB_URL: ${SUPABASE_DB_URL}
       SIMPAC_LLUVIA_DEPTS: ${SIMPAC_LLUVIA_DEPTS:-cajamarca}
+      SNAPSHOT_TTL: ${SNAPSHOT_TTL:-900}
     depends_on: [redis]
 
   frontend:                      # React build servido por nginx

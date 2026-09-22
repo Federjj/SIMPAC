@@ -5,17 +5,20 @@ Tareas:
   - ingesta: baja datos de las fuentes y los escribe en Supabase (cada hora).
   - refresh_cache: refresca el snapshot en Redis (cada 5 min).
 
+Los nombres de las tareas son fijos a propósito: beat las encola por nombre, así
+que moverlas de módulo no rompe lo programado.
+
 Correr (lo hace docker-compose):
   celery -A backend.celery_app worker --beat --loglevel=info
 """
 import asyncio
-import os
 
 from celery import Celery
 
-REDIS_URL = os.environ.get("REDIS_URL", "redis://redis:6379/0")
+from backend.config import ajustes
 
-celery = Celery("simpac", broker=REDIS_URL, backend=REDIS_URL)
+_redis = ajustes().redis_url
+celery = Celery("simpac", broker=_redis, backend=_redis)
 celery.conf.update(timezone="America/Lima", enable_utc=False)
 celery.conf.beat_schedule = {
     "ingesta-horaria": {"task": "backend.celery_app.ingesta", "schedule": 3600.0},
@@ -25,11 +28,11 @@ celery.conf.beat_schedule = {
 
 @celery.task(name="backend.celery_app.ingesta")
 def ingesta():
-    from backend import store_supabase
-    return store_supabase.run()
+    from backend.ingesta import run
+    return run()
 
 
 @celery.task(name="backend.celery_app.refresh_cache")
 def refresh_cache():
-    from backend.cache import refresh_snapshot
+    from backend.snapshot import refresh_snapshot
     return asyncio.run(refresh_snapshot())

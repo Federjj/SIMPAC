@@ -1,56 +1,26 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { Layers, LocateFixed, Plus } from "lucide-react";
-import Sidebar from "./components/Sidebar.jsx";
-import MapView from "./components/MapView.jsx";
-import LayersPanel from "./components/LayersPanel.jsx";
-import StatusPanel from "./components/StatusPanel.jsx";
-import CitySelector from "./components/CitySelector.jsx";
+import Sidebar from "@/components/Sidebar";
+import MapView from "@/components/MapView";
+import LayersPanel from "@/components/LayersPanel";
+import StatusPanel from "@/components/StatusPanel";
+import CitySelector from "@/components/CitySelector";
 import { Button } from "@/components/ui/button";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
-import { CITIES, DEFAULT_CITY, nearestCity } from "./data/cities";
-import { getIndices, getCaudales, getMapaAnomalias } from "./lib/queries";
-import { NIVEL, nivelDeCaudales } from "./lib/nivel";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { CITIES, DEFAULT_CITY, nearestCity } from "@/data/cities";
+import { LAYERS } from "@/map/layers";
+import { NIVEL } from "@/lib/nivel";
+import { usePanorama } from "@/hooks/usePanorama";
+import { useGeolocation } from "@/hooks/useGeolocation";
+import { useLayerVisibility } from "@/hooks/useLayerVisibility";
 
 export default function App() {
-  const [visible, setVisible] = useState({ est: false, rio: true, inc: true, zona: true, anom: false });
+  const { visible, toggle } = useLayerVisibility(LAYERS);
   const [showLayers, setShowLayers] = useState(false);
   const [city, setCity] = useState(DEFAULT_CITY.name);
   const [focus, setFocus] = useState({ lat: DEFAULT_CITY.lat, lon: DEFAULT_CITY.lon, zoom: 14 });
-  const [userPos, setUserPos] = useState(null);
-  const mapRef = useRef(null);
-
-  // Datos reales del backend (Supabase)
-  const [oni, setOni] = useState(null);
-  const [icen, setIcen] = useState(null);
-  const [alertCount, setAlertCount] = useState(0);
-  const [nivel, setNivel] = useState("normal");
-  const [anomGeo, setAnomGeo] = useState(null);
-
-  useEffect(() => {
-    getIndices()
-      .then((rows) => {
-        setOni(rows.find((r) => r.fuente === "ONI") || null);
-        setIcen(rows.find((r) => r.fuente === "ICEN") || null);
-      })
-      .catch((e) => console.error("indices", e));
-    getCaudales()
-      .then((rows) => {
-        const activos = rows.filter((c) => c.estado === "alerta" || c.estado === "emergencia");
-        setAlertCount(activos.length);
-        setNivel(nivelDeCaudales(rows));
-      })
-      .catch((e) => console.error("caudales", e));
-    getMapaAnomalias()
-      .then((m) => setAnomGeo(m?.geojson || null))
-      .catch((e) => console.error("anomalias", e));
-  }, []);
-
-  const toggle = (id) => setVisible((v) => ({ ...v, [id]: !v[id] }));
+  const { pos: userPos, locate } = useGeolocation();
+  const { oni, icen, nivel, alertCount, titular, actualizado, desactualizado } = usePanorama();
 
   const pickCity = (name) => {
     const c = CITIES.find((x) => x.name === name) || DEFAULT_CITY;
@@ -58,43 +28,35 @@ export default function App() {
     setFocus({ lat: c.lat, lon: c.lon, zoom: 14 });
   };
 
-  // Detecta la ubicacion real (con permiso); si falla, se queda en Cajamarca.
-  const geolocate = () => {
-    if (!navigator.geolocation) return;
-    navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        const { latitude: lat, longitude: lon } = pos.coords;
-        setUserPos([lat, lon]);
-        setFocus({ lat, lon, zoom: 15 });
-        setCity(nearestCity(lat, lon).name);
-      },
-      () => { /* permiso denegado / no disponible: se mantiene Cajamarca */ },
-      { enableHighAccuracy: true, timeout: 8000 }
-    );
+  // Ubicación real (con permiso); si falla, el mapa se queda en Cajamarca.
+  const geolocate = async () => {
+    const lugar = await locate();
+    if (!lugar) return;
+    const [lat, lon] = lugar;
+    setFocus({ lat, lon, zoom: 15 });
+    setCity(nearestCity(lat, lon).name);
   };
 
-  useEffect(() => { geolocate(); }, []);
+  useEffect(() => {
+    geolocate();
+  }, []);
 
   const nv = NIVEL[nivel];
-  const titular =
-    nivel === "emergencia"
-      ? `${alertCount} río(s) en emergencia por caudal`
-      : nivel === "alerta"
-        ? `${alertCount} río(s) en alerta por caudal`
-        : "Sin alertas de caudal activas";
 
   return (
     <div className="flex h-screen overflow-hidden">
-      <Sidebar active="mapa" nivel={nivel} alertCount={alertCount} oni={oni} icen={icen} />
+      <Sidebar
+        active="mapa"
+        nivel={nivel}
+        alertCount={alertCount}
+        oni={oni}
+        icen={icen}
+        actualizado={actualizado}
+        desactualizado={desactualizado}
+      />
 
       <main className="relative flex-1 h-screen">
-        <MapView
-          visible={visible}
-          focus={focus}
-          userPos={userPos}
-          anomGeo={anomGeo}
-          onReady={(m) => (mapRef.current = m)}
-        />
+        <MapView layers={LAYERS} visible={visible} focus={focus} userPos={userPos} />
 
         {/* Chip de marca + estado */}
         <div className="absolute left-4 top-4 z-[600] flex items-center gap-2 rounded-full border border-border bg-card/85 px-3.5 py-1.5 text-sm font-semibold shadow-lg backdrop-blur">
@@ -103,7 +65,7 @@ export default function App() {
           <span className={nv.text}>{nv.label}</span>
         </div>
 
-        {/* Selector de ciudad */}
+        {/* Selector de ciudad (mueve el mapa; el estado es nacional) */}
         <div className="absolute left-4 top-[60px] z-[600]">
           <CitySelector value={city} onChange={pickCity} />
         </div>
@@ -140,9 +102,9 @@ export default function App() {
           </div>
         </TooltipProvider>
 
-        {showLayers && <LayersPanel visible={visible} onToggle={toggle} />}
+        {showLayers && <LayersPanel layers={LAYERS} visible={visible} onToggle={toggle} />}
 
-        {/* Boton reportar flotante (solo desktop; en movil va dentro del panel) */}
+        {/* Botón reportar flotante (solo desktop; en móvil va dentro del panel) */}
         <Button
           variant="destructive"
           className="absolute bottom-6 left-4 z-[610] hidden rounded-xl shadow-xl sm:inline-flex"
@@ -157,6 +119,8 @@ export default function App() {
           alertCount={alertCount}
           oni={oni}
           icen={icen}
+          actualizado={actualizado}
+          desactualizado={desactualizado}
         />
       </main>
     </div>

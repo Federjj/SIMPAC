@@ -3,8 +3,9 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { NIVEL } from "@/lib/nivel";
+import { NIVEL_HEX } from "@/map/palette";
+import { horaPeru } from "@/lib/tiempo";
 
-const NIVEL_HEX = { normal: "#3BEB40", alerta: "#F58E27", emergencia: "#DB0404" };
 const fmt = (v) => (v == null ? "—" : (v >= 0 ? "+" : "") + v);
 
 function Metric({ Icon, color, value, label }) {
@@ -24,7 +25,15 @@ function Metric({ Icon, color, value, label }) {
   );
 }
 
-export default function StatusPanel({ titular, nivel = "normal", alertCount = 0, oni, icen }) {
+export default function StatusPanel({
+  titular,
+  nivel = "normal",
+  alertCount = 0,
+  oni,
+  icen,
+  actualizado,
+  desactualizado,
+}) {
   const nv = NIVEL[nivel];
   return (
     <div className="pointer-events-none absolute inset-x-0 bottom-0 z-[600] p-3 md:p-4">
@@ -33,7 +42,12 @@ export default function StatusPanel({ titular, nivel = "normal", alertCount = 0,
         <div className="flex items-start gap-3 px-4 pt-3.5">
           <div className="min-w-0">
             <div className="text-[0.68rem] uppercase tracking-wider text-muted-foreground">
-              Estado · Cajamarca
+              Estado · Perú
+              {actualizado && (
+                <span className={cn("ml-1 normal-case tracking-normal", desactualizado && "text-nivel-alerta")}>
+                  · {desactualizado ? "sin actualizar desde" : "actualizado"} {horaPeru(actualizado)}
+                </span>
+              )}
             </div>
             <h3 className="truncate text-base font-semibold md:text-lg">
               {titular}
@@ -51,7 +65,7 @@ export default function StatusPanel({ titular, nivel = "normal", alertCount = 0,
         <div className="grid grid-cols-3 gap-2 px-4 py-3 sm:flex">
           <Metric Icon={Thermometer} color="#3BA5EB" value={fmt(oni?.valor)} label={`ONI · ${oni?.categoria || "El Niño"}`} />
           <Metric Icon={Waves} color="#3B3BEB" value={fmt(icen?.valor)} label={`ICEN · ${icen?.categoria || "costero"}`} />
-          <Metric Icon={TriangleAlert} color={NIVEL_HEX[nivel]} value={alertCount} label="ríos en alerta" />
+          <Metric Icon={TriangleAlert} color={NIVEL_HEX[nivel]} value={alertCount} label="alertas vigentes" />
         </div>
 
         {/* Reportar dentro del panel (solo movil; en desktop es el boton flotante) */}

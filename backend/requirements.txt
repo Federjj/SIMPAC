@@ -1,5 +1,5 @@
 # Dependencias de producción (backend API + worker).
-# Los prototipos sueltos (demo.py, ingest.py, api.py) siguen corriendo solo con la
+# El prototipo (backend/prototipo/) y las pruebas (backend/tests/) corren solo con la
 # librería estándar; estas son para el stack en Docker.
 # Las del cargador de mapas FEN están aparte en requirements-mapas.txt.
 fastapi>=0.115

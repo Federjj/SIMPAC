@@ -4,8 +4,17 @@
 **/*.db
 **/dist
 **/.env
+**/.env.*
+!**/.env.example
+**/*.geojson
 .git
 .venv
 venv
 docs
-backend/mapas/*.geojson
+supabase
+appmobile
+.claude
+.mcp.json
+# No corren en producción: se quedan fuera de las imágenes
+backend/prototipo
+backend/tests

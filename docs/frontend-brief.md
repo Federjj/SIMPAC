@@ -82,13 +82,11 @@ deslizable encima del mapa, no como página aparte.
    - **Lluvia/precipitación activa** — círculos o *heatmap* alrededor de estaciones con lluvia
      en la última hora (intensidad = opacidad/color), a partir de los datos horarios de SENAMHI.
    - **Inundación / caudal alto** — círculos alrededor de ríos en estado alerta/emergencia (ANA).
-3. **Incidentes ciudadanos** (los "baches/tráfico" de Waze, aquí desastres) — pines por tipo:
-   huayco, inundación, lluvia intensa, deslizamiento, vía bloqueada. Con contador de
-   **likes/dislikes** y color según cómo lo valora la comunidad.
-4. **Usuarios cercanos** ("wazers") — íconos de usuarios activos cerca. **Privacidad:** posición
-   **aproximada** (ajustada a zona/manzana), nunca exacta; opt-in. Mostrar solo un contador y
-   posiciones difusas, no rastros individuales.
-5. **Estaciones oficiales** (las 93 ya cargadas) — capa conmutable, marcador meteo/hidro por estado.
+3. **Incidentes ciudadanos** (estilo Waze) — pines por tipo (ver taxonomía abajo). Con contador
+   de **likes/dislikes** y color según cómo lo valora la comunidad.
+4. **Estaciones oficiales** (982 en todo el Perú) — capa conmutable, marcador meteo/hidro.
+
+(La capa de "usuarios cercanos" se descartó: no se muestra la posición de otras personas.)
 
 **Controles estilo Waze:**
 - Botón flotante grande **“＋ Reportar”** (abre el flujo de la sección 6).
@@ -107,13 +105,18 @@ datos (no hay una capa "oficial" de círculos; se generan en el cliente/servidor
 
 **Taxonomía de incidentes (pines) e íconos sugeridos:**
 
-| Tipo | Ícono sugerido | Color base |
+La lista la valida la BD (`report.tipo`); en el código está en `frontend/src/lib/reportTypes.js`.
+
+| Tipo (`id`) | Ícono sugerido | Color base |
 |---|---|---|
-| Huayco / deslizamiento | ladera con flujo ↓ | marrón |
-| Inundación | ola / casa con agua | azul |
-| Lluvia intensa | nube con lluvia | celeste |
-| Vía bloqueada | barrera / cono | gris |
-| Otro | signo de exclamación | neutro |
+| Inundación (`inundacion`) | gota / casa con agua | azul #3B3BEB |
+| Huayco / deslizamiento (`huayco`) | ladera con flujo | rojo #EB3B3B |
+| Lluvia intensa (`lluvia_intensa`) | nube con lluvia | cian #3BEBEB |
+| Vía bloqueada (`via_bloqueada`) | barrera / cono | negro #111111 |
+| Atasco (`atasco`, subtipo leve / moderado / detenido) | auto | amarillo #EBEB3B |
+| Bache (`bache`) | hoyo en la pista | naranja #F58E27 |
+| Accidente (`accidente`) | triángulo de aviso | rojo #DB0404 |
+| Otro (`otro`) | signo de exclamación | gris #6B7280 |
 
 Cada pin lleva un badge con **likes/dislikes** y su opacidad refleja la **valoración de la
 comunidad** (saldo de votos): más apoyo = más sólido; muy rechazado = se atenúa.
@@ -176,8 +179,9 @@ La **comunidad valida**, no la app ni un moderador: cada quien sube su reporte c
 demás lo **votan (like/dislike)** y **comentan**. SIMPAC solo es el intermediario que muestra la
 información; la veracidad la juzga la gente.
 
-- **Crear reporte:** tipo (inundación, huayco, lluvia intensa, deslizamiento…), ubicación
-  (mapa/GPS), **foto** opcional, comentario corto. Aviso de que es comunitario y no oficial.
+- **Crear reporte:** tipo (ver taxonomía de §4.2), ubicación = **posición GPS actual** (sin
+  elegir un punto en el mapa: solo se reporta donde uno está, para evitar reportes troll),
+  **foto** opcional, comentario corto. Aviso de que es comunitario y no oficial.
 - **Reportes en el mapa:** marcadores diferenciados de las estaciones; agrupación por cercanía.
 - **Detalle de reporte:** contenido, foto, autor (o anónimo), hora, distancia, **botones
   like / dislike** con sus contadores, y **hilo de comentarios**.
@@ -224,9 +228,8 @@ y línea con umbrales) · Tarjeta de alerta · Tarjeta de reporte (con like/disl
 Burbuja de chat efímero (con contador de expiración) · Leyenda del mapa · Chip de fuente+hora ·
 Franja de disclaimer legal · Selector de zona/ubicación · Cabecera con estado de sesión.
 
-**Del mapa estilo Waze (4.2):** Pin de incidente por tipo (huayco/inundación/lluvia/deslizamiento/
-vía bloqueada) · Overlay de zona sombreada en 3 variantes (riesgo / lluvia / inundación) ·
-Ícono de usuario cercano + contador de “usuarios cerca” · Botón flotante “＋ Reportar” · Botón
+**Del mapa estilo Waze (4.2):** Pin de incidente por tipo (taxonomía de 4.2) · Overlay de zona
+sombreada en 3 variantes (riesgo / lluvia / inundación) · Botón flotante “＋ Reportar” · Botón
 recentrar en mi ubicación · Tarjeta emergente de pin (qué/cuándo/distancia · like·dislike·comentar).
 
 ---
@@ -260,5 +263,5 @@ Datos en vivo del 2026-09-06 (temporada seca → todo "normal"):
 ---
 
 *La API del núcleo de datos ya existe (ver `docs/README-tecnico.md`, sección 7). Cualquier
-pantalla de v1 puede maquetarse contra datos reales corriendo `python backend/api.py`. Las de
-v2/v3 usan el backend propio (Supabase: usuarios, reportes, mensajes) + FCM para push.*
+pantalla de v1 puede maquetarse contra datos reales leyendo Supabase directo (ver
+`frontend/README.md`). Las de v2/v3 usan Supabase (usuarios, reportes, mensajes) + FCM para push.*

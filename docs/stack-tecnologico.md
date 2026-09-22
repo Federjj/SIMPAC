@@ -14,8 +14,8 @@
 | Lenguaje backend | **Python 3.10+** | conectores, ingesta, API | hecho |
 | Lenguaje frontend | **TypeScript / JavaScript** | web y app | decidido |
 | API backend | **FastAPI (async)** | API REST cacheada | hecho *(dockerizado; prototipo stdlib también)* |
-| Cliente HTTP | `urllib` → **httpx** | consumo de fuentes | hecho → decidido |
-| Base de datos | **PostgreSQL + PostGIS** (vía **Supabase**) | datos relacionales + geoespaciales | decidido *(prototipo SQLite hecho)* |
+| Cliente HTTP | `urllib` (conectores, con reintentos) · **httpx** (API → Supabase) | consumo de fuentes | hecho |
+| Base de datos | **PostgreSQL + PostGIS** (vía **Supabase**) | datos relacionales + geoespaciales | hecho *(migraciones en `supabase/migrations/`)* |
 | Autenticación | **Supabase Auth** | cuentas y roles | decidido |
 | Tiempo real (in-app) | **Supabase Realtime** | chat y alertas en vivo | decidido |
 | Almacenamiento | **Supabase Storage** | fotos de reportes | decidido |
@@ -43,10 +43,11 @@
 ### 2.1. Backend
 - **Python** como lenguaje único de servidor: sirve para scraping, procesamiento geoespacial,
   PDF, API y jobs — un solo stack para el equipo.
-- **FastAPI** en producción (REST + WebSockets en un mismo framework, async, tipado). El
-  prototipo actual usa `http.server` de la librería estándar solo para correr sin instalar nada;
-  la lógica vive en `store.py` y migra 1:1 a FastAPI.
-- **httpx** como cliente HTTP con timeouts/reintentos (el prototipo usa `urllib`).
+- **FastAPI** en producción (REST + WebSockets en un mismo framework, async, tipado), ya en
+  `backend/app.py`. El prototipo con `http.server` de la librería estándar quedó congelado en
+  `backend/prototipo/`.
+- Los conectores usan `urllib` de la librería estándar (`connectors/_http.py`: TLS estricto,
+  timeouts y reintentos); **httpx** async solo lo usa la API para leer Supabase.
 
 ### 2.2. Base de datos
 - **PostgreSQL + PostGIS** a través de **Supabase**. PostGIS es obligatorio por lo geoespacial
@@ -89,9 +90,9 @@
   el prompt (no inventa cifras). El estado/valor siempre es trazable a la fuente oficial.
 
 ### 2.8. Ingesta programada y despliegue
-- **Jobs horarios** con cron / Programador de tareas de Windows / APScheduler / GitHub Actions.
-- Despliegue tentativo: **Supabase** (BD + auth + realtime + storage), **Vercel/Netlify** (web),
-  **Render/Railway/Fly** o **Supabase Edge Functions** (API y jobs).
+- **Ingesta horaria con Celery beat** (worker en Docker Compose, sin cron).
+- Despliegue actual: **Docker Compose** (frontend nginx, API, worker, Redis) + **Supabase** (BD,
+  auth, realtime, storage). Un hosting público (VPS o similar) queda para después de la entrega.
 
 ---
 
@@ -116,11 +117,13 @@ Detalle completo de endpoints en `docs/fuentes-y-endpoints.html` y `docs/README-
 VigiaFEN/
 ├─ backend/          # Python: conectores, ingesta, motor de alertas, API
 │  ├─ connectors/    #   un módulo por fuente
-│  ├─ store.py       #   persistencia (SQLite prototipo → PostGIS)
-│  ├─ alerts.py  ingest.py  api.py
-│  └─ requirements.txt
+│  ├─ ingesta/       #   ingesta horaria a Supabase (recolectar + guardar)
+│  ├─ app.py  celery_app.py  snapshot.py  alerts.py  config.py  db.py
+│  ├─ prototipo/     #   versión sin dependencias (SQLite), congelada
+│  └─ tests/         #   pruebas sin red
+├─ supabase/         # migraciones de la BD + schema.sql consolidado
 ├─ frontend/         # React + Vite + Tailwind + shadcn/ui + Leaflet (pagina Mapa lista)
-├─ mobile/           # (por crear) React Native / Android
+├─ appmobile/        # (por crear) React Native / Android
 └─ docs/             # documentación (este archivo, README-técnico, briefs, endpoints)
 ```
 

@@ -24,14 +24,11 @@ Origen de los datos:
 from __future__ import annotations
 
 import html
-import http.client
 import logging
 import os
 import re
 import tempfile
-import time
 import unicodedata
-import urllib.error
 import urllib.parse
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass
@@ -47,7 +44,6 @@ _CSW_NS = "http://www.opengis.net/cat/csw/2.0.2"
 _NS = {"csw": _CSW_NS, "dc": "http://purl.org/dc/elements/1.1/"}
 
 MAX_ZIP_BYTES = 80 * 1024 * 1024   # tope de descarga por shapefile
-INTENTOS = 3                        # intentos totales ante fallas transitorias de red
 
 
 @dataclass
@@ -128,24 +124,6 @@ def enlace_shapefile(uuid: str) -> str:
     raise ValueError(f"No se encontró el .zip del shapefile en IDESEP para el registro {uuid}")
 
 
-def _con_reintentos(fn, *args):
-    for intento in range(1, INTENTOS + 1):
-        try:
-            return fn(*args)
-        except urllib.error.HTTPError as e:
-            if 400 <= e.code < 500:   # 404, 403...: error permanente, no se reintenta
-                raise
-            error = e
-        except (OSError, http.client.IncompleteRead) as e:   # red, timeout, descarga cortada
-            error = e
-        if intento == INTENTOS:
-            raise error
-        espera = 2 ** intento
-        log.warning("Falla de red (%s), reintento %d/%d en %ds",
-                    type(error).__name__, intento, INTENTOS - 1, espera)
-        time.sleep(espera)
-
-
 def geojson_de_registro(uuid: str, simplificar: float | None = None, decimales: int | None = None) -> str:
     """
     GeoJSON (texto, EPSG:4326) del shapefile de un registro.
@@ -162,8 +140,8 @@ def geojson_de_registro(uuid: str, simplificar: float | None = None, decimales: 
             "dentro del contenedor worker o instala backend/requirements-mapas.txt."
         ) from e
 
-    enlace = _con_reintentos(enlace_shapefile, uuid)
-    datos = _con_reintentos(_http.get_bytes, enlace, MAX_ZIP_BYTES)
+    enlace = _http.con_reintentos(enlace_shapefile, uuid)
+    datos = _http.con_reintentos(_http.get_bytes, enlace, MAX_ZIP_BYTES)
     fd, ruta = tempfile.mkstemp(suffix=".zip")
     try:
         with os.fdopen(fd, "wb") as f:

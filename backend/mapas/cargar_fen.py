@@ -18,8 +18,9 @@ Opciones:
     --catalogo            lista el catálogo IDESEP (uuid + título) y sale
 
 Para --exportar dentro de Docker hay que montar una carpeta del host, si no los
-archivos se pierden al borrar el contenedor (--rm):
-    docker compose run --rm -v "$PWD/backend/mapas:/out" worker python -m backend.mapas.cargar_fen --exportar /out
+archivos se pierden al borrar el contenedor (--rm). En PowerShell:
+    docker compose run --rm -v "${PWD}/backend/mapas:/out" worker python -m backend.mapas.cargar_fen --exportar /out
+(en Git Bash, anteponer MSYS_NO_PATHCONV=1 para que no reescriba /out).
 """
 from __future__ import annotations
 
@@ -34,6 +35,7 @@ if __package__ in (None, ""):   # permite también: python backend/mapas/cargar_
     sys.path.insert(0, __file__.rsplit("backend", 1)[0])
 
 from backend.connectors import idesep
+from backend.db import conectar
 
 log = logging.getLogger("cargar_fen")
 
@@ -128,15 +130,13 @@ def main(argv: list[str] | None = None) -> int:
                 f.write(geojson)
 
     if args.aplicar and listos:
-        dsn = os.environ.get("SUPABASE_DB_URL")
-        if not dsn:
-            log.error("Falta SUPABASE_DB_URL (corre el cargador dentro del contenedor worker).")
+        try:
+            with conectar() as conn, conn.cursor() as cur:
+                for evento, uuid, geojson in listos:
+                    cur.execute(UPSERT, (uuid, evento.titulo, VARIABLE, evento.periodo, FUENTE, geojson))
+        except RuntimeError as e:   # falta SUPABASE_DB_URL o psycopg
+            log.error("%s Corre el cargador dentro del contenedor worker.", e)
             return 2
-        import psycopg
-        with psycopg.connect(dsn) as conn, conn.cursor() as cur:
-            for evento, uuid, geojson in listos:
-                cur.execute(UPSERT, (uuid, evento.titulo, VARIABLE, evento.periodo, FUENTE, geojson))
-            conn.commit()
         log.info("Guardados %d mapas en la tabla mapa.", len(listos))
     elif not args.aplicar:
         log.info("Prueba en seco: no se escribió nada. Usa --aplicar para guardar.")

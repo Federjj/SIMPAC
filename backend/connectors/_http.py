@@ -7,14 +7,21 @@ reintentos y caché (ver docs/README-tecnico.md).
 """
 from __future__ import annotations
 
+import http.client
 import json
+import logging
 import ssl
+import time
+import urllib.error
 import urllib.request
 import urllib.parse
 from typing import Any
 
+log = logging.getLogger(__name__)
+
 USER_AGENT = "SIMPAC/0.1 (proyecto academico UPN; contacto: equipo-simpac)"
 TIMEOUT = 30
+INTENTOS = 3   # intentos totales ante fallas transitorias de red
 
 # El certificado TLS SIEMPRE se verifica: si un portal lo tiene mal, la petición
 # falla (mejor un error visible que aceptar datos de un servidor no verificado).
@@ -35,6 +42,29 @@ def _leer(req: urllib.request.Request, max_bytes: int | None = None) -> bytes:
         if esperado and esperado.isdigit() and len(datos) < int(esperado):
             raise ConnectionError(f"Descarga incompleta: {len(datos)} de {esperado} bytes")
         return datos
+
+
+def con_reintentos(fn, *args, intentos: int = INTENTOS):
+    """
+    Llama fn(*args) reintentando las fallas transitorias de red (timeouts, 5xx,
+    descargas cortadas) con espera de 2 s y 4 s. Los errores 4xx (404, 403...) y
+    los de datos (ValueError) no se reintentan: repetirlos no los arregla.
+    """
+    for intento in range(1, intentos + 1):
+        try:
+            return fn(*args)
+        except urllib.error.HTTPError as e:
+            if 400 <= e.code < 500:
+                raise
+            error = e
+        except (OSError, http.client.IncompleteRead) as e:
+            error = e
+        if intento == intentos:
+            raise error
+        espera = 2 ** intento
+        log.warning("Falla de red (%s), reintento %d/%d en %ds",
+                    type(error).__name__, intento, intentos - 1, espera)
+        time.sleep(espera)
 
 
 def _open(req: urllib.request.Request) -> str:

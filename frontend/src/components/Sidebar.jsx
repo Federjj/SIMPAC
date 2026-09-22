@@ -11,6 +11,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { NIVEL } from "@/lib/nivel";
+import { horaPeru, horasDesde } from "@/lib/tiempo";
 
 const NAV = [
   { id: "mapa", label: "Mapa", Icon: Map },
@@ -22,7 +23,15 @@ const NAV = [
 
 const fmt = (v) => (v == null ? "—" : (v >= 0 ? "+" : "") + v);
 
-export default function Sidebar({ active = "mapa", nivel = "normal", alertCount = 0, oni, icen }) {
+export default function Sidebar({
+  active = "mapa",
+  nivel = "normal",
+  alertCount = 0,
+  oni,
+  icen,
+  actualizado,
+  desactualizado,
+}) {
   const nv = NIVEL[nivel];
   return (
     <aside className="hidden md:flex w-72 flex-none flex-col h-screen border-r border-border bg-background">
@@ -37,7 +46,7 @@ export default function Sidebar({ active = "mapa", nivel = "normal", alertCount 
               SIM<span className="text-primary">PAC</span>
             </div>
             <div className="text-xs text-muted-foreground mt-1">
-              Monitoreo · Cajamarca
+              Monitoreo · Perú
             </div>
           </div>
         </div>
@@ -87,8 +96,17 @@ export default function Sidebar({ active = "mapa", nivel = "normal", alertCount 
       {/* Pie: contexto El Niño (datos reales) */}
       <div className="mt-auto border-t border-border p-4">
         <div className="mb-3 flex items-center gap-2 text-[0.68rem] uppercase tracking-widest text-muted-foreground">
-          <Radio className={cn("h-3.5 w-3.5 animate-pulse", nv.text)} />
-          Datos en vivo
+          {desactualizado ? (
+            <>
+              <Radio className="h-3.5 w-3.5 text-nivel-alerta" />
+              <span className="text-nivel-alerta">Sin actualizar hace {horasDesde(actualizado)} h</span>
+            </>
+          ) : (
+            <>
+              <Radio className={cn("h-3.5 w-3.5 animate-pulse", nv.text)} />
+              Datos en vivo{actualizado ? ` · ${horaPeru(actualizado)}` : ""}
+            </>
+          )}
         </div>
         <div className="grid grid-cols-2 gap-2">
           <div className="rounded-lg border border-border bg-card px-3 py-2">
