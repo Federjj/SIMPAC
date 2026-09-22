@@ -1,0 +1,4 @@
+# Solo para el cargador de mapas históricos FEN (backend/mapas/cargar_fen.py):
+# shapefile -> GeoJSON. Se instala en la imagen del worker (INSTALAR_MAPAS=1),
+# no en la de la API. geopandas >= 1.0 exige shapely 2 (se usa shapely.set_precision).
+geopandas>=1.0

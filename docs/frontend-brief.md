@@ -128,6 +128,14 @@ comunidad** (saldo de votos): más apoyo = más sólido; muy rechazado = se aten
   referencia). Mientras no se integre SIGRID, se puede omitir o usar un placeholder.
 - Todas translúcidas (~20–35 % de opacidad) y por debajo de los pines.
 
+> **Estado real (22 sep).** Hecho: círculos de **ríos en alerta/emergencia** (dato ANA) y
+> **anomalía mensual de lluvia** como puntos por estación (color = % sobre/bajo lo normal). Se
+> quitaron las zonas de demostración y la capa de usuarios cercanos (decisión del 15 sep).
+> Pendiente: **áreas FEN históricas** (datos listos en `mapa` con `variable='FEN'`: polígonos con
+> la propiedad `RANGO`; conviene un selector de evento y simplificar geometrías), **lluvia ahora**
+> (datos ya disponibles: la ingesta horaria llena `lectura_lluvia` con las estaciones automáticas de
+> Cajamarca) y **riesgo** (CENEPRED). Íconos SVG, nunca emojis.
+
 ### 4.3. Detalle de estación
 - Cabecera: nombre, distrito, tipo, código, fuente.
 - **Meteo:** precipitación (mm/h, barras) + temperatura (°C, línea), 48 h; acumulado 24 h vs umbral.

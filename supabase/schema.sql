@@ -85,12 +85,14 @@ create table if not exists mapa (
   id         bigint generated always as identity primary key,
   uuid       text,                        -- identificador del registro en GeoNetwork (opcional)
   titulo     text not null,
-  variable   text,                        -- precipitacion, temperatura, ...
-  periodo    text,                        -- ej. "2026-08" o "mensual"
+  variable   text,                        -- 'precipitacion' = anomalía mensual; 'FEN' = eventos El Niño históricos
+  periodo    text,                        -- ej. "2026-08" (mensual) o "1982-1983" (evento)
   fuente     text default 'SENAMHI/IDESEP',
   geojson    jsonb not null,              -- FeatureCollection (shapefile -> GeoJSON)
   ts_captura timestamptz default now()
 );
+-- uuid único (se permiten varios null) para que backend/mapas/cargar_fen.py haga upsert idempotente
+create unique index if not exists mapa_uuid_key on mapa (uuid);
 
 -- ===========================================================================
 -- B) COMUNIDAD (usuarios, reportes, confirmaciones, chat) — fases v2/v3

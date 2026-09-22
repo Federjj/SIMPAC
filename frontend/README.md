@@ -64,9 +64,14 @@ const { data: lluvia } = await supabase
 // contexto El Niño (titular)
 const { data: indices } = await supabase.from("indice").select("*");
 
-// capa de anomalías para el mapa (GeoJSON listo para Leaflet)
-const { data: mapas } = await supabase.from("mapa").select("titulo,geojson");
-// L.geoJSON(mapas[0].geojson).addTo(map)
+// capa de anomalías mensual (puntos por estación): usar getMapaAnomalias() de src/lib/queries.js.
+// Siempre filtrar por variable: sin filtro baja los 5 mapas FEN (~17 MB) en orden arbitrario.
+const { data: mensual } = await supabase.from("mapa").select("titulo,periodo,geojson")
+  .eq("variable", "precipitacion").order("periodo", { ascending: false }).limit(1);
+
+// mapas históricos de eventos El Niño (polígonos con la propiedad RANGO), uno por evento
+const { data: eventos } = await supabase.from("mapa").select("titulo,periodo")
+  .eq("variable", "FEN").order("periodo");   // luego pedir el geojson solo del evento elegido
 ```
 
 ## Notas

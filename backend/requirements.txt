@@ -1,14 +1,10 @@
 # Dependencias de producción (backend API + worker).
 # Los prototipos sueltos (demo.py, ingest.py, api.py) siguen corriendo solo con la
 # librería estándar; estas son para el stack en Docker.
+# Las del cargador de mapas FEN están aparte en requirements-mapas.txt.
 fastapi>=0.115
 uvicorn[standard]>=0.30
 celery>=5.4
 redis>=5.0
 httpx>=0.27
 psycopg[binary]>=3.2
-requests>=2.31
-beautifulsoup4>=4.12
-geopandas>=0.14
-shapely>=2.0
-python-dotenv>=1.0

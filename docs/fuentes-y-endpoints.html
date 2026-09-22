@@ -237,6 +237,11 @@
 
       <h3>Mapas de anomalías <span class="mono">· IDESEP / GeoNetwork</span></h3>
       <p>Catálogo geoespacial en <code>idesep.senamhi.gob.pe/geonetwork/srv/api/…</code> (CSW + REST). Shapefiles dentro de <code>.zip</code> → GeoPandas → GeoJSON → Leaflet. Detalle en la pre-documentación general.</p>
+      <pre>GET .../geonetwork/srv/eng/csw?service=CSW&amp;request=GetRecords&amp;elementSetName=summary&amp;startPosition=N
+    → catálogo paginado (dc:identifier = uuid, dc:title = título)
+GET .../geonetwork/srv/api/0.1/records/{uuid}
+    → página del registro con el enlace al .zip (en /attachments/)</pre>
+      <p><b>Implementado (22 sep):</b> conector <code>backend/connectors/idesep.py</code> y cargador <code>backend/mapas/cargar_fen.py</code>. Cargados en la tabla <code>mapa</code> (<code>variable='FEN'</code>) los 5 mapas de anomalías de precipitación de eventos El Niño: 82-83, 97-98, Costero 2017, Costero 2023 y 2023-2024 (polígonos con la propiedad <code>RANGO</code>). La muestra mensual de anomalías por estación va con <code>variable='precipitacion'</code>. Los GeoJSON de SENAMHI ya no se suben al repo (el archivo subido antes sigue en el historial de git) y la tabla <code>mapa</code> es de lectura pública, siempre con atribución a SENAMHI/IDESEP.</p>
 
       <div class="note warn"><p><b>Límite:</b> el histórico mensual tabular (pestaña "Tabla", desde 2021-10) está protegido por <b>CAPTCHA (Cloudflare Turnstile)</b>. No se automatiza ni se evade; para histórico usar PISCO o descarga oficial. El gráfico horario de las últimas 48 h sí es libre.</p></div>
     </div>

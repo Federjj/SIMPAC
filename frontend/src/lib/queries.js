@@ -31,6 +31,7 @@ export async function getMapaAnomalias() {
     .from("mapa")
     .select("titulo,variable,periodo,fuente,geojson")
     .eq("variable", "precipitacion")
+    .order("periodo", { ascending: false })   // el mes más reciente
     .limit(1);
   if (error) throw error;
   return data?.[0] ?? null;

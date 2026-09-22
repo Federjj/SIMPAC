@@ -43,11 +43,18 @@ CUTERVO (4726A602) — 48 horas ; último 2026/09/06 - 21  precip=0.0 mm  temp=1
 VigiaFEN/
 ├─ backend/
 │  ├─ connectors/
-│  │  ├─ _http.py        # helpers GET/POST (urllib, sin deps)
+│  │  ├─ _http.py        # helpers GET/POST/descarga binaria (urllib, sin deps)
 │  │  ├─ senamhi.py      # estaciones + serie horaria (lluvia/temp)
 │  │  ├─ ana.py          # caudales de ríos + estado de alerta por umbral
 │  │  ├─ igp.py          # Índice Costero El Niño (ICEN)
-│  │  └─ noaa.py         # ONI (contexto ENSO global)
+│  │  ├─ noaa.py         # ONI (contexto ENSO global)
+│  │  └─ idesep.py       # catálogo GeoNetwork de SENAMHI: shapefile -> GeoJSON (no lo importa __init__)
+│  ├─ mapas/
+│  │  └─ cargar_fen.py   # carga los mapas históricos de eventos El Niño a la tabla mapa
+│  ├─ app.py             # API FastAPI async (Docker)
+│  ├─ cache.py           # snapshot en Redis
+│  ├─ celery_app.py      # worker + beat (ingesta horaria, refresco de caché)
+│  ├─ store_supabase.py  # ingesta nacional a Supabase (la corre el worker)
 │  ├─ store.py           # persistencia SQLite (prototipo de la BD)
 │  ├─ alerts.py          # motor de umbrales (lluvia + caudal)
 │  ├─ ingest.py          # job de ingesta (correr cada hora)
@@ -233,6 +240,60 @@ Sitio WordPress (`enfen.imarpe.gob.pe`). Vía: `GET /wp-json/wp/v2/posts?_fields
 (comunicados; PDFs por `?wpdmdl={id}`). El valor numérico del índice ya sale del IGP (5.3).
 *Pendiente:* no fue accesible desde el entorno de captura (DNS/red); validar desde producción.
 
+### 5.7. IDESEP (SENAMHI) — mapas históricos de eventos El Niño
+
+IDESEP es el catálogo GeoNetwork de SENAMHI. Conector: `backend/connectors/idesep.py`.
+```
+GET https://idesep.senamhi.gob.pe/geonetwork/srv/eng/csw?service=CSW&request=GetRecords&...
+    -> catálogo paginado (dc:identifier = uuid, dc:title = título)
+GET https://idesep.senamhi.gob.pe/geonetwork/srv/api/0.1/records/<uuid>
+    -> página HTML con el enlace al .zip del shapefile (dentro de /attachments/)
+```
+El .zip se convierte a GeoJSON (EPSG:4326) con **geopandas**, que se importa solo dentro de
+`geojson_de_registro()`. `idesep` no se importa desde `connectors/__init__.py`, así los demás
+conectores siguen sin dependencias. Los 5 eventos cargados tienen su **uuid fijo** en
+`EVENTOS_FEN` (`cargar_fen.py`); para sumar uno nuevo basta su título, que se busca en el catálogo
+de forma normalizada (sin distinguir mayúsculas, tipo de guion ni espacios). Solo se descargan
+adjuntos del propio `idesep.senamhi.gob.pe` por HTTPS, con tope de 80 MB y reintentos ante fallas
+de red (los errores 4xx no se reintentan).
+
+Mapas cargados en la tabla `mapa` con `variable='FEN'` (el mensual usa `variable='precipitacion'`):
+
+| Evento | periodo | Polígonos |
+|---|---|---|
+| El Niño 82-83 | 1982-1983 | 2620 |
+| El Niño 97-98 | 1997-1998 | 1694 |
+| El Niño Costero 2017 | 2017 | 1590 |
+| El Niño Costero 2023 | 2023 | 944 |
+| El Niño 2023-2024 | 2023-2024 | 2197 |
+
+Cada feature trae solo la propiedad `RANGO` (rango de anomalía en texto, p. ej. `"-120 - -60"`).
+Cobertura nacional; pesan hasta ~5.5 MB cada uno.
+
+**Carga** (única vía de escritura; son mapas estáticos, no van en la ingesta horaria):
+```bash
+docker compose run --rm worker python -m backend.mapas.cargar_fen            # prueba en seco
+docker compose run --rm worker python -m backend.mapas.cargar_fen --aplicar  # upsert por uuid
+```
+Opciones: `--simplificar 0.005` (aligerar geometrías), `--decimales 5`, `--exportar DIR`
+(GeoJSON para `backend/mapas/visor_geojson.html`), `--catalogo` (lista uuid + título).
+El upsert usa el índice único `mapa_uuid_key`, así que correrlo varias veces no duplica filas.
+Sale con código 1 si algún evento falla o no aparece en el catálogo.
+
+Para `--exportar` dentro de Docker hay que montar una carpeta del host (con `--rm` el contenedor
+se borra y los archivos con él):
+```bash
+docker compose run --rm -v "$PWD/backend/mapas:/out" worker python -m backend.mapas.cargar_fen --exportar /out
+```
+geopandas solo está en la imagen del **worker** (`requirements-mapas.txt`, build arg
+`INSTALAR_MAPAS=1`); la imagen de la API no lo trae.
+
+> **Legal:** los GeoJSON de SENAMHI ya no se guardan en el repo (`backend/mapas/*.geojson` está en
+> `.gitignore` y `.dockerignore`), aunque el archivo que se subió antes sigue en el historial de git
+> hasta el commit `aaf5aaa`; borrarlo de ahí requiere reescribir el historial (decisión del equipo).
+> Los mapas viven en la tabla `mapa`, que es de **lectura pública** vía la API de Supabase (como el
+> resto de datos oficiales), siempre con la atribución a SENAMHI/IDESEP.
+
 ---
 
 ## 6. Motor de alertas y predicción
@@ -336,7 +397,16 @@ docker compose up --build
   paralelo con `asyncio.gather`) y sirve el snapshot **cacheado en Redis**, para aguantar varios
   usuarios sin golpear Supabase en cada request.
 - El frontend recibe las llaves públicas por *build-args*; `SUPABASE_DB_URL` (secreto) solo lo usa
-  el worker vía `.env` (nunca en git ni en la imagen).
+  el worker vía `.env` (nunca en git, ni en la imagen, ni en el contenedor de la API).
+- **`SUPABASE_DB_URL` debe ser la del pooler** (`...pooler.supabase.com:5432`, usuario
+  `postgres.<ref>`, con `?sslmode=require`). La conexión directa `db.<ref>.supabase.co` es **solo
+  IPv6** y la red de Docker no tiene IPv6: desde los contenedores falla con "Network is unreachable".
+- **Redis** se publica solo en `127.0.0.1:6379` (no queda expuesto a la red local ni al wifi).
+- **TLS:** los conectores verifican siempre el certificado de los portales; si alguno falla, la
+  petición falla (no hay modo "sin verificar").
+- **Backend y worker tienen imágenes distintas** (mismo Dockerfile). Si cambia código de
+  `backend/`, reconstruir los dos: `docker compose up -d --build backend worker`. Si solo se
+  reconstruye uno, el otro sigue corriendo código viejo.
 
 > **Gotcha (worker + Redis):** un cliente `redis.asyncio` ata su pool al event loop donde se usa
 > primero. El worker corre cada tarea con `asyncio.run()` (loop nuevo y cerrado en cada corrida),
@@ -389,8 +459,12 @@ Reglas:
 - [ ] Conector **ENFEN** (`wp-json`) validado desde producción.
 - [ ] URL exacta del **MapServer de CENEPRED** (enumerar capas de peligro por lluvia/inundación).
 - [x] Persistencia + ingesta + API (prototipo SQLite/stdlib, sección 7).
-- [ ] Migrar persistencia a **PostgreSQL + PostGIS** y programar el job horario en el servidor.
-- [ ] Reescribir la API en **FastAPI** (auth, validación, paginación) sobre el mismo `store`.
+- [x] Persistencia en **PostgreSQL + PostGIS** (Supabase) con job horario en el worker (Celery beat).
+- [x] Conector **IDESEP** + 5 mapas históricos de eventos El Niño en la tabla `mapa` (sección 5.7).
+- [~] API en **FastAPI** async con caché en Redis (sección 8); falta auth, validación y paginación.
+- [ ] Capa de **áreas FEN** en el frontend (polígonos por `RANGO` + selector de evento).
+- [ ] Capa de **lluvia ahora** en el frontend (círculos por mm/h). Datos listos: la ingesta horaria
+      ya llena `lectura_lluvia` (14 estaciones automáticas de Cajamarca, verificado el 22 sep).
 - [ ] Conector de **push** (Firebase) que dispare la notificación cuando `alerta` cambie de nivel.
 - [ ] Reejecutar la verificación en **temporada de lluvias (dic–abr)**, cuando disparan los umbrales.
 

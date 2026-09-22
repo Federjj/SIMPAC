@@ -1,13 +1,13 @@
 # SIMPAC — Estado del proyecto
 
-> Panel vivo de "dónde estamos". Actualizado: **2026-09-16**.
+> Panel vivo de "dónde estamos". Actualizado: **2026-09-22**.
 > Repo: `github.com/Federjj/SIMPAC` (monorepo, rama `main`).
 
 ## Resumen en una línea
-Backend + Supabase con datos reales (**ríos a nivel nacional**); **frontend React (Mapa)
-funcionando**; **stack dockerizado y corriendo** (frontend, backend async, worker Celery, redis)
-con el worker refrescando la caché sin errores. Falta poblar todo a nivel nacional con el job de
-ingesta (credencial de BD) y construir las demás páginas del front.
+Backend + Supabase con datos reales (**ríos a nivel nacional** + **5 mapas históricos de eventos
+El Niño**); **frontend React (Mapa) con datos reales**; **stack dockerizado y corriendo** con el
+ingesta horaria real funcionando (827 estaciones, lluvia horaria de Cajamarca al día). Falta la
+capa FEN y la de lluvia en el mapa, y las demás páginas del front.
 
 ---
 
@@ -29,7 +29,12 @@ ingesta (credencial de BD) y construir las demás páginas del front.
 - [x] **Lectura del frontend verificada**: la publishable key lee estaciones/caudales/índices/mapa
       vía la API REST de Supabase (RLS de lectura pública funcionando).
 - [x] **MCP de Supabase** conectado en modo escritura (Claude puede leer/editar la BD).
-- [x] **Código de ingesta a Supabase** listo (`backend/store_supabase.py`) — solo falta credencial.
+- [x] **Código de ingesta a Supabase** listo (`backend/store_supabase.py`), con `SUPABASE_DB_URL` real.
+- [x] **Mapas históricos de eventos El Niño** (aporte de Kevin, consolidado el 22 sep): 5 eventos
+      (82-83, 97-98, Costero 2017, Costero 2023, 2023-2024) en la tabla `mapa` con `variable='FEN'`,
+      desde el catálogo IDESEP de SENAMHI. Conector `connectors/idesep.py` + cargador
+      `backend/mapas/cargar_fen.py` (upsert idempotente por uuid, índice único `mapa_uuid_key`).
+      Detalle en `README-tecnico.md` §5.7.
 
 **Frontend (React + Vite + Tailwind + shadcn/ui + Leaflet)** — `frontend/`
 - [x] Página **Mapa** con **solo datos reales**: estaciones y ríos/caudales de Supabase; el círculo
@@ -56,8 +61,15 @@ ingesta (credencial de BD) y construir las demás páginas del front.
       **por corrida** y la API usa uno persistente por `lifespan` (`backend/cache.py`, `backend/app.py`).
 - [x] API async con caché en Redis (snapshot) para aguantar varios usuarios.
 - [x] `store_supabase.py` reescrito **nacional + concurrente** (ThreadPool) — lo corre el worker cada hora.
-- [ ] **Falta la ingesta nacional completa**: poner `SUPABASE_DB_URL` en `.env` para que la tarea
-      `ingesta` (horaria) pueble estaciones/lluvia de los 24 dptos. La caché ya sirve lo cargado por MCP.
+- [x] **`SUPABASE_DB_URL` real en `.env`, vía pooler (IPv4)**: la conexión directa es solo IPv6 y
+      desde Docker fallaba. Verificado: el worker conecta y el cargador FEN escribe.
+- [x] **Imagen del worker actualizada** (22 sep): seguía con código del 16 sep y volvía a salir
+      `Event loop is closed`. Backend y worker tienen imágenes separadas; hay que reconstruir ambos.
+- [x] **Ingesta real verificada (22 sep)**: corrió en 9 s y dejó 827 estaciones, 14 estaciones de
+      Cajamarca con lluvia horaria al día (hora en curso), 121 caudales del día e índices frescos.
+      Conectores con TLS siempre verificado; BD por pooler con `sslmode=require`.
+- [x] **Endurecido**: Redis publicado solo en `127.0.0.1`; geopandas solo en la imagen del worker
+      (`requirements-mapas.txt`), la imagen de la API bajó a ~310 MB.
 
 **Seguridad (verificada 16 sep)**
 - [x] **RLS activo en todas las tablas de datos** (confirmado con el *advisor* de Supabase). Únicos
@@ -99,8 +111,11 @@ ingesta (credencial de BD) y construir las demás páginas del front.
 **Backend / datos**
 - [x] **Levantar el stack** (`docker compose up --build`): ya corre; el **beat** de Celery programa
       la ingesta horaria y el refresco de caché (sin cron).
-- [ ] **Poner `SUPABASE_DB_URL` en `.env`** para que la tarea `ingesta` pueble a nivel nacional
-      (estaciones de los 24 dptos + lluvia). Hoy la caché sirve lo que ya se cargó por MCP.
+- [x] **`SUPABASE_DB_URL` en `.env`** (pooler + SSL): la ingesta horaria ya puebla la BD (verificado).
+- [ ] **Departamento de las estaciones**: `store_supabase.py` no envía `departamento`, así que las
+      827 estaciones quedan con el valor por defecto 'Cajamarca'. No afecta al mapa (usa lat/lon),
+      pero sí a cualquier filtro por departamento. Hay que pasarlo en el upsert de `estacion`.
+- [ ] **Resetear la password de la BD** y compartirla por un gestor de contraseñas (circuló por chat).
 - [ ] **Revocar `EXECUTE`** de la función `rls_auto_enable()` al rol `anon` (aviso del advisor).
 - [ ] Conector de **avisos SENAMHI** (scraping de tabla) → alertas oficiales al motor.
 - [ ] Reescribir la API en **FastAPI** sobre el mismo `store` (la actual es prototipo desechable).
@@ -108,6 +123,9 @@ ingesta (credencial de BD) y construir las demás páginas del front.
 
 **Frontend / móvil**
 - [x] **Web (Mapa)**: React + Vite + Leaflet conectado a Supabase (ya está).
+- [ ] **Capa FEN en el mapa** (HU-12): polígonos coloreados por `RANGO` + selector de evento. Leer
+      `mapa` con `variable='FEN'`; conviene simplificar geometrías (`cargar_fen --simplificar`) porque
+      pesan hasta ~5.5 MB. El render actual de anomalías solo pinta puntos.
 - [ ] **Web (resto)**: páginas Alertas, Comunidad, Chat, Cuenta, crear reporte + react-router.
 - [ ] **App móvil**: arrancar `appmobile/` (React Native); GPS + push.
 - [ ] Crear el proyecto **Firebase (FCM)** para push y conseguir la server key.
@@ -116,9 +134,17 @@ ingesta (credencial de BD) y construir las demás páginas del front.
 
 ## Reparto (para no duplicar)
 - **Tú (Fabricio) + Claude:** datos, conectores, Supabase/BD, backend, documentación.
-- **Kevin:** frontend web + app móvil + cuenta Firebase.
+- **Kevin:** frontend web + app móvil + cuenta Firebase; hizo el pipeline de mapas FEN históricos.
 
 ## Notas y riesgos activos
+- **Conexión a la BD: usar el pooler**, no `db.<ref>.supabase.co` (solo IPv6; falla en Docker y en
+  redes sin IPv6, como le pasó a Kevin por wifi). Usuario del pooler: `postgres.<ref>`; si falta el
+  `.<ref>` sale `ENOIDENTIFIER`.
+- **Tras cambiar código de `backend/`, reconstruir backend y worker** (imágenes separadas).
+- **TLS estricto en los conectores**: si un portal del Estado rompe su certificado, la ingesta de esa
+  fuente falla (a propósito, en vez de aceptar datos sin verificar).
+- **Ningún endpoint de la API escribe en la BD**: las escrituras van por el worker o por scripts
+  (`cargar_fen.py`). La API no recibe `SUPABASE_DB_URL`.
 - **ANA es intermitente** (hoy 500/timeout). Es el organismo, no el código; por eso cada fuente
   está aislada y el seed sigue aunque una falle.
 - **Token de Supabase con full-access** en variable de entorno: funciona, pero ideal reducir su

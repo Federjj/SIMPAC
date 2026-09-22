@@ -7,16 +7,10 @@ para insertarlo en Supabase. Escribe el SQL a un archivo y lo imprime el conteo.
 from __future__ import annotations
 
 import sys
-import json
 from datetime import date
-
-from dotenv import load_dotenv
 
 sys.path.insert(0, __file__.rsplit("backend", 1)[0])
 from backend.connectors import ana, igp, noaa, senamhi
-from backend.mapas.mapas_dic_subject import map_subjects
-
-load_dotenv()
 
 
 def q(s):
@@ -94,32 +88,9 @@ def main(out_path: str) -> None:
             f"valor=excluded.valor,categoria=excluded.categoria,ts_captura=now();"
         )
 
-    # --- mapas FEN (eventos El Niño) ---
-    mapas = []
-    try:
-        mapas = senamhi.mapas_fen(map_subjects)
-    except Exception as ex:
-        print(f"AVISO: No se pudieron obtener mapas FEN ({type(ex).__name__})")
-
-    if mapas:
-        # DELETE primero
-        delete_uuids = ", ".join([q(m.uuid) for m in mapas])
-        bloques.append(f"delete from mapa where uuid in ({delete_uuids});")
-
-        # INSERT después
-        vals = [
-            f"({q(m.uuid)},{q(m.titulo)},{q(m.variable)},{q(m.periodo)},"
-            f"'SENAMHI/IDESEP',{q(m.geojson)})"
-            for m in mapas
-        ]
-        bloques.append(
-            "insert into mapa (uuid,titulo,variable,periodo,fuente,geojson) values\n"
-            + ",\n".join(vals) + ";"
-        )
-
     with open(out_path, "w", encoding="utf-8") as f:
         f.write("\n\n".join(bloques) + "\n")
-    print(f"OK: {len(ests)} estaciones, {len(caud)} caudales, {len(mapas)} mapas FEN, indices ICEN/ONI -> {out_path}")
+    print(f"OK: {len(ests)} estaciones, {len(caud)} caudales, indices ICEN/ONI -> {out_path}")
 
 
 if __name__ == "__main__":

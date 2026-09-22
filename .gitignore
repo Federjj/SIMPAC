@@ -18,6 +18,10 @@ build/
 cache/
 data/cache/
 
+# GeoJSON generados desde IDESEP/SENAMHI (no se redistribuyen en el repo;
+# viven en la BD y se regeneran con backend/mapas/cargar_fen.py --exportar)
+backend/mapas/*.geojson
+
 # Base de datos local del prototipo
 *.db
 *.sqlite

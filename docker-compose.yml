@@ -4,7 +4,7 @@ services:
   redis:
     image: redis:7-alpine
     restart: unless-stopped
-    ports: ["6379:6379"]
+    ports: ["127.0.0.1:6379:6379"]   # solo la propia máquina (no la red local / wifi)
 
   backend:                       # API async (FastAPI)
     build: { context: ., dockerfile: backend/Dockerfile }
@@ -13,12 +13,15 @@ services:
       REDIS_URL: redis://redis:6379/0
       SUPABASE_URL: ${SUPABASE_URL}
       SUPABASE_PUBLISHABLE_KEY: ${SUPABASE_PUBLISHABLE_KEY}
-      SUPABASE_DB_URL: ${SUPABASE_DB_URL}
     ports: ["8000:8000"]
     depends_on: [redis]
 
-  worker:                        # ingesta + caché (Celery worker + beat)
-    build: { context: ., dockerfile: backend/Dockerfile }
+  worker:                        # ingesta + caché (Celery worker + beat) + cargador de mapas FEN
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+      args:
+        INSTALAR_MAPAS: "1"          # geopandas solo en esta imagen
     restart: unless-stopped
     command: celery -A backend.celery_app worker --beat --loglevel=info
     environment:
@@ -39,4 +42,3 @@ services:
     restart: unless-stopped
     ports: ["8080:80"]
     depends_on: [backend]
-

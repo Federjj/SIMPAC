@@ -22,8 +22,8 @@
 | Notificaciones push | **Firebase Cloud Messaging (FCM)** | avisos al celular | decidido |
 | Scraping HTML | **BeautifulSoup4** | avisos SENAMHI, tablas | decidido |
 | Parsing de PDF | **pdfplumber** | comunicados ENFEN | decidido |
-| ETL geoespacial | **GeoPandas + Shapely** | shapefile → GeoJSON | decidido |
-| Mapas (frontend) | **Leaflet** (tiles Esri Light Gray, sin API key) | visualización en mapa | hecho |
+| ETL geoespacial | **GeoPandas + Shapely** | shapefile → GeoJSON | hecho *(cargador de mapas FEN; import perezoso)* |
+| Mapas (frontend) | **Leaflet** (tiles Stadia Alidade Smooth) | visualización en mapa | hecho |
 | Gráficos (frontend) | **Recharts / Chart.js** | series de lluvia/caudal | evaluar |
 | Framework web | **React + Vite** | SPA (página Mapa lista) | hecho |
 | UI / estilos | **Tailwind CSS + shadcn/ui** (Radix + lucide) | sistema de diseño y componentes | hecho |
@@ -52,8 +52,8 @@
 - **PostgreSQL + PostGIS** a través de **Supabase**. PostGIS es obligatorio por lo geoespacial
   (estaciones, ríos, reportes con lat/lon; consultas "a X km de mí"). El prototipo usa **SQLite**
   con un esquema espejo para funcionar sin servidor.
-- Tablas núcleo: `estacion`, `lectura_lluvia`, `lectura_caudal`, `indice`, `alerta`, y (comunidad)
-  `usuario`, `report`, `confirmation`, `message`.
+- Tablas núcleo: `estacion`, `lectura_lluvia`, `lectura_caudal`, `indice`, `alerta`, `mapa`, y
+  (comunidad) `perfil`, `report`, `voto`, `comentario`, `message`.
 
 ### 2.3. Adquisición de datos (scraping / conectores)
 - **Inspección de red** (DevTools) para descubrir APIs internas no documentadas.
@@ -66,8 +66,8 @@
 - Un **conector aislado por fuente**, con caché y rate-limit (ver `docs/README-tecnico.md`).
 
 ### 2.4. Frontend web
-- **React + Vite** (JavaScript). **Leaflet** para el mapa, con tiles **Esri Light Gray** (basemap
-  claro gratuito, sin API key).
+- **React + Vite** (JavaScript). **Leaflet** para el mapa, con tiles **Stadia Alidade Smooth**
+  (claro y con detalle de calles; gratis en localhost, al desplegar a un dominio pide API key gratuita).
 - **Tailwind CSS + shadcn/ui** como sistema de diseño (tema claro estilo dashboard, componentes
   sobre Radix + iconos lucide, sin emojis). La página Mapa ya está construida y es responsive.
 - Gráficos de series con **Recharts** o **Chart.js** (a definir).
@@ -138,8 +138,10 @@ VigiaFEN/
 
 ## 6. Madurez actual
 
-- **Implementado (prototipo, corre hoy):** conectores SENAMHI/ANA/IGP/NOAA, ingesta a SQLite,
-  API JSON, motor de umbrales. Datos en tiempo real verificados.
-- **Decidido, por construir:** Supabase/PostGIS, FastAPI, frontend React, auth, realtime, push,
-  app móvil.
+- **Implementado (corre hoy, 22 sep):** conectores SENAMHI/ANA/IGP/NOAA/IDESEP; Supabase con
+  PostGIS y RLS; ingesta horaria en el worker (Celery + beat) y caché en Redis; API FastAPI async;
+  5 mapas históricos de eventos El Niño cargados; frontend React (página Mapa con datos reales);
+  todo en Docker. Datos en tiempo real verificados.
+- **Decidido, por construir:** auth, realtime (chat), push (FCM), app móvil, capas de áreas FEN y
+  de lluvia en el mapa, resto de páginas del front.
 - **A evaluar:** librería de gráficos, framework móvil final, proveedor de despliegue, LLM.

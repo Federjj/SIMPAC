@@ -16,22 +16,29 @@ from typing import Any
 USER_AGENT = "SIMPAC/0.1 (proyecto academico UPN; contacto: equipo-simpac)"
 TIMEOUT = 30
 
-# Algunos portales del Estado tienen cadenas de certificado incompletas.
-# Intentamos verificar y, si falla por certificado, reintentamos sin verificar
-# (dejando constancia). NUNCA enviamos datos sensibles a estos hosts.
-_CTX_VERIFY = ssl.create_default_context()
-_CTX_NOVERIFY = ssl.create_default_context()
-_CTX_NOVERIFY.check_hostname = False
-_CTX_NOVERIFY.verify_mode = ssl.CERT_NONE
+# El certificado TLS SIEMPRE se verifica: si un portal lo tiene mal, la petición
+# falla (mejor un error visible que aceptar datos de un servidor no verificado).
+# Comprobado el 22-09-2026: SENAMHI, IDESEP, ANA y NOAA verifican bien; IGP usa HTTP.
+_CTX = ssl.create_default_context()
+
+
+def _leer(req: urllib.request.Request, max_bytes: int | None = None) -> bytes:
+    with urllib.request.urlopen(req, timeout=TIMEOUT, context=_CTX) as r:
+        if max_bytes is None:
+            return r.read()  # si el cuerpo llega cortado, lanza IncompleteRead
+        datos = r.read(max_bytes + 1)
+        if len(datos) > max_bytes:
+            raise ValueError(f"La descarga supera el limite de {max_bytes} bytes")
+        # read(n) no avisa si el servidor corta antes de tiempo: se compara con
+        # Content-Length. ConnectionError es un OSError, así que se puede reintentar.
+        esperado = r.headers.get("Content-Length")
+        if esperado and esperado.isdigit() and len(datos) < int(esperado):
+            raise ConnectionError(f"Descarga incompleta: {len(datos)} de {esperado} bytes")
+        return datos
 
 
 def _open(req: urllib.request.Request) -> str:
-    try:
-        with urllib.request.urlopen(req, timeout=TIMEOUT, context=_CTX_VERIFY) as r:
-            return r.read().decode("utf-8", "ignore")
-    except ssl.SSLCertVerificationError:
-        with urllib.request.urlopen(req, timeout=TIMEOUT, context=_CTX_NOVERIFY) as r:
-            return r.read().decode("utf-8", "ignore")
+    return _leer(req).decode("utf-8", "ignore")
 
 
 def get(url: str, params: dict[str, Any] | None = None) -> str:
@@ -40,6 +47,12 @@ def get(url: str, params: dict[str, Any] | None = None) -> str:
         url = url + ("&" if "?" in url else "?") + urllib.parse.urlencode(params)
     req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
     return _open(req)
+
+
+def get_bytes(url: str, max_bytes: int | None = None) -> bytes:
+    """GET -> bytes crudos (p. ej. un .zip). Falla si supera max_bytes."""
+    req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
+    return _leer(req, max_bytes)
 
 
 def post_json(url: str, body: str) -> Any:
