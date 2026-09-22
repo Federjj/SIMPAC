@@ -10,6 +10,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { CITIES, DEFAULT_CITY, nearestCity } from "@/data/cities";
 import { LAYERS } from "@/map/layers";
 import { NIVEL } from "@/lib/nivel";
+import { departamentoEn } from "@/lib/ubicacion";
 import { usePanorama } from "@/hooks/usePanorama";
 import { useGeolocation } from "@/hooks/useGeolocation";
 import { useLayerVisibility } from "@/hooks/useLayerVisibility";
@@ -20,11 +21,16 @@ export default function App() {
   const [city, setCity] = useState(DEFAULT_CITY.name);
   const [focus, setFocus] = useState({ lat: DEFAULT_CITY.lat, lon: DEFAULT_CITY.lon, zoom: 14 });
   const { pos: userPos, locate } = useGeolocation();
-  const { oni, icen, nivel, alertCount, titular, actualizado, desactualizado } = usePanorama();
+  // Zona del usuario: el departamento de la ciudad elegida o el de su GPS.
+  const [depto, setDepto] = useState(DEFAULT_CITY.depto);
+  const [porGps, setPorGps] = useState(false);
+  const p = usePanorama(depto);
 
   const pickCity = (name) => {
     const c = CITIES.find((x) => x.name === name) || DEFAULT_CITY;
     setCity(c.name);
+    setDepto(c.depto);
+    setPorGps(false);
     setFocus({ lat: c.lat, lon: c.lon, zoom: 14 });
   };
 
@@ -34,25 +40,31 @@ export default function App() {
     if (!lugar) return;
     const [lat, lon] = lugar;
     setFocus({ lat, lon, zoom: 15 });
-    setCity(nearestCity(lat, lon).name);
+    const cercana = nearestCity(lat, lon);
+    setCity(cercana.name);
+    setDepto((await departamentoEn(lat, lon).catch(() => null)) ?? cercana.depto);
+    setPorGps(true);
   };
 
   useEffect(() => {
     geolocate();
   }, []);
 
-  const nv = NIVEL[nivel];
+  const nv = NIVEL[p.nivelLocal];
 
   return (
     <div className="flex h-screen overflow-hidden">
       <Sidebar
         active="mapa"
-        nivel={nivel}
-        alertCount={alertCount}
-        oni={oni}
-        icen={icen}
-        actualizado={actualizado}
-        desactualizado={desactualizado}
+        depto={depto}
+        nivel={p.nivelLocal}
+        alertCount={p.cuantasAqui + p.cuantasFuera}
+        enfen={p.enfen}
+        mar={p.mar}
+        pacifico={p.pacifico}
+        actualizado={p.actualizado}
+        desactualizado={p.desactualizado}
+        sinConexion={p.sinConexion}
       />
 
       <main className="relative flex-1 h-screen">
@@ -62,10 +74,12 @@ export default function App() {
         <div className="absolute left-4 top-4 z-[600] flex items-center gap-2 rounded-full border border-border bg-card/85 px-3.5 py-1.5 text-sm font-semibold shadow-lg backdrop-blur">
           <span className="text-primary">SIMPAC</span>
           <span className={`h-1.5 w-1.5 rounded-full ${nv.dot}`} />
-          <span className={nv.text}>{nv.label}</span>
+          <span className={nv.text}>
+            {nv.label} en {depto}
+          </span>
         </div>
 
-        {/* Selector de ciudad (mueve el mapa; el estado es nacional) */}
+        {/* Selector de ciudad: mueve el mapa y cambia la zona del estado */}
         <div className="absolute left-4 top-[60px] z-[600]">
           <CitySelector value={city} onChange={pickCity} />
         </div>
@@ -114,13 +128,21 @@ export default function App() {
         </Button>
 
         <StatusPanel
-          titular={titular}
-          nivel={nivel}
-          alertCount={alertCount}
-          oni={oni}
-          icen={icen}
-          actualizado={actualizado}
-          desactualizado={desactualizado}
+          depto={depto}
+          porGps={porGps}
+          local={p.local}
+          pais={p.pais}
+          nivelLocal={p.nivelLocal}
+          cuantasAqui={p.cuantasAqui}
+          cuantasFuera={p.cuantasFuera}
+          enfen={p.enfen}
+          mar={p.mar}
+          pacifico={p.pacifico}
+          lluvia={p.lluvia}
+          avisos={p.avisos}
+          alertasCargadas={p.alertas != null}
+          actualizado={p.actualizado}
+          desactualizado={p.desactualizado}
         />
       </main>
     </div>

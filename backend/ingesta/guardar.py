@@ -8,6 +8,8 @@ que no se refrescan caducan a las SIN_DATOS_HORAS.
 """
 from __future__ import annotations
 
+import json
+
 from backend.db import conectar
 from backend.ingesta.departamentos import DEPARTAMENTOS
 from backend.ingesta.recolectar import Pasada
@@ -33,12 +35,35 @@ SQL_CAUDAL = (
     "insert into lectura_caudal (estacion,rio,departamento,provincia,fecha,hora,valor,unidad,"
     "umbral_alerta,umbral_emergencia,tendencia,estado,geom) "
     "values (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s, ST_SetSRID(ST_MakePoint(%s,%s),4326)) "
-    "on conflict do nothing"   # clave única (estacion, rio, fecha, hora): hay nombres repetidos
+    # clave (estacion, rio, fecha, hora): hay nombres repetidos. Si la misma lectura vuelve
+    # con otro valor, umbral o estado (p. ej. al cambiar la regla de vaciante), se corrige.
+    "on conflict (estacion,rio,fecha,hora) do update set valor=excluded.valor, "
+    "umbral_alerta=excluded.umbral_alerta, umbral_emergencia=excluded.umbral_emergencia, "
+    "tendencia=excluded.tendencia, estado=excluded.estado, departamento=excluded.departamento "
+    "where (lectura_caudal.valor, lectura_caudal.umbral_alerta, lectura_caudal.umbral_emergencia, "
+    "lectura_caudal.tendencia, lectura_caudal.estado, lectura_caudal.departamento) is distinct from "
+    "(excluded.valor, excluded.umbral_alerta, excluded.umbral_emergencia, excluded.tendencia, "
+    "excluded.estado, excluded.departamento)"
 )
 SQL_INDICE = (
-    "insert into indice (fuente,periodo,valor,categoria) values (%s,%s,%s,%s) "
+    "insert into indice (fuente,periodo,valor,categoria,origen) values (%s,%s,%s,%s,%s) "
     "on conflict (fuente) do update set periodo=excluded.periodo, valor=excluded.valor, "
-    "categoria=excluded.categoria, ts_captura=now()"
+    "categoria=excluded.categoria, origen=excluded.origen, ts_captura=now()"
+)
+# El ICEN llega del IGP (cada hora, a veces meses atrasado) y del Informe Técnico ENFEN:
+# se queda el mes más nuevo. En el mismo mes cada origen solo refresca el suyo, y nunca
+# se retrocede a un mes más viejo (ni siquiera desde el mismo origen).
+SQL_ICEN = SQL_INDICE + (
+    " where excluded.periodo > indice.periodo"
+    " or (excluded.periodo = indice.periodo and excluded.origen = indice.origen)"
+)
+# El ICEN_TMP solo sale del Informe Técnico ENFEN: se refresca el mismo mes, pero nunca
+# retrocede (una fuente atrasada no lo pisa con el de un informe más viejo).
+SQL_ICEN_TMP = SQL_INDICE + " where excluded.periodo >= indice.periodo"
+# Cuándo corrió de verdad cada tarea (el frontend avisa "sin actualizar" si se detiene).
+SQL_LATIDO = (
+    "insert into latido (servicio, ts, resumen) values (%s, now(), %s::jsonb) "
+    "on conflict (servicio) do update set ts=now(), resumen=excluded.resumen"
 )
 SQL_BORRAR_ALERTAS = (
     "delete from alerta where tipo = %s "
@@ -71,11 +96,15 @@ def guardar(p: Pasada) -> dict:
         if caudal:
             cur.executemany(SQL_CAUDAL, caudal)
         if p.icen:
-            cur.execute(SQL_INDICE, ("ICEN", f"{p.icen.anio}-{p.icen.mes:02d}", p.icen.valor, p.icen.categoria))
-        if p.oni:
-            cur.execute(SQL_INDICE, ("ONI", f"{p.oni.temporada} {p.oni.anio}", p.oni.anom, p.oni.fase))
+            cur.execute(SQL_ICEN, ("ICEN", f"{p.icen.anio}-{p.icen.mes:02d}", p.icen.valor,
+                                   p.icen.categoria, "IGP"))
+        if p.roni:
+            cur.execute(SQL_INDICE, ("RONI", f"{p.roni.temporada} {p.roni.anio}", p.roni.anom,
+                                     p.roni.fase, "NOAA"))
 
-        cur.execute(SQL_BORRAR_ALERTAS, ("caudal", p.caudal_ok, SIN_DATOS_HORAS))
+        # una estación puede pasar de crecida a nivel bajo: se limpian las dos familias
+        for tipo in ("caudal", "nivel_bajo"):
+            cur.execute(SQL_BORRAR_ALERTAS, (tipo, p.caudal_ok, SIN_DATOS_HORAS))
         cur.execute(SQL_BORRAR_ALERTAS, ("lluvia", p.lluvia_ok, SIN_DATOS_HORAS))
         if alertas:
             cur.executemany(SQL_ALERTA, [
@@ -83,10 +112,12 @@ def guardar(p: Pasada) -> dict:
                  a.get("detalle", ""), a.get("valor"), a.get("umbral"))
                 for a in alertas
             ])
-    return {
-        "estaciones": len(p.estaciones),
-        "lluvia": len(p.lluvia),
-        "caudal": len(caudal) if p.caudales is not None else None,
-        "alertas": len(alertas),
-        "fallas": p.fallas,
-    }
+        resumen = {
+            "estaciones": len(p.estaciones),
+            "lluvia": len(p.lluvia),
+            "caudal": len(caudal) if p.caudales is not None else None,
+            "alertas": len(alertas),
+            "fallas": p.fallas,
+        }
+        cur.execute(SQL_LATIDO, ("ingesta", json.dumps(resumen)))
+    return resumen

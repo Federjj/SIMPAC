@@ -1,4 +1,5 @@
 """Ingesta horaria: horas, departamentos, alertas y la regla de no borrar lo que no se re-evaluó."""
+import json
 import logging
 import unittest
 from contextlib import contextmanager
@@ -9,7 +10,7 @@ from backend import alerts, config
 from backend.connectors import ana, igp, noaa, senamhi
 from backend.ingesta import guardar as guardar_mod
 from backend.ingesta.departamentos import DEPARTAMENTOS, clave, nombre_departamento
-from backend.ingesta.guardar import SQL_BORRAR_ALERTAS, SQL_CAUDAL, SQL_ESTACION, guardar
+from backend.ingesta.guardar import SQL_BORRAR_ALERTAS, SQL_CAUDAL, SQL_ESTACION, SQL_ICEN, SQL_LATIDO, guardar
 from backend.ingesta.recolectar import Pasada, filas_lluvia, recolectar
 
 
@@ -209,14 +210,26 @@ class TestRecolectarYGuardar(unittest.TestCase):
     def test_ana_caida_no_borra_sus_alertas(self):
         p, _ = self._recolectar(ana_ok=False)
         conn, resumen = self._guardar(p)
-        self.assertEqual(self._borrados(conn), {"caudal": [], "lluvia": ["Est 111 (111)"]})
+        self.assertEqual(self._borrados(conn), {"caudal": [], "nivel_bajo": [], "lluvia": ["Est 111 (111)"]})
         self.assertIsNone(resumen["caudal"])
 
     def test_ana_ok_reemplaza_sus_alertas(self):
         p, _ = self._recolectar()
         conn, resumen = self._guardar(p)
+        # las dos familias se limpian para las estaciones re-evaluadas: una estación puede
+        # pasar de crecida a nivel bajo (o salir de la vaciante) sin dejar alertas viejas
         self.assertEqual(self._borrados(conn)["caudal"], ["C1 (Rio)"])
+        self.assertEqual(self._borrados(conn)["nivel_bajo"], ["C1 (Rio)"])
         self.assertEqual(resumen["caudal"], 1)
+
+    def test_estacion_que_sale_de_la_vaciante_no_deja_alerta(self):
+        # ayer muy baja (alerta por nivel bajo), hoy por encima del umbral: se borra y no se repone
+        bajo = _caudal("Nanay", "Loreto", 123.0, alerta=123.09, emergencia=122.06)
+        repuesto = _caudal("Nanay", "Loreto", 123.26, alerta=123.09, emergencia=122.06)
+        p, _ = self._recolectar(ana_por_fecha={"ayer": [bajo], "hoy": [repuesto]})
+        self.assertEqual(p.alertas_caudal, [])
+        conn, _ = self._guardar(p)
+        self.assertEqual(self._borrados(conn)["nivel_bajo"], ["Nanay (Rio)"])
 
     def test_de_madrugada_el_reporte_de_ayer_sostiene_la_alerta(self):
         # a las 00:30 el reporte de hoy viene vacío: la emergencia de ayer no se borra
@@ -252,7 +265,20 @@ class TestRecolectarYGuardar(unittest.TestCase):
     def test_pasada_vacia_no_falla(self):
         conn, resumen = self._guardar(Pasada())
         self.assertEqual(resumen["estaciones"], 0)
-        self.assertEqual(self._borrados(conn), {"caudal": [], "lluvia": []})
+        self.assertEqual(self._borrados(conn), {"caudal": [], "nivel_bajo": [], "lluvia": []})
+
+    def test_latido_con_el_resumen(self):
+        p, _ = self._recolectar()
+        conn, resumen = self._guardar(p)
+        [(servicio, datos)] = conn.params(SQL_LATIDO)
+        self.assertEqual(servicio, "ingesta")
+        self.assertEqual(json.loads(datos), resumen)
+
+    def test_icen_solo_se_reemplaza_por_uno_mas_nuevo(self):
+        p = Pasada(icen=igp.PuntoICEN(2026, 5, 1.98))
+        conn, _ = self._guardar(p)
+        self.assertEqual(conn.params(SQL_ICEN), [("ICEN", "2026-05", 1.98, "Cálida moderada", "IGP")])
+        self.assertIn("excluded.periodo > indice.periodo", SQL_ICEN)
 
 
 class TestConfig(unittest.TestCase):

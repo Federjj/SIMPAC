@@ -37,10 +37,27 @@ class EstacionCaudal:
     lon: float | None
 
     @property
+    def umbral_bajo(self) -> bool:
+        """
+        True si los umbrales son de NIVEL BAJO (vaciante). En temporada seca ANA cambia, en
+        algunas estaciones amazónicas, a umbrales donde el peligro es que el río BAJE
+        (navegación, agua): se reconocen porque el de emergencia queda por DEBAJO del de
+        alerta. Ej. Enapu Perú (Iquitos): mar-jul 116.50 / 117.00; desde agosto 108.78 / 107.97.
+        """
+        return (self.umbral_alerta is not None and self.umbral_emergencia is not None
+                and self.umbral_emergencia < self.umbral_alerta)
+
+    @property
     def estado(self) -> str:
         """normal | alerta | emergencia | s.d. (sin umbral o sin dato)."""
         if self.valor is None or self.umbral_alerta is None:
             return "s.d."
+        if self.umbral_bajo:   # el peligro es que baje
+            if self.valor <= self.umbral_emergencia:
+                return "emergencia"
+            if self.valor <= self.umbral_alerta:
+                return "alerta"
+            return "normal"
         if self.umbral_emergencia is not None and self.valor >= self.umbral_emergencia:
             return "emergencia"
         if self.valor >= self.umbral_alerta:

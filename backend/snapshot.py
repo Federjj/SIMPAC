@@ -68,21 +68,32 @@ async def _armar() -> dict:
         headers={"apikey": clave, "Authorization": f"Bearer {clave}"},
         timeout=20,
     ) as c:
-        indices, caudales, alertas = await asyncio.gather(
-            _leer(c, "indice", "fuente,periodo,valor,categoria"),
+        indices, caudales, alertas, enfen = await asyncio.gather(
+            _leer(c, "indice", "fuente,periodo,valor,categoria,origen"),
             # caudal_actual = última lectura de cada estación (no el historial)
             _leer(c, "caudal_actual",
-                  "estacion,rio,departamento,fecha,hora,valor,unidad,tendencia,estado,lat,lon"),
+                  "estacion,rio,departamento,fecha,hora,valor,unidad,umbral_alerta,umbral_emergencia,"
+                  "tendencia,estado,lat,lon"),
             _leer(c, "alerta", "tipo,referencia,zona,nivel,detalle,valor,umbral,ts",
                   vigente="eq.true", order="ts.desc"),
+            _leer(c, "comunicado_enfen", "anio,numero,extraordinario,fecha,estado,proximo,url",
+                  order="fecha.desc", limit="1"),
         )
-    en_alerta = [c["estacion"] for c in caudales if c.get("estado") in ("alerta", "emergencia")]
+    def bajo(c):   # umbrales de nivel bajo (vaciante): el de emergencia es menor que el de alerta
+        ua, ue = c.get("umbral_alerta"), c.get("umbral_emergencia")
+        return ua is not None and ue is not None and ue < ua
+
+    activos = [c for c in caudales if c.get("estado") in ("alerta", "emergencia")]
+    en_alerta = [c["estacion"] for c in activos if not bajo(c)]      # ríos crecidos
+    nivel_bajo = [c["estacion"] for c in activos if bajo(c)]         # ríos demasiado bajos
     return {
         "generado": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "indices": indices,
+        "enfen": enfen[0] if enfen else None,   # último comunicado oficial (estado del Sistema de Alerta)
         "caudales": caudales,
         "alertas": alertas,
-        "resumen": {"caudales": len(caudales), "en_alerta": en_alerta, "alertas": len(alertas)},
+        "resumen": {"caudales": len(caudales), "en_alerta": en_alerta, "nivel_bajo": nivel_bajo,
+                    "alertas": len(alertas)},
     }
 
 
@@ -97,7 +108,8 @@ async def refresh_snapshot(client: aioredis.Redis | None = None) -> dict:
     data = await _armar()
     async with _redis_ctx(client) as r:
         await _guardar(r, data)
-    return {"cached": True, **data["resumen"], "en_alerta": len(data["resumen"]["en_alerta"])}
+    res = data["resumen"]
+    return {"cached": True, **res, "en_alerta": len(res["en_alerta"]), "nivel_bajo": len(res["nivel_bajo"])}
 
 
 async def get_snapshot(client: aioredis.Redis | None = None) -> dict:

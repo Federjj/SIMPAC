@@ -1,16 +1,19 @@
 import L from "leaflet";
 import { Droplets } from "lucide-react";
 import { getMapaAnomalias } from "@/lib/queries";
-import { ANOM_LEYENDA, anomColor } from "../palette";
+import { CLASES_ANOMALIA, nombreEstacion, textoAnomalia } from "@/lib/lenguaje";
 import { popupHtml } from "../markers";
 
-// Anomalía mensual de precipitación por estación (IDESEP/SENAMHI, tabla mapa).
+const num = (v) => Number(v).toLocaleString("es-PE", { maximumFractionDigits: 2 });
+
+// Lluvia del mes por estación frente a lo normal (SENAMHI/IDESEP, tabla mapa). Se usan
+// las clases oficiales de SENAMHI (campo PORCENTAJE) traducidas a palabras.
 export default {
   id: "anom",
-  label: "Anomalías de lluvia",
+  label: "Lluvia del mes frente a lo normal",
   Icon: Droplets,
   defaultVisible: false,
-  legend: ANOM_LEYENDA,
+  legend: CLASES_ANOMALIA.map(({ color, texto }) => ({ color, label: texto })),
   load: getMapaAnomalias,
   render(group, mapa) {
     for (const f of mapa?.geojson?.features ?? []) {
@@ -18,23 +21,25 @@ export default {
       if (f.geometry?.type !== "Point" || !coords) continue;
       const [lon, lat] = coords;
       const p = f.properties ?? {};
-      const a = p.ANOMALIA ?? 0;
+      const t = textoAnomalia(p, mapa.periodo);
       L.circleMarker([lat, lon], {
         radius: 7,
         color: "#fff",
         weight: 1.5,
-        fillColor: anomColor(a),
-        fillOpacity: 0.85,
+        fillColor: t.clase.color,
+        fillOpacity: 0.9,
       })
         .bindPopup(
           popupHtml({
-            title: p.ESTACION || "Estación",
-            meta: [p.DISTRITO, p.PROVINCIA, mapa.periodo],
+            title: p.ESTACION ? nombreEstacion(p.ESTACION) : "Estación",
+            meta: [p.DISTRITO, p.PROVINCIA],
+            resumen: t.frase,
             filas: [
-              ["Anomalía de lluvia", `${a} %`],
-              ["Precipitación", p.PREC != null ? `${p.PREC} mm` : null],
-              ["Normal", p.NORMAL != null ? `${p.NORMAL} mm` : null],
+              ["Cayeron", p.PREC != null ? `${num(p.PREC)} mm` : null],
+              ["Lo normal para el mes", p.NORMAL != null ? `${num(p.NORMAL)} mm` : null],
+              ["Diferencia", p.ANOMALIA != null ? `${num(p.ANOMALIA)} %` : null],
             ],
+            nota: "Fuente: SENAMHI (IDESEP).",
           })
         )
         .addTo(group);

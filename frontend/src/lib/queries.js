@@ -51,16 +51,50 @@ export function getCaudales() {
     filas(
       supabase
         .from("caudal_actual")
-        .select("estacion,rio,departamento,fecha,hora,valor,unidad,tendencia,estado,lat,lon")
+        .select("estacion,rio,departamento,fecha,hora,valor,unidad,umbral_alerta,umbral_emergencia,tendencia,estado,lat,lon")
     )
   );
 }
 
-// ts_captura se renueva en cada corrida de la ingesta: sirve para saber si los datos
-// están al día.
+// ICEN (IGP o ENFEN, el mes más nuevo), su estimado ICEN_TMP y el RONI de NOAA.
 export function getIndices() {
   return cached("indices", () =>
-    filas(supabase.from("indice").select("fuente,periodo,valor,categoria,ts_captura"))
+    filas(supabase.from("indice").select("fuente,periodo,valor,categoria,origen"))
+  );
+}
+
+// Último comunicado oficial del ENFEN (estado del Sistema de Alerta).
+export async function getComunicadoENFEN() {
+  const [c] = await cached("enfen", () =>
+    filas(
+      supabase
+        .from("comunicado_enfen")
+        .select("anio,numero,extraordinario,fecha,estado,proximo,resumen,url")
+        .order("fecha", { ascending: false })
+        .limit(1)
+    ),
+    10 * 60_000
+  );
+  return c ?? null;
+}
+
+// Cuándo corrió de verdad la ingesta (para avisar "sin actualizar" si se detiene).
+export function getLatido() {
+  return cached("latido", () => filas(supabase.from("latido").select("servicio,ts,resumen")));
+}
+
+// Lluvia horaria de las últimas 24 h de las estaciones de un departamento.
+export function getLluvia24h(depto) {
+  const desde = new Date(Date.now() - 24 * 3_600_000).toISOString();
+  return cached(`lluvia:${depto}`, () =>
+    filas(
+      supabase
+        .from("lectura_lluvia")
+        .select("cod,medido_en,precip_mm,estacion!inner(nombre,departamento)")
+        .eq("estacion.departamento", depto)
+        .gte("medido_en", desde)
+        .order("medido_en")
+    )
   );
 }
 

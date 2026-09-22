@@ -54,7 +54,8 @@ create table lectura_caudal (             -- historial: una fila por estación, 
   umbral_alerta     double precision,
   umbral_emergencia double precision,
   tendencia         text,                 -- Ascendente | Descendente | Estable
-  estado            text,                 -- normal | alerta | emergencia | s.d.
+  estado            text,                 -- normal | alerta | emergencia | s.d. (con umbral de
+                                          -- nivel bajo, alerta = el río está demasiado BAJO)
   geom              geometry(Point, 4326),
   lat               double precision generated always as (st_y(geom)) stored,
   lon               double precision generated always as (st_x(geom)) stored,
@@ -74,18 +75,41 @@ where fecha >= (now() at time zone 'America/Lima')::date - 1
 order by estacion, rio, fecha desc, hora desc;
 
 create table indice (
-  fuente     text primary key,          -- 'ONI' | 'ICEN'
-  periodo    text,
+  fuente     text primary key,          -- 'ICEN' | 'ICEN_TMP' (estimado ENFEN) | 'RONI' (NOAA)
+  periodo    text,                      -- ICEN: 'AAAA-MM'; RONI: trimestre, p. ej. 'JJA 2026'
   valor      double precision,
-  categoria  text,
+  categoria  text,                      -- ICEN: Nota Técnica ENFEN 01-2024; RONI: magnitud CPC
+  origen     text,                      -- IGP | ENFEN | NOAA (el ICEN guarda el mes más nuevo)
   ts_captura timestamptz default now()
+);
+
+-- Comunicado oficial del ENFEN (cada ~2 semanas, PDF): estado del Sistema de Alerta.
+-- Lo llena la tarea 'enfen' del worker (cada 6 h).
+create table comunicado_enfen (
+  anio       int  not null,
+  numero     int  not null,
+  extraordinario boolean not null default false,  -- comparten numeración con los oficiales
+  fecha      date not null,               -- emisión
+  estado     text not null,               -- p. ej. 'Alerta de El Niño Costero'
+  proximo    date,                        -- próximo comunicado anunciado
+  resumen    text,
+  url        text not null,               -- PDF
+  ts_captura timestamptz not null default now(),
+  primary key (anio, numero, extraordinario)
+);
+
+-- Cuándo corrió de verdad cada tarea del worker ('ingesta', 'enfen').
+create table latido (
+  servicio text primary key,
+  ts       timestamptz not null default now(),
+  resumen  jsonb
 );
 
 -- La ingesta reemplaza cada hora solo las alertas de las estaciones que re-evaluó (con
 -- dato); las que no se pudieron re-evaluar caducan a las 6 h (backend/ingesta/guardar.py).
 create table alerta (
   id         bigint generated always as identity primary key,
-  tipo       text,                      -- 'lluvia' | 'caudal' | 'aviso'
+  tipo       text,                      -- 'lluvia' | 'caudal' (crecida) | 'nivel_bajo' (vaciante) | 'aviso'
   referencia text,                      -- "Estación (cod)" o "Estación (río)"
   zona       text,                      -- departamento
   nivel      text,                      -- normal | aviso | alerta | emergencia
@@ -211,6 +235,8 @@ alter table lectura_caudal enable row level security;
 alter table indice         enable row level security;
 alter table alerta         enable row level security;
 alter table mapa           enable row level security;
+alter table comunicado_enfen enable row level security;
+alter table latido         enable row level security;
 alter table perfil         enable row level security;
 alter table report         enable row level security;
 alter table voto           enable row level security;
@@ -218,14 +244,16 @@ alter table comentario     enable row level security;
 alter table message        enable row level security;
 
 -- Datos oficiales: solo lectura para todos.
-grant select on estacion, lectura_lluvia, lectura_caudal, caudal_actual, indice, alerta, mapa
-  to anon, authenticated;
+grant select on estacion, lectura_lluvia, lectura_caudal, caudal_actual, indice, alerta, mapa,
+  comunicado_enfen, latido to anon, authenticated;
 create policy "lectura publica estacion" on estacion       for select using (true);
 create policy "lectura publica lluvia"   on lectura_lluvia for select using (true);
 create policy "lectura publica caudal"   on lectura_caudal for select using (true);
 create policy "lectura publica indice"   on indice         for select using (true);
 create policy "lectura publica alerta"   on alerta         for select using (true);
 create policy "lectura publica mapa"     on mapa           for select using (true);
+create policy "lectura publica comunicado" on comunicado_enfen for select using (true);
+create policy "lectura publica latido"   on latido         for select using (true);
 
 -- Comunidad: lo que no aparece aquí, el cliente no lo puede leer ni escribir.
 -- autor no se lee (con autor + GPS + hora se arma el historial de ubicación de alguien),

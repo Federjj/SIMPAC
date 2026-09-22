@@ -45,8 +45,9 @@ export function markerIcon(color, icono, { forma = "circulo" } = {}) {
   });
 }
 
-// Popup con título, una línea de contexto y filas etiqueta/valor. Todo se escapa.
-export function popupHtml({ title, meta = [], filas = [], nota }) {
+// Popup con título, contexto, una frase en lenguaje claro, filas etiqueta/valor y una
+// nota (qué hacer). Todo se escapa.
+export function popupHtml({ title, meta = [], resumen, filas = [], nota }) {
   const m = meta.filter(Boolean).map(escapeHtml).join(" · ");
   const f = filas
     .filter(([, v]) => v != null && v !== "")
@@ -55,6 +56,7 @@ export function popupHtml({ title, meta = [], filas = [], nota }) {
   return (
     `<div class="pop"><h4>${escapeHtml(title)}</h4>` +
     (m ? `<div class="meta">${m}</div>` : "") +
+    (resumen ? `<p class="resumen">${escapeHtml(resumen)}</p>` : "") +
     (f ? `<dl class="filas">${f}</dl>` : "") +
     (nota ? `<p class="nota">${escapeHtml(nota)}</p>` : "") +
     `</div>`

@@ -17,19 +17,19 @@ El stack real corre en Docker (§8). Los conectores, el prototipo y las pruebas 
 librería estándar** de Python (3.10+), así que corren sin instalar nada (desde la raíz del repo):
 
 ```bash
-python -m unittest discover -s backend/tests -t .   # 48 pruebas sin red ni BD
+python -m unittest discover -s backend/tests -t .   # pruebas sin red ni BD (solo stdlib)
 
 python -m backend.prototipo.demo     # foto rápida en consola (sin BD)
 python -m backend.prototipo.ingest   # guarda una pasada en backend/prototipo/simpac.db (SQLite)
 python -m backend.prototipo.api      # API JSON del prototipo en http://localhost:8000
 ```
 
-Salida esperada de `demo` (datos en vivo — foto de Cajamarca): contexto El Niño (ONI/ICEN),
+Salida esperada de `demo` (datos en vivo — foto de Cajamarca): contexto El Niño (RONI/ICEN),
 caudales de ríos con su estado de alerta, y la lluvia horaria de una estación automática.
 
 ```
-NOAA ONI   JJA 2026: +1.80  -> El Niño
-IGP  ICEN  2026-05: +1.98  -> Cálido fuerte
+NOAA RONI  JJA 2026: +1.36  -> El Niño moderado
+IGP  ICEN  2026-05: +1.98  -> Cálida moderada
 Mashcón            Mashcon      18:00     0.13 m³/s  (normal)
 Yónan Gore         Jequetepeque 21:00      2.3 m³/s  (normal)
 ...
@@ -48,12 +48,14 @@ VigiaFEN/
 │  │  ├─ senamhi.py      # estaciones + serie horaria (lluvia/temp)
 │  │  ├─ ana.py          # caudales de ríos + estado de alerta por umbral
 │  │  ├─ igp.py          # Índice Costero El Niño (ICEN)
-│  │  ├─ noaa.py         # ONI (contexto ENSO global)
+│  │  ├─ noaa.py         # RONI (contexto ENSO global, índice oficial de NOAA desde feb-2026)
+│  │  ├─ enfen.py        # comunicado oficial ENFEN (estado de alerta) + ICEN del Informe Técnico (PDF)
 │  │  └─ idesep.py       # catálogo GeoNetwork de SENAMHI: shapefile -> GeoJSON (no lo importa __init__)
 │  ├─ ingesta/
 │  │  ├─ recolectar.py   # baja de todas las fuentes en paralelo -> Pasada (no toca la BD)
 │  │  ├─ guardar.py      # escribe una Pasada en Supabase (una transacción)
-│  │  └─ departamentos.py # slugs de SENAMHI y nombres canónicos de departamento
+│  │  ├─ departamentos.py # slugs de SENAMHI y nombres canónicos de departamento
+│  │  └─ enfen.py        # tarea 'enfen' (cada 6 h): comunicado + ICEN del Informe Técnico
 │  ├─ mapas/
 │  │  └─ cargar_fen.py   # carga los mapas históricos de eventos El Niño a la tabla mapa
 │  ├─ prototipo/         # versión sin dependencias (SQLite + http.server), congelada
@@ -92,7 +94,7 @@ flowchart LR
     S[SENAMHI\nestaciones + avisos]
     A[ANA\ncaudales]
     I[IGP\nICEN]
-    N[NOAA\nONI]
+    N[NOAA\nRONI]
     C[CENEPRED\nSIGRID]
   end
   subgraph Ingesta
@@ -128,10 +130,11 @@ No basta con asumirlo; se verificó contra la hora del sistema (Perú, UTC−5):
 | SENAMHI (est. automática) | `map_red_graf.php` | `2026/09/06 - 21h` (hora en curso, 21:15) | horaria | **Sí** |
 | ANA (caudales) | `ReporteNacionalCaudal` | `HORA` hasta `21:00` (RPT 592-2026) | ~horaria | **Sí** |
 | IGP ICEN | `ICEN.txt` | mes en curso | mensual | contexto |
-| NOAA ONI | `oni.ascii.txt` | trimestre en curso | mensual | contexto |
+| NOAA RONI | `RONI.ascii.txt` | trimestre en curso | mensual | contexto |
+| ENFEN | comunicado + Informe Técnico (PDF) | quincenal / mensual | quincenal | estado oficial de alerta |
 
 **Conclusión:** la lluvia (SENAMHI) y el caudal (ANA) se actualizan a la hora en curso —
-suficiente para disparar alertas. ICEN/ONI son contexto estacional (El Niño), no gatillan
+suficiente para disparar alertas. ICEN/RONI son contexto estacional (El Niño), no gatillan
 alertas inmediatas pero alimentan el modelo predictivo y el titular.
 
 ---
@@ -199,10 +202,22 @@ Cada estación trae su **propio umbral** de alerta y emergencia:
 ```
 Estado de riesgo (implementado en `ana.EstacionCaudal.estado`):
 ```
-VALOR ≥ UEMERGENCIA  -> emergencia
-VALOR ≥ UALERTA      -> alerta
-si no                -> normal   (s.d. si falta valor/umbral)
+umbrales de crecida (UEMERGENCIA >= UALERTA):     umbrales de NIVEL BAJO (UEMERGENCIA < UALERTA):
+VALOR ≥ UEMERGENCIA  -> emergencia                VALOR ≤ UEMERGENCIA  -> emergencia
+VALOR ≥ UALERTA      -> alerta                    VALOR ≤ UALERTA      -> alerta
+si no                -> normal                    si no                -> normal
+(s.d. si falta valor o umbral)
 ```
+> **Gotcha de temporada:** en temporada seca ANA cambia, en algunos ríos amazónicos, a umbrales
+> de **nivel bajo** (vaciante): el peligro es que el río baje (navegación). Se reconocen porque el
+> de emergencia queda por debajo del de alerta. Ej. Enapu Perú (Iquitos): mar-jul 116.50/117.00,
+> desde agosto 108.78/107.97. Leerlos como crecida daba "emergencia" falsa. Esas alertas son de
+> tipo `nivel_bajo` y el mapa no dibuja zona de desborde. `RPT_PERIODO` no sirve para saberlo
+> (dice "PERÍODO DE ESTIAJE" todo el año). ANA no publica el nivel amarillo que usa SENAMHI.
+>
+> El reporte de un día solo trae las estaciones que YA midieron ese día (de madrugada viene casi
+> vacío): la ingesta pide ayer y hoy. Hay estaciones homónimas (San Pedro en el Charanal y en el
+> Santa): la clave es (estación, río, fecha, hora).
 Cajamarca aporta ~12 estaciones (Mashcón —río de la ciudad—, Jesús Túnel, Namora Bocatoma,
 Corral Quemado, Chotano, Puente Crisnejas, Yónan Gore, Cañad, …). Ojo: `UNIDADMEDIDA` puede
 ser `m³/s` (caudal) **o** `m` (nivel).
@@ -225,14 +240,48 @@ http://met.igp.gob.pe/datos/ICENr.txt       # ITCEN: valor reciente/provisional
 ```
 > **HTTP-only** (Apache 2.2, puerto 80). Una web servida por HTTPS **no puede** hacer
 > `fetch` a `http://` (mixed content). El **backend descarga y proxyea** el archivo (cachear
-> a diario). Categorías del semáforo en `igp.categoria()`.
+> a diario).
 
-### 5.4. NOAA / CPC — ONI (contexto ENSO global)
+Categorías en `igp.categoria()`, según la **Nota Técnica ENFEN 01-2024** (la que citan los
+comunicados de 2026): neutra -0.7 a +0.5 · cálida débil hasta +1.3 · moderada hasta +2.1 · fuerte
+hasta +3.5 · extraordinaria encima. Los cortes antiguos (2012: 0.4/1.0/1.7/3.0) fallaban en 6 de 11
+meses. Para las condiciones frías el ENFEN usa percentiles sin cortes numéricos: se dice "Fría".
+
+> **El IGP se atrasa:** en setiembre 2026 `ICEN.txt` seguía en mayo (Last-Modified 06-07-2026),
+> mientras el ENFEN ya había publicado julio (+3.38) y un estimado de agosto (+3.73). La tabla
+> `indice` guarda el mes más nuevo de los dos (columna `origen`: IGP o ENFEN).
+
+### 5.3.1. ENFEN — comunicado oficial (estado del Sistema de Alerta)
+
+El ENFEN publica cada ~2 semanas un comunicado en PDF con el **estado del Sistema de Alerta**
+(Vigilancia / Alerta de El Niño o La Niña costeros, No activo) y la fecha del próximo. No hay API:
+`connectors/enfen.py` descubre el último comunicado (gob.pe, SENAMHI, web ENFEN), baja el PDF y
+extrae el texto con `pypdf` (solo en el worker). La tarea Celery `enfen` corre cada 6 h en el mismo
+worker y beat de la ingesta (y una vez al arrancar), y guarda en `comunicado_enfen`.
+
+Los comunicados no traen el valor del ICEN: sale de la Tabla 3 del **Informe Técnico ENFEN** (SENAMHI
+y gob.pe, ~17 MB), que se escribe en `indice` como `ICEN` e `ICEN_TMP` con origen ENFEN.
+- **Se baja solo si es un informe nuevo.** El latido `enfen` guarda el informe leído (`informe`):
+  URL, fecha de publicación, número, portada y alias, que son otras URL del mismo informe. Una
+  candidata con la misma URL o fecha de publicación no se baja, ni una más vieja. Si la portada
+  resulta igual a la del leído, la URL queda como alias. Si es anterior, se descarta.
+- **Informe que se bajó pero no sirve** (PDF ilegible, sin la tabla, meses fuera de rango): queda en
+  `informe_fallido` y no se vuelve a bajar antes de 24 h. Los errores de red se reintentan en
+  cada corrida.
+- **Comunicado e informe son independientes:** si falla uno, el otro se guarda igual. La falla
+  queda en `fallas` y `avisos` del latido. Si fallan los dos, la tarea termina en error.
+
+Corrida suelta: `docker compose run --rm worker python -m backend.ingesta.enfen`.
+
+### 5.4. NOAA / CPC — RONI (contexto ENSO global)
 
 ```
-https://www.cpc.ncep.noaa.gov/data/indices/oni.ascii.txt   # SEAS YR TOTAL ANOM (ANOM = ONI)
+https://www.cpc.ncep.noaa.gov/data/indices/RONI.ascii.txt   # SEAS YR ANOM (ANOM = RONI)
 ```
-Texto plano, HTTPS, sin auth. La fuente más limpia. `anom ≥ 0.5` → El Niño; `≤ -0.5` → La Niña.
+Texto plano, HTTPS, sin auth. **Desde febrero de 2026 el CPC vigila El Niño con el RONI** (el ONI
+relativo al calentamiento de todo el trópico), no con el ONI clásico (`oni.ascii.txt`): en jun-ago
+2026 el RONI daba +1.36 y el ONI +1.80. `≥ 0.5` El Niño, `≤ -0.5` La Niña; magnitud en pasos de
+0.5 (débil, moderado, fuerte, muy fuerte ≥ 2.0). El CPC puede corregir un valor hasta 2 meses después.
 
 ### 5.5. CENEPRED — SIGRID (peligro/riesgo, referencia)
 
@@ -248,9 +297,10 @@ No es tiempo real. *Pendiente:* capturar la URL exacta del MapServer activando u
 
 ### 5.6. ENFEN — estado de alerta El Niño Costero
 
-Sitio WordPress (`enfen.imarpe.gob.pe`). Vía: `GET /wp-json/wp/v2/posts?_fields=id,date,title,link`
-(comunicados; PDFs por `?wpdmdl={id}`). El valor numérico del índice ya sale del IGP (5.3).
-*Pendiente:* no fue accesible desde el entorno de captura (DNS/red); validar desde producción.
+Implementado: ver §5.3.1 (`connectors/enfen.py`). No se usa el `wp-json` del WordPress del ENFEN
+(no existe su API REST y su DNS no resuelve desde Docker): el comunicado y el Informe Técnico se
+descubren en gob.pe y SENAMHI y se leen del PDF con `pypdf`. El ICEN al día sale del Informe
+Técnico (Tabla 3), no del comunicado ni del IGP (que se atrasa).
 
 ### 5.7. IDESEP (SENAMHI) — mapas históricos de eventos El Niño
 
@@ -329,7 +379,7 @@ El nivel resultante (normal/aviso/alerta/emergencia) alimenta el titular, el map
 acumulación propia en la BD) se puede:
 1. Empezar simple: **tendencia + umbral** (p. ej. precip acumulada creciente + pronóstico
    de aviso) → probabilidad de crecida en las próximas horas.
-2. Luego un modelo de series de tiempo por estación (el ICEN/ONI entran como features de
+2. Luego un modelo de series de tiempo por estación (el ICEN/RONI entran como features de
    contexto estacional El Niño). Guardar histórico propio es clave: las fuentes solo dan
    ventanas cortas en tiempo real (SENAMHI 48 h) y el resto está tras CAPTCHA.
 
@@ -370,7 +420,7 @@ librería estándar. Sirve para mostrar los conectores sin Docker ni Supabase; n
 | `estacion` | inventario (cod, nombre, tipo, cat, estado, lat/lon) | `cod` (upsert) |
 | `lectura_lluvia` | serie horaria precip/temp por estación | `(cod, ts)` |
 | `lectura_caudal` | caudal por estación + umbrales + estado | `(estacion, fecha, hora)` |
-| `indice` | último ONI / ICEN | `fuente` |
+| `indice` | último RONI / ICEN | `fuente` |
 | `alerta` | alertas vigentes (se reescriben cada corrida) | autoincrement |
 
 **Ingesta** (`prototipo/ingest.py`): una pasada = inventario + lluvia (automáticas) + caudales +
@@ -387,7 +437,7 @@ Acumular estas pasadas es lo que construye el histórico propio para el modelo p
 
 | Método | Ruta | Devuelve |
 |---|---|---|
-| GET | `/api/snapshot` | contexto (ONI/ICEN) + resumen + alertas + caudales |
+| GET | `/api/snapshot` | contexto (RONI/ICEN) + resumen + alertas + caudales |
 | GET | `/api/estaciones` | inventario de Cajamarca |
 | GET | `/api/caudales` | última lectura por estación, con `estado` |
 | GET | `/api/lluvia?cod=107028` | serie horaria de una estación |
@@ -407,7 +457,7 @@ Stack completo en `docker-compose.yml` (4 servicios):
 |---|---|---|
 | `frontend` | React build servido por **nginx** | 8080 |
 | `backend` | API **FastAPI async** (`backend/app.py`) | 8000 |
-| `worker` | **Celery + beat**: ingesta horaria + refresco de caché | — |
+| `worker` | **Celery + beat**: ingesta horaria, ENFEN cada 6 h, refresco de caché | — |
 | `redis` | caché (snapshot) + cola/broker de Celery | 6379 |
 
 ### ¿Por qué esta arquitectura? (van a entrar varias personas a la vez)
@@ -420,8 +470,10 @@ Stack completo en `docker-compose.yml` (4 servicios):
   móvil, terceros). Si algún día la web necesita aguantar más, puede leer ese snapshot con un
   proxy `/api` en nginx en vez de consultar Supabase.
 - **Worker (Celery + beat):** bajar datos de las fuentes es lento y a veces falla (ANA es
-  intermitente). Eso corre **en segundo plano**, aparte de la web, cada hora; si la ingesta tarda o
-  falla, la web sigue rápida con lo último cacheado. `beat` es el "reloj" que dispara la tarea.
+  intermitente). Eso corre **en segundo plano**, aparte de la web: la ingesta cada hora y la tarea
+  `enfen` cada 6 h. `beat` es el "reloj" que dispara las tareas; como su programación se pierde al
+  recrear el contenedor, al arrancar encola una vez `ingesta` y `enfen` (señal `beat_init`). Cada
+  corrida deja su **latido** (tabla `latido`) con lo que falló, y el frontend lo muestra.
 - **Backend async (FastAPI):** atiende muchas peticiones a la vez sin bloquearse esperando I/O
   (`async`/`await` + consultas en paralelo). Un backend síncrono se traba bajo concurrencia.
 - **Redis también como cola/broker:** deja listo repartir tareas pesadas entre **varios workers**
@@ -497,7 +549,8 @@ scraping HTML/PDF.**
 
 | Fuente | Método | Nota |
 |---|---|---|
-| NOAA ONI | archivo abierto (HTTPS) | trivial |
+| NOAA RONI | archivo abierto (HTTPS) | trivial |
+| ENFEN | PDF (comunicado e Informe Técnico) descubierto en gob.pe / SENAMHI | pypdf |
 | IGP ICEN | archivo abierto (**HTTP**) | proxyear desde backend |
 | ANA caudal | API interna `.asmx` (POST JSON) | payload exacto, ver 5.2 |
 | SENAMHI estaciones/serie | HTML con JSON/Highcharts embebido | scraping estructurado |
@@ -517,7 +570,7 @@ Reglas:
 ## 10. Pendientes
 
 - [ ] Conector de **avisos** SENAMHI (scraping de tabla + filtro Cajamarca).
-- [ ] Conector **ENFEN** (`wp-json`) validado desde producción.
+- [x] Conector **ENFEN** por PDF: estado del Sistema de Alerta y ICEN del Informe Técnico (§5.3.1).
 - [ ] URL exacta del **MapServer de CENEPRED** (enumerar capas de peligro por lluvia/inundación).
 - [x] Persistencia + ingesta + API (prototipo SQLite/stdlib, sección 7).
 - [x] Persistencia en **PostgreSQL + PostGIS** (Supabase) con job horario en el worker (Celery beat).

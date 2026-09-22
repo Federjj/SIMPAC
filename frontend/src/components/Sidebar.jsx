@@ -21,16 +21,29 @@ const NAV = [
   { id: "cuenta", label: "Cuenta", Icon: User },
 ];
 
-const fmt = (v) => (v == null ? "—" : (v >= 0 ? "+" : "") + v);
+// Una línea del contexto El Niño: la palabra primero, el número y la fuente en chico.
+function Contexto({ titulo, valor, detalle, aviso }) {
+  return (
+    <div className="rounded-lg border border-border bg-card px-3 py-2 leading-tight">
+      <div className="text-[0.66rem] text-muted-foreground">{titulo}</div>
+      <div className="text-sm font-semibold">{valor ?? "Sin dato"}</div>
+      {detalle && <div className="mt-0.5 text-[0.66rem] text-muted-foreground">{detalle}</div>}
+      {aviso && <div className="mt-0.5 text-[0.66rem] text-nivel-alerta">{aviso}</div>}
+    </div>
+  );
+}
 
 export default function Sidebar({
   active = "mapa",
+  depto,
   nivel = "normal",
   alertCount = 0,
-  oni,
-  icen,
+  enfen,
+  mar,
+  pacifico,
   actualizado,
   desactualizado,
+  sinConexion,
 }) {
   const nv = NIVEL[nivel];
   return (
@@ -46,18 +59,18 @@ export default function Sidebar({
               SIM<span className="text-primary">PAC</span>
             </div>
             <div className="text-xs text-muted-foreground mt-1">
-              Monitoreo · Perú
+              Ríos, lluvia y El Niño · Perú
             </div>
           </div>
         </div>
       </div>
 
-      {/* Estado actual (real) */}
+      {/* Estado en la zona del usuario */}
       <div className={cn("mx-4 mb-3 rounded-xl border px-4 py-3 flex items-center gap-3", nv.border, nv.softbg)}>
         <span className={cn("h-2.5 w-2.5 rotate-45 rounded-[2px]", nv.dot)} />
         <div className="leading-tight">
           <div className="text-[0.68rem] uppercase tracking-wider text-muted-foreground">
-            Estado actual
+            Estado en {depto}
           </div>
           <div className={cn("text-sm font-semibold", nv.text)}>{nv.label}</div>
         </div>
@@ -93,10 +106,20 @@ export default function Sidebar({
         })}
       </nav>
 
-      {/* Pie: contexto El Niño (datos reales) */}
+      {/* Pie: contexto El Niño en palabras (datos reales) */}
       <div className="mt-auto border-t border-border p-4">
         <div className="mb-3 flex items-center gap-2 text-[0.68rem] uppercase tracking-widest text-muted-foreground">
-          {desactualizado ? (
+          {sinConexion ? (
+            <>
+              <Radio className="h-3.5 w-3.5 text-nivel-alerta" />
+              <span className="text-nivel-alerta">Sin conexión con los datos</span>
+            </>
+          ) : !actualizado ? (
+            <>
+              <Radio className="h-3.5 w-3.5" />
+              Consultando datos…
+            </>
+          ) : desactualizado ? (
             <>
               <Radio className="h-3.5 w-3.5 text-nivel-alerta" />
               <span className="text-nivel-alerta">Sin actualizar hace {horasDesde(actualizado)} h</span>
@@ -108,21 +131,18 @@ export default function Sidebar({
             </>
           )}
         </div>
-        <div className="grid grid-cols-2 gap-2">
-          <div className="rounded-lg border border-border bg-card px-3 py-2">
-            <div className="text-lg font-semibold tabular-nums">{fmt(oni?.valor)}</div>
-            <div className="text-[0.66rem] font-semibold text-met">ONI</div>
-            <div className="truncate text-[0.66rem] text-muted-foreground">{oni?.categoria || "El Niño"}</div>
-          </div>
-          <div className="rounded-lg border border-border bg-card px-3 py-2">
-            <div className="text-lg font-semibold tabular-nums">{fmt(icen?.valor)}</div>
-            <div className="text-[0.66rem] font-semibold text-hid">ICEN</div>
-            <div className="truncate text-[0.66rem] text-muted-foreground">{icen?.categoria || "El Niño costero"}</div>
-          </div>
+        <div className="flex flex-col gap-2">
+          <Contexto
+            titulo={enfen ? `${enfen.quien} (ENFEN)` : "Sistema de alerta ENFEN"}
+            valor={enfen?.corto}
+            detalle={enfen?.fuente}
+            aviso={enfen?.atrasado ? "Puede haber un comunicado más nuevo." : null}
+          />
+          <Contexto titulo="Mar frente al Perú" valor={mar?.corto} detalle={mar?.detalle} aviso={mar?.atrasado} />
+          <Contexto titulo="Pacífico central" valor={pacifico?.corto} detalle={pacifico?.detalle} />
         </div>
         <p className="my-3 text-xs text-muted-foreground">
-          Referencial · Emergencias:{" "}
-          <span className="font-semibold text-nivel-alerta">105 / 116</span>
+          Emergencias: <span className="font-semibold text-nivel-alerta">105 (Policía) · 116 (Bomberos)</span>
         </p>
         <Button className="w-full">
           <LogIn className="h-4 w-4" />

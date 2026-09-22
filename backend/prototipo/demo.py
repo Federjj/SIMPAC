@@ -3,7 +3,7 @@ Demo de los conectores de SIMPAC. Corre así (Python 3.10+, sin dependencias):
 
     python -m backend.prototipo.demo
 
-Muestra una "foto" en tiempo real de Cajamarca: contexto El Niño (ICEN/ONI),
+Muestra una "foto" en tiempo real de Cajamarca: contexto El Niño (ICEN/RONI),
 caudales de ríos con su estado de alerta, y la lluvia horaria de una estación
 automática. Sirve como prueba de humo de que los endpoints siguen vivos.
 """
@@ -28,7 +28,7 @@ def main() -> None:
     seccion("Contexto El Niño")
     try:
         o = noaa.ultimo()
-        print(f"  NOAA ONI   {o.temporada} {o.anio}: {o.anom:+.2f}  -> {o.fase}")
+        print(f"  NOAA RONI  {o.temporada} {o.anio}: {o.anom:+.2f}  -> {o.fase}")
     except Exception as e:
         print("  NOAA error:", e)
     try:

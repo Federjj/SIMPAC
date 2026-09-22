@@ -179,6 +179,12 @@
   font-size: 0.9rem;
   line-height: 1.45;
 }
+.pop .resumen {
+  margin: 4px 0 8px;
+  font-size: 0.9rem;
+  font-weight: 500;
+  line-height: 1.4;
+}
 .pop .filas {
   display: grid;
   grid-template-columns: auto 1fr;

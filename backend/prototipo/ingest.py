@@ -70,9 +70,9 @@ def correr() -> dict:
     try:
         o = noaa.ultimo()
         if o:
-            store.set_indice(conn, "ONI", f"{o.temporada} {o.anio}", o.anom, o.fase)
+            store.set_indice(conn, "RONI", f"{o.temporada} {o.anio}", o.anom, o.fase)
     except Exception as ex:
-        print("  [ONI] error:", ex)
+        print("  [RONI] error:", ex)
 
     # 5) Alertas vigentes
     store.replace_alertas(conn, alertas_vigentes)

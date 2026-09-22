@@ -16,18 +16,18 @@ capa FEN y la de lluvia en el mapa, y las demás páginas del front.
 
 **Datos / backend (prototipo, corre sin instalar nada)**
 - [x] Conectores en vivo: **SENAMHI** (estaciones + lluvia horaria), **ANA** (caudales+umbrales),
-      **IGP** (ICEN), **NOAA** (ONI). `backend/connectors/`
+      **IGP** (ICEN), **NOAA** (RONI), **ENFEN** (comunicado e Informe Técnico, PDF). `backend/connectors/`
 - [x] Prototipo sin dependencias: ingesta → SQLite → API JSON, hoy en `backend/prototipo/` (congelado).
 - [x] Motor de umbrales (`alerts.py`).
 - [x] **Tiempo real verificado** con evidencia: SENAMHI y ANA se actualizan a la hora en curso.
 
 **Base de datos (Supabase)**
 - [x] Proyecto **DATASYMPAC** (ref `clrnommkjyksnyrtnisf`, región São Paulo).
-- [x] **Esquema aplicado**: 11 tablas + vista `caudal_actual` + **PostGIS** + **RLS**. Historia en
-      `supabase/migrations/` (13 migraciones, versionadas en el repo); foto final en `supabase/schema.sql`.
+- [x] **Esquema aplicado**: 13 tablas + vista `caudal_actual` + **PostGIS** + **RLS**. Historia en
+      `supabase/migrations/` (15 migraciones, versionadas en el repo); foto final en `supabase/schema.sql`.
 - [x] **Datos (22 sep, los llena la ingesta horaria)**: 982 estaciones SENAMHI en 24 departamentos
       (con `lat`/`lon`) · lluvia horaria de las 14 automáticas de Cajamarca · ~120 ríos con caudal y
-      umbrales en 23 departamentos (2 en emergencia, Loreto) · ICEN / ONI · capa de **anomalías de
+      umbrales en 23 departamentos · ICEN / RONI / estado ENFEN · capa de **anomalías de
       precipitación** (muestra Cajamarca) y 5 mapas FEN en la tabla `mapa`.
 - [x] **Lectura del frontend verificada**: la publishable key lee estaciones/caudales/índices/mapa
       vía la API REST de Supabase (RLS de lectura pública funcionando).
@@ -74,10 +74,49 @@ capa FEN y la de lluvia en el mapa, y las demás páginas del front.
 - [x] **Endurecido**: Redis publicado solo en `127.0.0.1`; geopandas solo en la imagen del worker
       (`requirements-mapas.txt`), la imagen de la API bajó a ~310 MB.
 
+**Datos correctos y lenguaje claro (22 sep, noche)** — investigación en vivo verificada por agentes
+- [x] **Falsas emergencias de Loreto corregidas**: en temporada seca ANA publica, para algunos ríos
+      amazónicos, umbrales de **nivel bajo** (vaciante: el de emergencia queda por DEBAJO del de alerta).
+      Se leían como crecida y el panel entero salía en "Emergencia". Ahora `ana.py` los reconoce
+      (`umbral_bajo`), la alerta es de tipo `nivel_bajo` y el mapa no dibuja zona de desborde.
+- [x] **ICEN con los cortes oficiales** (Nota Técnica ENFEN 01-2024): +1.98 es "cálida moderada", no
+      "fuerte" (los cortes de 2012 fallaban en 6 de 11 meses). El IGP no publica desde julio: el ICEN
+      al día sale de la **Tabla 3 del Informe Técnico ENFEN** (hoy julio +3.38 fuerte y el estimado
+      de agosto +3.73 extraordinaria). Se guarda el mes más nuevo con su `origen` y nunca retrocede.
+- [x] **RONI en vez de ONI**: NOAA vigila El Niño con el RONI desde feb-2026 (jun-ago: +1.36,
+      moderado; el ONI viejo daba +1.80).
+- [x] **Estado oficial del ENFEN** (Vigilancia / Alerta de El Niño Costero): conector que descubre
+      el último comunicado PDF (gob.pe, SENAMHI, web ENFEN) y lo lee con `pypdf`, más el ICEN de la
+      Tabla 3 del Informe Técnico (solo se baja cuando sale uno nuevo). Tarea `enfen` del worker cada
+      6 h; tabla `comunicado_enfen`. Hoy: CO 16-2026 "Alerta de El Niño Costero", próximo el 28 set.
+- [x] **Latido de la ingesta** (tabla `latido`): el aviso "sin actualizar" ya no depende de los índices.
+- [x] **Lenguaje claro** (`frontend/src/lib/lenguaje.js`, un solo diccionario):
+  - Primero tu zona y después el país: el departamento sale de la ciudad elegida o del GPS
+    (estación SENAMHI más cercana; Jaén ya no cae en Amazonas).
+  - Ríos: "lleva el 1 % del caudal que activa la alerta", "le faltan 3.68 m", "río bajo por la
+    temporada seca".
+  - Lluvia de las últimas 24 h de tu departamento.
+  - El Niño en palabras ("El Niño costero: Alerta", "mar más caliente"), con su mes y su fuente.
+  - Anomalías con las clases oficiales de SENAMHI.
+  - Lo que es criterio de SIMPAC ("atento", umbrales de lluvia de 24 h) se rotula como referencial.
+- [x] **Revisión adversarial de este cambio** (8 agentes, 24 hallazgos confirmados, corregidos). Lo principal:
+  - Nunca "Normal" en verde por algo que no se midió: mientras carga, si falla la consulta o si
+    SIMPAC no vigila nada en la zona (Callao) sale "Sin datos". En Lima aclara que la lluvia aún no
+    se mide ahí.
+  - Una alerta de lluvia de 24 h (umbral provisional) sube la zona a "Alerta" como mucho, nunca a
+    "Emergencia", y se describe como lo que es: "mucha lluvia acumulada" (referencial).
+  - Avisos cuando ANA o SENAMHI no respondieron en la última corrida.
+  - La etiqueta dice "La Niña costera" si el ENFEN declara La Niña.
+  - La lluvia de otra ciudad ya no queda pegada al cambiar de ciudad.
+  - El worker encola `ingesta` y `enfen` al arrancar (el beat pierde su programación al recrear el
+    contenedor).
+  - La tarea ENFEN aísla el comunicado del Informe Técnico: si uno falla, el otro se guarda igual.
+  - No vuelve a bajar 17 MB por un informe ilegible o que ya leyó.
+
 **Refactor y correcciones (22 sep)** — probado y corriendo (imágenes reconstruidas el 22 sep)
 - [x] **Backend modular**: `config.py` (variables de entorno en un solo lugar), `db.py` (conexión),
       `ingesta/` (`recolectar.py` baja, `guardar.py` escribe, `departamentos.py`), `snapshot.py`
-      (antes `cache.py`), `prototipo/` (lo viejo, fuera de las imágenes) y `tests/` (**48 pruebas sin
+      (antes `cache.py`), `prototipo/` (lo viejo, fuera de las imágenes) y `tests/` (**pruebas sin
       red**: `python -m unittest discover -s backend/tests -t .`). Borrados los `seed_*` muertos.
 - [x] **Bugs de datos corregidos**:
   - Departamento real en las estaciones (antes las 827 decían 'Cajamarca').
@@ -181,7 +220,18 @@ capa FEN y la de lluvia en el mapa, y las demás páginas del front.
 - [x] **Departamento de las estaciones**: corregido (ver refactor).
 - [x] **Password de la BD reseteada** (22 sep); compartirla solo por canal privado.
 - [x] **Revocado `EXECUTE`** de `rls_auto_enable()` (migración `permisos_api_endurecidos`).
-- [ ] Conector de **avisos SENAMHI** (scraping de tabla) → alertas oficiales al motor.
+- [ ] **Capas de lluvia en áreas (fase 3)**, todas gratis y sin key (investigadas y verificadas el 22 sep):
+  - Avisos meteorológicos de SENAMHI: polígonos oficiales por nivel en la GeoServer de IDESEP
+    (`g_aviso:view_aviso`). Van por el worker a Supabase, porque WFS no tiene CORS y el servidor es
+    intermitente. También alimentan las alertas (tipo `aviso`).
+  - Aviso de lluvia de 24 h (`g_prono_pp_24h:view_aviso24h`), por WMS.
+  - Lluvia observada de ayer y de 7 días (`monitoreo_meteorologico:prec_1`, `prec_1_ac07d`), por WMS.
+  - Lluvia horaria nacional con umbrales (`g_umbrales:umbrales_precipitacion`): ~180 estaciones,
+    26 en Cajamarca.
+  - NASA IMERG por GIBS: lluvia satelital de todo el Perú, con 5 a 6 h de retraso.
+  - Radar: no hay sobre Cajamarca. Windy, OpenWeatherMap y Tomorrow.io piden key o son pagos.
+- [ ] **INPE (Hidroestimador, lluvia casi en tiempo real)**: su sitio exige autorización expresa de
+      CPTEC/INPE para reproducirlo en medios de divulgación. Pedirla por correo antes de publicarlo.
 - [ ] Calibrar los **umbrales de lluvia** (hoy placeholders en `alerts.py`) con Defensa Civil.
 
 **Frontend / móvil**
@@ -220,6 +270,9 @@ capa FEN y la de lluvia en el mapa, y las demás páginas del front.
 - **Cambios de BD = archivo nuevo en `supabase/migrations/`** (y reflejarlo en `schema.sql`).
 - **La anon key es pública por diseño** (no es fuga): viaja en cada request y se ve en el navegador;
   lo que protege es **RLS**, que está activo en todas las tablas de datos.
-- **Umbrales de lluvia = placeholder**, deben calibrarse antes de confiar en las alertas de lluvia.
+- **Umbrales de lluvia = placeholder**, deben calibrarse antes de confiar en las alertas de lluvia
+  (candidatos: umbrales por estación de `g_umbrales` de SENAMHI o sus percentiles diarios).
+- **ANA cambia de juego de umbrales según la temporada** (crecida / nivel bajo). ANA no publica el
+  nivel amarillo que sí usa SENAMHI en sus avisos hidrológicos.
 - **Worker corriendo como root** en el contenedor: solo un `SecurityWarning` de Celery, inofensivo
   en Docker; si se quiere limpio, correrlo con un usuario no-root en el Dockerfile.

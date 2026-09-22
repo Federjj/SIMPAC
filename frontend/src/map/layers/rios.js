@@ -1,10 +1,11 @@
 import L from "leaflet";
 import { Waves } from "lucide-react";
 import { getCaudales } from "@/lib/queries";
-import { NIVEL_HEX, SIN_DATO_HEX } from "../palette";
+import { lecturaRio, textoRio } from "@/lib/lenguaje";
+import { RIO_HEX } from "../palette";
 import { SVG, markerIcon, popupHtml } from "../markers";
 
-const ESTADO = { normal: "Normal", alerta: "Alerta", emergencia: "Emergencia", "s.d.": "Sin umbral" };
+const num = (v) => Number(v).toLocaleString("es-PE", { maximumFractionDigits: 2 });
 
 export default {
   id: "rio",
@@ -13,27 +14,33 @@ export default {
   defaultVisible: true,
   refreshMs: 10 * 60_000, // la ingesta es horaria
   legend: [
-    { color: NIVEL_HEX.normal, label: "Caudal normal" },
-    { color: NIVEL_HEX.alerta, label: "Caudal en alerta" },
-    { color: NIVEL_HEX.emergencia, label: "Caudal en emergencia" },
-    { color: SIN_DATO_HEX, label: "Sin umbral o sin dato" },
+    { color: RIO_HEX.normal, label: "Tranquilo" },
+    { color: RIO_HEX.atento, label: "Cerca del nivel de alerta (criterio SIMPAC)" },
+    { color: RIO_HEX.alerta, label: "Pasó el nivel de alerta" },
+    { color: RIO_HEX.emergencia, label: "Pasó el nivel de emergencia" },
+    { color: RIO_HEX.sd, label: "Sin nivel de alerta publicado" },
   ],
   load: getCaudales,
   render(group, caudales) {
     for (const c of caudales) {
       if (c.lat == null || c.lon == null) continue;
-      const valor = c.valor == null ? "sin dato" : `${c.valor} ${c.unidad ?? ""}`.trim();
-      L.marker([c.lat, c.lon], { icon: markerIcon(NIVEL_HEX[c.estado] ?? SIN_DATO_HEX, SVG.wave) })
+      const t = textoRio(c);
+      const umbral = (etiqueta, v) => [
+        `${t.bajo ? `${etiqueta} por nivel bajo` : etiqueta}`,
+        v != null ? `${num(v)} ${c.unidad}` : null,
+      ];
+      L.marker([c.lat, c.lon], { icon: markerIcon(RIO_HEX[t.estado] ?? RIO_HEX.sd, SVG.wave) })
         .bindPopup(
           popupHtml({
-            title: c.estacion,
-            meta: [c.rio && `Río ${c.rio}`, c.departamento],
+            title: t.titulo,
+            meta: [t.etiqueta, c.departamento],
+            resumen: t.frase,
             filas: [
-              ["Caudal", valor],
-              ["Estado", ESTADO[c.estado] ?? c.estado],
-              ["Tendencia", c.tendencia],
-              ["Lectura", c.fecha && `${c.fecha} ${c.hora ?? ""}`.trim()],
+              umbral("Nivel de alerta", t.ua),
+              umbral("Nivel de emergencia", t.ue),
+              ["Medido", lecturaRio(c)],
             ],
+            nota: t.accion,
           })
         )
         .addTo(group);

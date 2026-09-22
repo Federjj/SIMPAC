@@ -34,7 +34,7 @@ class Pasada:
     caudal_ok: list[str] = field(default_factory=list)         # referencias de alerta re-evaluadas
     alertas_caudal: list[dict] = field(default_factory=list)
     icen: igp.PuntoICEN | None = None
-    oni: noaa.PuntoONI | None = None
+    roni: noaa.PuntoRONI | None = None
     fallas: list[str] = field(default_factory=list)
 
 
@@ -127,7 +127,7 @@ def _caudal(pasada: Pasada) -> None:
 
 
 def _indices(pasada: Pasada) -> None:
-    for nombre, fuente, campo in (("IGP", igp, "icen"), ("NOAA", noaa, "oni")):
+    for nombre, fuente, campo in (("IGP", igp, "icen"), ("NOAA", noaa, "roni")):
         try:
             setattr(pasada, campo, fuente.ultimo())
         except Exception as e:

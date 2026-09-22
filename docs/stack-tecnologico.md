@@ -21,7 +21,7 @@
 | Almacenamiento | **Supabase Storage** | fotos de reportes | decidido |
 | Notificaciones push | **Firebase Cloud Messaging (FCM)** | avisos al celular | decidido |
 | Scraping HTML | **BeautifulSoup4** | avisos SENAMHI, tablas | decidido |
-| Parsing de PDF | **pdfplumber** | comunicados ENFEN | decidido |
+| Parsing de PDF | **pypdf** | comunicados e Informe Técnico ENFEN | hecho |
 | ETL geoespacial | **GeoPandas + Shapely** | shapefile → GeoJSON | hecho *(cargador de mapas FEN; import perezoso)* |
 | Mapas (frontend) | **Leaflet** (tiles Stadia Alidade Smooth) | visualización en mapa | hecho |
 | Gráficos (frontend) | **Recharts / Chart.js** | series de lluvia/caudal | evaluar |
@@ -61,7 +61,7 @@
 - **`urllib`/`httpx`** + **regex** para extraer JSON embebido (inventario de estaciones de
   SENAMHI) y series de **Highcharts** (lluvia horaria).
 - **BeautifulSoup4** para tablas HTML (avisos meteorológicos de SENAMHI).
-- **pdfplumber** para PDFs (comunicados de ENFEN).
+- **pypdf** (pure Python) para los PDF del ENFEN: comunicado oficial e Informe Técnico (solo en el worker).
 - **GeoPandas + Shapely** para convertir shapefiles (mapas de anomalías de SENAMHI/IDESEP) a
   GeoJSON.
 - Un **conector aislado por fuente**, con caché y rate-limit (ver `docs/README-tecnico.md`).
@@ -103,9 +103,9 @@
 | **SENAMHI** | estaciones, lluvia/temp horaria, avisos | HTML+JSON embebido, Highcharts, tabla HTML; IDESEP = GeoNetwork/CSW + shapefiles |
 | **ANA** (SNIRH/ONRH) | caudales de ríos + umbrales | Web services **ASMX** (POST → JSON) |
 | **IGP** | ICEN (El Niño Costero) | archivo de texto (**HTTP**, requiere proxy) |
-| **NOAA / CPC** | ONI (ENSO global) | archivo de texto (HTTPS) |
+| **NOAA / CPC** | RONI (ENSO global, oficial desde feb-2026) | archivo de texto (HTTPS) |
 | **CENEPRED** (SIGRID) | peligro/riesgo | **ArcGIS REST** (MapServer/FeatureServer) |
-| **ENFEN** | estado de alerta El Niño Costero | WordPress **wp-json** / PDF |
+| **ENFEN** | estado de alerta El Niño Costero + ICEN al día | PDF (gob.pe / SENAMHI) |
 
 Detalle completo de endpoints en `docs/fuentes-y-endpoints.html` y `docs/README-tecnico.md`.
 
