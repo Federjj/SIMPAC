@@ -16,7 +16,13 @@ from __future__ import annotations
 
 import json
 import re
+import os
+import tempfile
 from dataclasses import dataclass, field
+
+import requests
+import geopandas as gpd
+from bs4 import BeautifulSoup
 
 from . import _http
 
@@ -128,3 +134,146 @@ def datos_horarios(est: Estacion) -> SerieHoraria:
 def estaciones_automaticas(dp: str = "cajamarca") -> list[Estacion]:
     """Solo las estaciones con telemetría horaria (las útiles para alertas)."""
     return [e for e in inventario_estaciones(dp) if e.es_automatica]
+
+
+@dataclass
+class MapaFEN:
+    """Mapa de eventos El Niño con geojson."""
+    uuid: str
+    titulo: str
+    variable: str = "FEN"
+    periodo: str = ""
+    geojson: str = ""
+
+
+def mapas_fen(map_subjects: dict) -> list[MapaFEN]:
+    """
+    Busca todos los mapas FEN en GeoNetwork y obtiene sus GeoJSON.
+
+    Args:
+        map_subjects: dict con {titulo: [keywords], ...}
+
+    Returns:
+        lista de MapaFEN con uuid, titulo y geojson
+    """
+    import xml.etree.ElementTree as ET
+
+    mapas = []
+
+    for titulo, keywords in map_subjects.items():
+        # Construir constraint de búsqueda
+        constraint_str = " AND ".join([f"Subject = '{kw}'" for kw in keywords])
+
+        url = "https://idesep.senamhi.gob.pe/geonetwork/srv/eng/csw"
+        params = {
+            "service": "CSW",
+            "version": "2.0.2",
+            "request": "GetRecords",
+            "resultType": "results",
+            "elementSetName": "summary",
+            "typeNames": "csw:Record",
+            "maxRecords": "10",
+            "constraintLanguage": "CQL_TEXT",
+            "constraint_language_version": "1.1.0",
+            "constraint": constraint_str
+        }
+
+        try:
+            response = requests.get(url, params=params, timeout=30)
+            response.raise_for_status()
+
+            root = ET.fromstring(response.content)
+            namespaces = {
+                'csw': 'http://www.opengis.net/cat/csw/2.0.2',
+                'dc': 'http://purl.org/dc/elements/1.1/'
+            }
+
+            identificadores = root.findall('.//dc:identifier', namespaces)
+
+            if not identificadores:
+                print(f"⚠ No se encontraron mapas para: {titulo}")
+                continue
+
+            for ident_elem in identificadores:
+                uuid = ident_elem.text
+                if not uuid:
+                    continue
+
+                # Obtener GeoJSON del UUID
+                try:
+                    geojson = _obtener_geojson_por_uuid(uuid)
+
+                    # Extraer período del título (ej: "2023 - 2024" -> "2023-01", "Costero 2017" -> "2017-01")
+                    periodo = ""
+                    # Busca un año (2-4 dígitos), opcionalmente seguido de guión y otro año
+                    match = re.search(r"(\d{2,4})(?:\s*-\s*\d{2,4})?", titulo)
+                    if match:
+                        ano_str = match.group(1)
+                        # Si es año de 2 dígitos (82, 97), asumir siglo XX
+                        ano = int(ano_str)
+                        if ano < 100:
+                            ano += 1900
+                        periodo = f"{ano}-01"
+
+                    mapas.append(MapaFEN(
+                        uuid=uuid,
+                        titulo=titulo,
+                        periodo=periodo,
+                        geojson=geojson
+                    ))
+                    print(f"✓ Mapa cargado: {titulo}")
+                    break  # Solo el primer resultado por título
+
+                except Exception as e:
+                    print(f"✗ Error obteniendo GeoJSON para {uuid}: {e}")
+                    continue
+
+        except Exception as e:
+            print(f"✗ Error buscando mapas para {titulo}: {e}")
+            continue
+
+    return mapas
+
+
+def _obtener_geojson_por_uuid(uuid: str) -> str:
+    """Obtiene GeoJSON de un shapefile alojado en GeoNetwork."""
+    url_base = f"https://idesep.senamhi.gob.pe/geonetwork/srv/api/0.1/records/{uuid}"
+
+    respuesta_html = requests.get(url_base, timeout=30)
+    respuesta_html.raise_for_status()
+
+    enlace_zip = None
+    soup = BeautifulSoup(respuesta_html.text, 'html.parser')
+
+    for a in soup.find_all('a', href=True):
+        if a['href'].endswith('.zip') and '/attachments/' in a['href']:
+            enlace_zip = a['href']
+            break
+
+    if not enlace_zip:
+        match = re.search(r'(https?://[^"\']+/attachments/[^"\']+\.zip)', respuesta_html.text)
+        if match:
+            enlace_zip = match.group(1)
+
+    if not enlace_zip:
+        raise ValueError(f"No se encontró archivo .zip para UUID: {uuid}")
+
+    respuesta_zip = requests.get(enlace_zip, timeout=30)
+    respuesta_zip.raise_for_status()
+
+    with tempfile.NamedTemporaryFile(delete=False, suffix='.zip') as tmp:
+        tmp.write(respuesta_zip.content)
+        ruta_temporal = tmp.name
+
+    try:
+        gdf = gpd.read_file(f"zip://{ruta_temporal}")
+
+        if gdf.crs and gdf.crs.to_epsg() != 4326:
+            gdf = gdf.to_crs(epsg=4326)
+
+        geojson_str = gdf.to_json()
+        return geojson_str
+
+    finally:
+        if os.path.exists(ruta_temporal):
+            os.remove(ruta_temporal)

@@ -13,6 +13,7 @@ services:
       REDIS_URL: redis://redis:6379/0
       SUPABASE_URL: ${SUPABASE_URL}
       SUPABASE_PUBLISHABLE_KEY: ${SUPABASE_PUBLISHABLE_KEY}
+      SUPABASE_DB_URL: ${SUPABASE_DB_URL}
     ports: ["8000:8000"]
     depends_on: [redis]
 
@@ -38,3 +39,4 @@ services:
     restart: unless-stopped
     ports: ["8080:80"]
     depends_on: [backend]
+

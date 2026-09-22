@@ -1,16 +1,32 @@
-from buscar_mapa import buscar_mapa
-from geojson import obtener_geojson_por_uuid
+"""
+Ejemplo: obtener mapas FEN y guardar GeoJSON localmente.
+
+La lógica productiva está en backend/connectors/senamhi.py:mapas_fen()
+que actúa como intermediario entre GeoNetwork y la BD.
+"""
+import sys
+sys.path.insert(0, __file__.rsplit("backend", 1)[0])
+
+from backend.connectors import senamhi
+from backend.mapas.mapas_dic_subject import map_subjects
 
 if __name__ == "__main__":
-    
-    identifier = buscar_mapa("Anomalía de Precipitación – Mensual")[0]
+    mapas = senamhi.mapas_fen(map_subjects)
 
-    try:
-        resultado_geojson = obtener_geojson_por_uuid(identifier)
-        # Imprime solo los primeros 500 caracteres para no saturar la consola
-        print("\n=== FRAGMENTO DEL GEOJSON ===")
-        print(resultado_geojson[:500] + " ... [CONTENIDO TRUNCADO]")
-        with open("datos_senamhi.geojson", "w", encoding="utf-8") as f:
-            f.write(resultado_geojson)
-    except Exception as e:
-        print(f"Error durante el proceso: {e}")
+    if not mapas:
+        print("No se encontraron mapas FEN")
+        sys.exit(1)
+
+    print(f"\n✓ Se encontraron {len(mapas)} mapas:")
+    for mapa in mapas:
+        print(f"  - {mapa.titulo}")
+        print(f"    UUID: {mapa.uuid}")
+        print(f"    Período: {mapa.periodo}")
+        print(f"    GeoJSON size: {len(mapa.geojson)} bytes")
+
+    # Guardar el primero como ejemplo
+    if mapas:
+        nombre_archivo = "datos_senamhi.geojson"
+        with open(nombre_archivo, "w", encoding="utf-8") as f:
+            f.write(mapas[0].geojson)
+        print(f"\n✓ Primer mapa guardado en: {nombre_archivo}")
