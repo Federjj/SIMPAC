@@ -8,6 +8,16 @@ export const NIVEL = {
     dot: "bg-nivel-normal",
     strip: "bg-nivel-normal",
   },
+  // Aviso amarillo de SENAMHI (nivel 2): estar atentos. El texto va en un amarillo oscuro
+  // para que se lea sobre fondo claro.
+  aviso: {
+    label: "Aviso",
+    text: "text-yellow-700 dark:text-nivel-aviso",
+    border: "border-nivel-aviso/70",
+    softbg: "bg-nivel-aviso/15",
+    dot: "bg-nivel-aviso",
+    strip: "bg-nivel-aviso",
+  },
   alerta: {
     label: "Alerta",
     text: "text-nivel-alerta",
@@ -36,22 +46,44 @@ export const NIVEL = {
   },
 };
 
-// Nivel a partir de las alertas vigentes (tabla alerta: lluvia, caudal y nivel bajo).
-// Las de lluvia salen de umbrales provisionales de SIMPAC: suben la zona a "Alerta" como
-// mucho, nunca a "Emergencia" (eso queda para los niveles oficiales de ANA).
+// Nivel a partir de las alertas vigentes (tabla alerta: lluvia, caudal, nivel bajo y avisos
+// de SENAMHI). Las de lluvia salen de umbrales provisionales de SIMPAC: suben la zona a
+// "Alerta" como mucho, nunca a "Emergencia" (eso queda para los niveles oficiales de ANA y
+// el aviso rojo de SENAMHI). Los avisos de SENAMHI: amarillo = aviso, naranja = alerta,
+// rojo = emergencia.
 const nivelEfectivo = (a) => (a.tipo === "lluvia" && a.nivel === "emergencia" ? "alerta" : a.nivel);
 
 export function nivelDeAlertas(alertas) {
   if (alertas.some((a) => nivelEfectivo(a) === "emergencia")) return "emergencia";
   if (alertas.some((a) => nivelEfectivo(a) === "alerta")) return "alerta";
+  if (alertas.some((a) => nivelEfectivo(a) === "aviso")) return "aviso";
   return "normal";
 }
 
 const n = (k, uno, varios) => `${k} ${k === 1 ? uno : varios}`;
 
+// Cuántas cosas hay que atender: una alerta por río o estación, pero los avisos de SENAMHI
+// llegan uno por departamento que cubren, así que cada aviso se cuenta una sola vez.
+const contar = (lista) =>
+  lista.filter((a) => a.tipo !== "aviso").length +
+  new Set(lista.filter((a) => a.tipo === "aviso").map((a) => a.referencia)).size;
+const COLOR_AVISO = { aviso: "amarillo", alerta: "naranja", emergencia: "rojo" };
+
 // "1 río en emergencia, 2 ríos muy bajos y lluvia fuerte en 3 estaciones"
 function describir(alertas) {
   const partes = [];
+  // avisos de SENAMHI: hay una alerta por aviso y departamento, se cuentan los avisos
+  const avisos = alertas.filter((a) => a.tipo === "aviso");
+  if (avisos.length) {
+    const cuantos = new Set(avisos.map((a) => a.referencia)).size;
+    const peor = COLOR_AVISO[["emergencia", "alerta", "aviso"].find((nv) => avisos.some((a) => a.nivel === nv))];
+    // el worker también cuenta los avisos que empiezan en las próximas 48 h
+    partes.push(
+      cuantos === 1
+        ? `aviso ${peor} de SENAMHI por lluvias, vigente o por empezar`
+        : `${cuantos} avisos de SENAMHI por lluvias, vigentes o por empezar (el más alto, ${peor})`
+    );
+  }
   for (const nivel of ["emergencia", "alerta"]) {
     const rios = alertas.filter((a) => a.tipo === "caudal" && a.nivel === nivel).length;
     if (rios) partes.push(`${n(rios, "río", "ríos")} en ${nivel}`);
@@ -63,20 +95,29 @@ function describir(alertas) {
   const lluvia24h = alertas.filter((a) => a.tipo === "lluvia").length - lluvia1h;
   if (lluvia1h) partes.push(`lluvia fuerte en la última hora en ${n(lluvia1h, "estación", "estaciones")}`);
   if (lluvia24h) partes.push(`mucha lluvia acumulada en 24 h en ${n(lluvia24h, "estación", "estaciones")} (umbral referencial de SIMPAC)`);
-  const otras = alertas.length - alertas.filter((a) => ["caudal", "nivel_bajo", "lluvia"].includes(a.tipo)).length;
+  const otras = alertas.length - alertas.filter((a) => ["aviso", "caudal", "nivel_bajo", "lluvia"].includes(a.tipo)).length;
   if (otras) partes.push(n(otras, "aviso", "avisos"));
-  return partes.length > 1 ? `${partes.slice(0, -1).join(", ")} y ${partes.at(-1)}` : partes[0];
+  return partes.length > 1 ? `${partes.slice(0, -1).join(", ")} y ${partes[partes.length - 1]}` : partes[0];
 }
 
 // Primero la zona del usuario, después el resto del país. Solo afirma lo que SIMPAC
 // mide en esa zona: `cobertura` = { rios, lluvia } (ríos con nivel de alerta de ANA y
 // estaciones de lluvia horaria del departamento). `alertas` null = aún no hay dato.
+// "Aviso naranja" si el nivel de la zona sale solo de avisos de SENAMHI; si no, el del semáforo.
+function etiqueta(nivel, alertas) {
+  const porOtra = alertas.some((a) => a.tipo !== "aviso" && nivelEfectivo(a) === nivel);
+  return !porOtra && COLOR_AVISO[nivel] && alertas.length ? `Aviso ${COLOR_AVISO[nivel]}` : NIVEL[nivel].label;
+}
+
 export function frasesEstado(alertas, depto, cobertura = { rios: 0, lluvia: 0 }, error = false) {
   if (alertas == null) {
     return {
       nivelLocal: "sin_dato",
+      etiquetaLocal: NIVEL.sin_dato.label,
       cuantasAqui: 0,
       cuantasFuera: 0,
+      cuantasTotal: 0,
+      avisosAqui: [],
       local: error ? "No se pudo consultar las alertas. Revisa tu conexión." : "Consultando las alertas…",
       pais: "",
     };
@@ -109,11 +150,16 @@ export function frasesEstado(alertas, depto, cobertura = { rios: 0, lluvia: 0 },
     if (!rios) local += " No hay ríos con nivel de alerta de ANA aquí.";
   }
   const resto = depto ? "En el resto del país" : "En el país";
+  const nivelLocal = aqui.length ? nivelDeAlertas(aqui) : sinCobertura ? "sin_dato" : "normal";
   return {
-    nivelLocal: aqui.length ? nivelDeAlertas(aqui) : sinCobertura ? "sin_dato" : "normal",
+    nivelLocal,
+    etiquetaLocal: etiqueta(nivelLocal, aqui),
     nivelPais: nivelDeAlertas(fuera),
-    cuantasAqui: aqui.length,
-    cuantasFuera: fuera.length,
+    cuantasAqui: contar(aqui),
+    cuantasFuera: contar(fuera),
+    cuantasTotal: contar(alertas), // un aviso que cubre tu zona y otras cuenta una vez
+    // qué dicen los avisos de SENAMHI que cubren la zona (ya en lenguaje claro, desde el worker)
+    avisosAqui: aqui.filter((a) => a.tipo === "aviso").map((a) => ({ nivel: a.nivel, detalle: a.detalle, referencia: a.referencia })),
     local,
     pais: fuera.length
       ? `${resto}: ${describir(fuera)}${donde}.`

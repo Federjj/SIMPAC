@@ -11,6 +11,7 @@ const RADIO_M = 2500;
 
 export default {
   id: "zona",
+  grupo: "Alertas y avisos",
   label: "Zonas a vigilar (río crecido)",
   Icon: ShieldAlert,
   defaultVisible: true,

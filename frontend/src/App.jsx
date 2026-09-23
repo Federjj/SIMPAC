@@ -1,23 +1,34 @@
-import { useEffect, useState } from "react";
-import { Layers, LocateFixed, Plus } from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
+import { ChevronRight, Layers, LocateFixed, Plus, ShieldAlert } from "lucide-react";
 import Sidebar from "@/components/Sidebar";
 import MapView from "@/components/MapView";
 import LayersPanel from "@/components/LayersPanel";
 import StatusPanel from "@/components/StatusPanel";
+import ElNinoPanel from "@/components/ElNinoPanel";
+import ErrorBoundary from "@/components/ErrorBoundary";
 import CitySelector from "@/components/CitySelector";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { CITIES, DEFAULT_CITY, nearestCity } from "@/data/cities";
 import { LAYERS } from "@/map/layers";
 import { NIVEL } from "@/lib/nivel";
+import { ENFEN_HEX } from "@/map/palette";
 import { departamentoEn } from "@/lib/ubicacion";
 import { usePanorama } from "@/hooks/usePanorama";
 import { useGeolocation } from "@/hooks/useGeolocation";
 import { useLayerVisibility } from "@/hooks/useLayerVisibility";
 
 export default function App() {
-  const { visible, toggle } = useLayerVisibility(LAYERS);
+  const { visible, toggle, mostrar, opciones, elegir } = useLayerVisibility(LAYERS);
+  // Texto corto de cada capa encendida (qué muestra, de cuándo es el dato o si falló).
+  const [notas, setNotas] = useState({});
+  const onNota = useCallback((id, texto) => setNotas((n) => (n[id] === texto ? n : { ...n, [id]: texto })), []);
   const [showLayers, setShowLayers] = useState(false);
+  const [showElNino, setShowElNino] = useState(false);
+  // capa a traer a la vista en el panel de capas; `vez` cambia en cada pedido, así un segundo
+  // "ver evento" con el panel ya abierto vuelve a desplazarlo
+  const [destacar, setDestacar] = useState({ id: null, vez: 0 });
+  const cerrarElNino = useCallback(() => setShowElNino(false), []);
   const [city, setCity] = useState(DEFAULT_CITY.name);
   const [focus, setFocus] = useState({ lat: DEFAULT_CITY.lat, lon: DEFAULT_CITY.lon, zoom: 14 });
   const { pos: userPos, locate } = useGeolocation();
@@ -50,6 +61,16 @@ export default function App() {
     geolocate();
   }, []);
 
+  // Desde el panel El Niño: prende la capa de eventos pasados con ese evento y encuadra el norte.
+  const verEvento = (evento) => {
+    elegir("fen", evento);
+    mostrar("fen");
+    setFocus({ lat: -7.2, lon: -78.8, zoom: 6 });
+    setShowElNino(false);
+    setDestacar((d) => ({ id: "fen", vez: d.vez + 1 }));
+    setShowLayers(true);
+  };
+
   const nv = NIVEL[p.nivelLocal];
 
   return (
@@ -58,30 +79,58 @@ export default function App() {
         active="mapa"
         depto={depto}
         nivel={p.nivelLocal}
-        alertCount={p.cuantasAqui + p.cuantasFuera}
+        etiqueta={p.etiquetaLocal}
+        alertCount={p.cuantasTotal}
         enfen={p.enfen}
         mar={p.mar}
         pacifico={p.pacifico}
         actualizado={p.actualizado}
         desactualizado={p.desactualizado}
         sinConexion={p.sinConexion}
+        onElNino={() => setShowElNino(true)}
       />
 
       <main className="relative flex-1 h-screen">
-        <MapView layers={LAYERS} visible={visible} focus={focus} userPos={userPos} />
+        <MapView
+          layers={LAYERS}
+          visible={visible}
+          opciones={opciones}
+          focus={focus}
+          userPos={userPos}
+          onNota={onNota}
+        />
 
         {/* Chip de marca + estado */}
         <div className="absolute left-4 top-4 z-[600] flex items-center gap-2 rounded-full border border-border bg-card/85 px-3.5 py-1.5 text-sm font-semibold shadow-lg backdrop-blur">
           <span className="text-primary">SIMPAC</span>
           <span className={`h-1.5 w-1.5 rounded-full ${nv.dot}`} />
           <span className={nv.text}>
-            {nv.label} en {depto}
+            {p.etiquetaLocal ?? nv.label} en {depto}
           </span>
         </div>
 
-        {/* Selector de ciudad: mueve el mapa y cambia la zona del estado */}
-        <div className="absolute left-4 top-[60px] z-[600]">
+        {/* Selector de ciudad (mueve el mapa y cambia la zona del estado) y El Niño en gráficos */}
+        <div className="absolute left-4 top-[60px] z-[600] flex flex-col items-start gap-2">
           <CitySelector value={city} onChange={pickCity} />
+          <button
+            type="button"
+            onClick={() => setShowElNino(true)}
+            className="flex items-center gap-2 rounded-full border border-border bg-card/90 py-1 pl-1 pr-3 text-sm shadow-lg backdrop-blur hover:bg-accent"
+          >
+            <span
+              className="grid h-7 w-7 place-items-center rounded-full text-white"
+              style={{ background: ENFEN_HEX[p.enfen?.corto] ?? "#9CA3AF" }}
+            >
+              <ShieldAlert className="h-4 w-4" />
+            </span>
+            <span className="leading-tight">
+              <span className="block text-[0.62rem] uppercase tracking-wider text-muted-foreground">
+                {p.enfen?.quien ?? "El Niño costero"}
+              </span>
+              <span className="font-semibold">{p.enfen?.corto ?? "Sin dato"}</span>
+            </span>
+            <ChevronRight className="h-4 w-4 text-muted-foreground" />
+          </button>
         </div>
 
         {/* Herramientas */}
@@ -116,12 +165,44 @@ export default function App() {
           </div>
         </TooltipProvider>
 
-        {showLayers && <LayersPanel layers={LAYERS} visible={visible} onToggle={toggle} />}
+        {showLayers && (
+          <LayersPanel
+            layers={LAYERS}
+            visible={visible}
+            opciones={opciones}
+            notas={notas}
+            destacar={destacar}
+            onToggle={toggle}
+            onOpcion={elegir}
+          />
+        )}
 
-        {/* Botón reportar flotante (solo desktop; en móvil va dentro del panel) */}
+        {showElNino && (
+          <ErrorBoundary
+            fallback={
+              <div className="absolute inset-x-4 top-4 z-[1100] mx-auto flex max-w-md items-center gap-3 rounded-xl border border-border bg-card p-4 text-sm shadow-2xl">
+                No se pudo mostrar el panel de El Niño en este navegador.
+                <Button variant="secondary" size="sm" className="ml-auto" onClick={cerrarElNino}>
+                  Cerrar
+                </Button>
+              </div>
+            }
+          >
+            <ElNinoPanel
+              enfen={p.enfen}
+              mar={p.mar}
+              icen={p.icen}
+              icenTmp={p.icenTmp}
+              onVerEvento={verEvento}
+              onCerrar={cerrarElNino}
+            />
+          </ErrorBoundary>
+        )}
+
+        {/* Botón reportar flotante (solo en pantallas anchas: más angosto chocaría con el panel de estado) */}
         <Button
           variant="destructive"
-          className="absolute bottom-6 left-4 z-[610] hidden rounded-xl shadow-xl sm:inline-flex"
+          className="absolute bottom-6 left-4 z-[610] hidden rounded-xl shadow-xl 2xl:inline-flex"
         >
           <Plus className="h-[18px] w-[18px]" />
           Reportar
@@ -133,13 +214,16 @@ export default function App() {
           local={p.local}
           pais={p.pais}
           nivelLocal={p.nivelLocal}
+          etiqueta={p.etiquetaLocal}
           cuantasAqui={p.cuantasAqui}
           cuantasFuera={p.cuantasFuera}
+          cuantasTotal={p.cuantasTotal}
           enfen={p.enfen}
           mar={p.mar}
           pacifico={p.pacifico}
           lluvia={p.lluvia}
           avisos={p.avisos}
+          avisosZona={p.avisosAqui}
           alertasCargadas={p.alertas != null}
           actualizado={p.actualizado}
           desactualizado={p.desactualizado}

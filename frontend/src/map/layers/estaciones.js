@@ -7,6 +7,7 @@ import { SVG, markerIcon, popupHtml } from "../markers";
 
 export default {
   id: "est",
+  grupo: "Ríos y estaciones",
   label: "Estaciones SENAMHI",
   Icon: Radio,
   defaultVisible: false,

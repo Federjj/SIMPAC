@@ -50,12 +50,16 @@ VigiaFEN/
 │  │  ├─ igp.py          # Índice Costero El Niño (ICEN)
 │  │  ├─ noaa.py         # RONI (contexto ENSO global, índice oficial de NOAA desde feb-2026)
 │  │  ├─ enfen.py        # comunicado oficial ENFEN (estado de alerta) + ICEN del Informe Técnico (PDF)
+│  │  ├─ senamhi_avisos.py   # avisos oficiales de SENAMHI (tabla HTML + polígonos WFS) y aviso de 24 h
+│  │  ├─ senamhi_umbrales.py # lluvia de la última hora en ~216 estaciones (WFS) + fechas de prec_1
 │  │  └─ idesep.py       # catálogo GeoNetwork de SENAMHI: shapefile -> GeoJSON (no lo importa __init__)
 │  ├─ ingesta/
 │  │  ├─ recolectar.py   # baja de todas las fuentes en paralelo -> Pasada (no toca la BD)
 │  │  ├─ guardar.py      # escribe una Pasada en Supabase (una transacción)
 │  │  ├─ departamentos.py # slugs de SENAMHI y nombres canónicos de departamento
-│  │  └─ enfen.py        # tarea 'enfen' (cada 6 h): comunicado + ICEN del Informe Técnico
+│  │  ├─ enfen.py        # tarea 'enfen' (cada 6 h): comunicado + ICEN del Informe Técnico
+│  │  ├─ avisos.py       # tarea 'avisos' (cada hora): áreas de avisos SENAMHI + alertas por departamento
+│  │  └─ lluvia_nacional.py # tarea 'lluvia_nacional' (cada 30 min): lluvia de la última hora en el país
 │  ├─ mapas/
 │  │  └─ cargar_fen.py   # carga los mapas históricos de eventos El Niño a la tabla mapa
 │  ├─ prototipo/         # versión sin dependencias (SQLite + http.server), congelada
@@ -251,6 +255,20 @@ meses. Para las condiciones frías el ENFEN usa percentiles sin cortes numérico
 > mientras el ENFEN ya había publicado julio (+3.38) y un estimado de agosto (+3.73). La tabla
 > `indice` guarda el mes más nuevo de los dos (columna `origen`: IGP o ENFEN).
 
+**Serie mes a mes (`icen_serie`, para el gráfico de El Niño).** La ingesta horaria escribe los
+últimos 36 meses del IGP y la tarea `enfen`, los meses de la tabla de cada Informe Técnico nuevo
+(normalmente 12). Un mes del ENFEN nunca lo pisa el IGP; el IGP completa los meses que el ENFEN no
+tiene. Nada se borra. La categoría de los meses del ENFEN es la oficial de su tabla; la de los
+del IGP la calcula SIMPAC con `igp.categoria()`. Protecciones:
+- Un mes posterior al mes anterior al actual (hora de Perú) se descarta: el IGP se baja por http
+  y una fila futura quedaría para siempre en la serie y en `indice`.
+- Si la tabla no tiene meses del ENFEN, o si la relectura encontró un informe más viejo que el
+  leído (marca `serie_pendiente` en el latido `enfen`), se relee el informe vigente como mucho una
+  vez cada 24 h.
+- El campo `icen_serie` de los latidos cuenta meses insertados o cambiados, no enviados.
+
+El estimado `ICEN_TMP` no entra en la serie (no es definitivo): el gráfico lo dibuja punteado.
+
 ### 5.3.1. ENFEN — comunicado oficial (estado del Sistema de Alerta)
 
 El ENFEN publica cada ~2 semanas un comunicado en PDF con el **estado del Sistema de Alerta**
@@ -302,6 +320,76 @@ Implementado: ver §5.3.1 (`connectors/enfen.py`). No se usa el `wp-json` del Wo
 descubren en gob.pe y SENAMHI y se leen del PDF con `pypdf`. El ICEN al día sale del Informe
 Técnico (Tabla 3), no del comunicado ni del IGP (que se atrasa).
 
+### 5.6.1. SENAMHI — avisos oficiales como áreas (tarea `avisos`)
+
+`connectors/senamhi_avisos.py` + `ingesta/avisos.py`, cada hora y al arrancar el worker.
+```
+GET https://www.senamhi.gob.pe/?p=aviso-meteorologico          # tabla HTML: qué avisos están emitidos o vigentes
+GET https://www.senamhi.gob.pe/?p=aviso-meteorologico-vigente&a=..&b=..   # párrafo oficial (opcional)
+GET https://idesep.senamhi.gob.pe/geoserver/g_aviso/ows?service=WFS&request=GetFeature
+    &typeName=g_aviso:view_aviso&viewparams=qry:{nro}_{mapa}_{año}&cql_filter=nivel<>'Nivel 1'
+    &outputFormat=application/json                             # polígonos: un mapa por día de vigencia
+GET https://idesep.senamhi.gob.pe/geoserver/g_prono_pp_24h/ows?...typeName=g_prono_pp_24h:view_aviso24h
+    &cql_filter=nivel<>'Nivel 1'                               # aviso de lluvia de 24 h (rige desde las 13:00)
+```
+- **Niveles:** 2 amarillo, 3 naranja, 4 rojo (el 1 es "sin aviso" y cubre el resto del país).
+- **Tabla `aviso_senamhi`:** una fila por aviso, mapa (día) y nivel. Los polígonos del mismo nivel
+  se unen y se simplifican (0,005°) en SQL. Los departamentos salen de las estaciones que caen
+  dentro (o de la más cercana a menos de 0,1°). La vista `aviso_vigente` da los que no terminaron,
+  con el polígono en GeoJSON, ordenados por nivel (el rojo encima).
+- **Alertas:** una por aviso de lluvia (vigente o que empieza en menos de 48 h, contando todas sus
+  áreas) y por departamento, tipo `aviso`. Nivel 2 da `aviso`, 3 `alerta` y 4 `emergencia`. El
+  detalle va en lenguaje claro ("Lluvias de ligera a moderada intensidad en la sierra norte, del
+  23 al 24 set").
+- **Nunca borrar por una fuente rota:**
+  - Si la tabla cambia de formato (cabecera distinta, filas activas sin etiqueta), falla y no se
+    borra nada.
+  - Si el WFS de un aviso viene vacío o falla, se conserva lo guardado (falla `aviso N`).
+  - Si el aviso de 24 h viene vacío, se confirma con una consulta liviana antes de borrarlo.
+  - Las "ACTUALIZACIÓN DEL AVISO N" reemplazan al original.
+  - Candado (`pg_advisory_xact_lock`) contra corridas simultáneas.
+- Un aviso guardado hace menos de 6 h no se vuelve a bajar (sus polígonos no cambian).
+
+### 5.6.2. SENAMHI — lluvia de la última hora en todo el país (tarea `lluvia_nacional`)
+
+`connectors/senamhi_umbrales.py` + `ingesta/lluvia_nacional.py`, cada 30 min (las estaciones
+reportan cada hora, pero no todas a la misma hora).
+```
+GET https://idesep.senamhi.gob.pe/geoserver/g_umbrales/ows?service=WFS&request=GetFeature
+    &typeName=g_umbrales:umbrales_precipitacion&outputFormat=application/json
+```
+~216 estaciones automáticas de 24 departamentos (25 en Cajamarca), una petición de ~90 KB. Campos:
+`pp` = mm de la hora; `pp_acum` = **las últimas 6 h** (no el día; verificado contra las series
+horarias); `umbral` = referencia de SENAMHI por estación (1 a 25 mm/h, no documentado como umbral
+oficial de alerta). Tabla `lluvia_senamhi` (una fila por estación; una lectura más vieja no pisa
+a la guardada) y vista `lluvia_senamhi_actual` (solo las de las últimas 3 h).
+
+**Fechas de la lluvia observada** (capas WMS `prec_1` y `prec_1_ac07d` que el frontend pide
+directo): salen del visor `monitoreo-precipitacion.php` y van al latido (`prec_1`,
+`prec_1_ac07d`, `prec_1_ac07d_desde`). "prec_1 del 21 set" es la lluvia de las 07:00 del 21 a las
+07:00 del 22. El visor calcula la fecha con el reloj, así que de madrugada anuncia un día que
+SENAMHI aún no procesó: se compara una huella de `prec_1_all_points` y, si no cambió, se conserva
+la fecha anterior (`prec_1_pendiente`). Si el visor cae, se conservan las fechas del latido
+anterior.
+
+### 5.6.3. Capas de mapa que el navegador pide directo (sin worker)
+
+| Capa | Servicio | Nota |
+|---|---|---|
+| Lluvia de ayer / 7 días | WMS `monitoreo_meteorologico:prec_1`, `prec_1_ac07d` | estilo propio por `sld_body` (ColorMap, transparente bajo el primer corte) |
+| Quebradas que podrían activarse | WMS `silvia:cuencas_nivel_12_prono1_silvia` | pronóstico SILVIA por microcuenca, niveles 2 y 3 |
+| Lluvia por satélite | NASA GIBS WMTS `IMERG_Precipitation_Rate_30min` | `.../epsg3857/best/.../default/{Time}/GoogleMapsCompatible_Level6/{z}/{y}/{x}.png`, zoom nativo máx. 6, 5-6 h de retraso |
+
+La GeoServer de SENAMHI es intermitente (3 a 8 s por imagen): si falla, la capa lo avisa. GIBS
+anuncia a veces en `default` una hora que aún no publicó (404 al pedirla): el frontend la
+confirma y retrocede de a 30 min.
+
+> **Licencia SENAMHI** (https://www.senamhi.gob.pe/?p=terminos-condiciones): uso libre sin
+> comercializar, con la leyenda literal "Información recopilada y trabajada por el Servicio
+> Nacional de Meteorología e Hidrología del Perú. El uso que se le da a esta información es de mi
+> (nuestra) entera responsabilidad" en todo soporte. Los polígonos simplificados se rotulan
+> "basado en el aviso de SENAMHI" y enlazan al original.
+
 ### 5.7. IDESEP (SENAMHI) — mapas históricos de eventos El Niño
 
 IDESEP es el catálogo GeoNetwork de SENAMHI. Conector: `backend/connectors/idesep.py`.
@@ -330,7 +418,13 @@ Mapas cargados en la tabla `mapa` con `variable='FEN'` (el mensual usa `variable
 | El Niño 2023-2024 | 2023-2024 | 2197 |
 
 Cada feature trae solo la propiedad `RANGO` (rango de anomalía en texto, p. ej. `"-120 - -60"`).
-Cobertura nacional; pesan hasta ~5.5 MB cada uno.
+Cobertura nacional; pesan hasta ~5.5 MB cada uno (0,3 a 0,9 MB con `--simplificar 0.005`).
+
+> **Ojo: son de un trimestre, no de todo el evento.** Cada registro de IDESEP trae un .zip por
+> trimestre (p. ej. 1997-98: DEF 1997-1998, EFM 1998 y FMA 1998) y `geojson_de_registro()` toma
+> el primero. Quedaron cargados diciembre a febrero (1982-83, 1997-98, 2017, 2023-24) y enero a
+> marzo (2023). El frontend rotula cada evento con sus meses. Pendiente: cargar los demás
+> trimestres y dejar elegirlos.
 
 **Carga** (única vía de escritura; son mapas estáticos, no van en la ingesta horaria):
 ```bash
@@ -371,7 +465,9 @@ horarias contra umbrales:
 - **Caudal** (ANA): usa los umbrales `UALERTA`/`UEMERGENCIA` que la propia fuente entrega.
 - **Aviso oficial** (SENAMHI): eleva el nivel cuando el aviso aplica a la zona.
 
-El nivel resultante (normal/aviso/alerta/emergencia) alimenta el titular, el mapa y la push
+Los avisos de SENAMHI llegan como alertas tipo `aviso` (§5.6.1): amarillo = `aviso`, naranja =
+`alerta`, rojo = `emergencia`. El nivel resultante (normal/aviso/alerta/emergencia) alimenta el
+titular, el mapa y la push
 (Firebase). En fase 2 se **cruza con los reportes ciudadanos** para ponderar su confianza
 (un reporte en zona con alerta oficial pesa más).
 
@@ -401,7 +497,19 @@ acumulación propia en la BD) se puede:
    volvieron a evaluar con dato (si ANA o una estación no respondió, su alerta se queda) y las
    que nadie refresca caducan a las 6 h.
 3. El resultado de la tarea Celery es el resumen: `estaciones`, `lluvia`, `caudal`, `alertas`,
-   `fallas`. Corrida suelta: `docker compose run --rm worker python -m backend.ingesta`.
+   `icen_serie`, `fallas`, `avisos`. Corrida suelta: `docker compose run --rm worker python -m backend.ingesta`.
+
+**Tareas del worker** (`backend/celery_app.py`; las cuatro primeras también corren al arrancar,
+porque el beat pierde su programación al recrear el contenedor). Cada una deja su latido en la
+tabla `latido` (servicio = nombre de la tarea) con lo que escribió, `fallas` y `avisos`:
+
+| Tarea | Cada | Qué hace |
+|---|---|---|
+| `ingesta` | 1 h | estaciones, lluvia de Cajamarca, caudales, índices, serie ICEN del IGP, alertas |
+| `enfen` | 6 h | comunicado ENFEN + ICEN del Informe Técnico (§5.3.1) |
+| `avisos` | 1 h | avisos oficiales de SENAMHI como áreas + alertas tipo `aviso` (§5.6.1) |
+| `lluvia_nacional` | 30 min | lluvia de la última hora en ~216 estaciones del país (§5.6.2) |
+| `refresh_cache` | 5 min | snapshot en Redis para la API |
 
 **BD:** la estructura está en `supabase/migrations/` (historia) y `supabase/schema.sql` (foto).
 `lectura_caudal` es el historial; la vista **`caudal_actual`** da la última lectura de ayer u
@@ -457,7 +565,7 @@ Stack completo en `docker-compose.yml` (4 servicios):
 |---|---|---|
 | `frontend` | React build servido por **nginx** | 8080 |
 | `backend` | API **FastAPI async** (`backend/app.py`) | 8000 |
-| `worker` | **Celery + beat**: ingesta horaria, ENFEN cada 6 h, refresco de caché | — |
+| `worker` | **Celery + beat**: ingesta horaria, ENFEN cada 6 h, avisos SENAMHI, lluvia nacional, refresco de caché | — |
 | `redis` | caché (snapshot) + cola/broker de Celery | 6379 |
 
 ### ¿Por qué esta arquitectura? (van a entrar varias personas a la vez)
@@ -569,7 +677,7 @@ Reglas:
 
 ## 10. Pendientes
 
-- [ ] Conector de **avisos** SENAMHI (scraping de tabla + filtro Cajamarca).
+- [x] Conector de **avisos** SENAMHI: áreas por nivel + alertas por departamento (§5.6.1).
 - [x] Conector **ENFEN** por PDF: estado del Sistema de Alerta y ICEN del Informe Técnico (§5.3.1).
 - [ ] URL exacta del **MapServer de CENEPRED** (enumerar capas de peligro por lluvia/inundación).
 - [x] Persistencia + ingesta + API (prototipo SQLite/stdlib, sección 7).
@@ -578,9 +686,9 @@ Reglas:
 - [x] API en **FastAPI** async con caché en Redis (sección 8), de solo lectura.
 - [x] Refactor modular del backend y frontend + pruebas sin red (22 sep).
 - [x] Comunidad con **ids uuid**, permisos por columna y votos calculados por la BD (sección 8.1).
-- [ ] Capa de **áreas FEN** en el frontend (polígonos por `RANGO` + selector de evento).
-- [ ] Capa de **lluvia ahora** en el frontend (círculos por mm/h). Datos listos: la ingesta horaria
-      ya llena `lectura_lluvia` (14 estaciones automáticas de Cajamarca, verificado el 22 sep).
+- [x] Capa de **áreas FEN** en el frontend (polígonos por `RANGO` + selector de evento).
+- [x] Capa de **lluvia ahora** en todo el país (§5.6.2), más lluvia observada, satélite y SILVIA (§5.6.3).
+- [x] **Serie del ICEN** (`icen_serie`) y panel gráfico de El Niño en el frontend.
 - [ ] Conector de **push** (Firebase) que dispare la notificación cuando `alerta` cambie de nivel.
 - [ ] Reejecutar la verificación en **temporada de lluvias (dic–abr)**, cuando disparan los umbrales.
 

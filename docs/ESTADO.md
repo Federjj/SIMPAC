@@ -4,11 +4,11 @@
 > Repo: `github.com/Federjj/SIMPAC` (monorepo, rama `main`).
 
 ## Resumen en una línea
-Backend + Supabase con datos reales (**ríos a nivel nacional** + **5 mapas históricos de eventos
-El Niño**); **frontend React (Mapa) con datos reales**; **stack dockerizado y corriendo** con el
-ingesta horaria real funcionando (982 estaciones, lluvia horaria de Cajamarca al día). Código
-**refactorizado y modular** (22 sep), comunidad con **ids UUID** y permisos por columna. Falta la
-capa FEN y la de lluvia en el mapa, y las demás páginas del front.
+Backend + Supabase con datos reales (**ríos a nivel nacional**, **avisos oficiales de SENAMHI
+como áreas**, **lluvia de la última hora en todo el país**, **serie del ICEN** y **5 mapas
+históricos de eventos El Niño**); **frontend React (Mapa) con datos reales, capas de lluvia
+sombreadas y un panel gráfico de El Niño**; **stack dockerizado y corriendo** con 4 tareas
+programadas en el worker. Faltan las demás páginas del front (Alertas, Comunidad, Chat, Cuenta).
 
 ---
 
@@ -23,8 +23,9 @@ capa FEN y la de lluvia en el mapa, y las demás páginas del front.
 
 **Base de datos (Supabase)**
 - [x] Proyecto **DATASYMPAC** (ref `clrnommkjyksnyrtnisf`, región São Paulo).
-- [x] **Esquema aplicado**: 13 tablas + vista `caudal_actual` + **PostGIS** + **RLS**. Historia en
-      `supabase/migrations/` (15 migraciones, versionadas en el repo); foto final en `supabase/schema.sql`.
+- [x] **Esquema aplicado**: 16 tablas + vistas `caudal_actual`, `aviso_vigente` y
+      `lluvia_senamhi_actual` + **PostGIS** + **RLS**. Historia en `supabase/migrations/`
+      (18 migraciones, versionadas en el repo); foto final en `supabase/schema.sql`.
 - [x] **Datos (22 sep, los llena la ingesta horaria)**: 982 estaciones SENAMHI en 24 departamentos
       (con `lat`/`lon`) · lluvia horaria de las 14 automáticas de Cajamarca · ~120 ríos con caudal y
       umbrales en 23 departamentos · ICEN / RONI / estado ENFEN · capa de **anomalías de
@@ -112,6 +113,44 @@ capa FEN y la de lluvia en el mapa, y las demás páginas del front.
     contenedor).
   - La tarea ENFEN aísla el comunicado del Informe Técnico: si uno falla, el otro se guarda igual.
   - No vuelve a bajar 17 MB por un informe ilegible o que ya leyó.
+
+**Fase 3: El Niño y alertas en gráficos (22 sep, noche)** — probado con datos reales, imágenes reconstruidas
+- [x] **Avisos oficiales de SENAMHI como áreas sombreadas** (tarea `avisos`, cada hora): polígonos
+      por nivel (amarillo, naranja, rojo) de los avisos meteorológicos y del aviso de lluvia de 24 h,
+      en la tabla `aviso_senamhi`. Los de lluvia generan alertas por departamento (tipo `aviso`) y
+      suben el estado de la zona: hoy Cajamarca sale en "Aviso" por el 376 (lluvias de ligera a
+      moderada intensidad en la sierra norte, 23 y 24 set) y el de 24 h.
+- [x] **Lluvia de la última hora en todo el país** (tarea `lluvia_nacional`, cada 30 min): ~216
+      estaciones automáticas de SENAMHI en 24 departamentos, con la referencia de lluvia de cada una.
+- [x] **Serie del ICEN** mes a mes (`icen_serie`: IGP + tabla del Informe Técnico ENFEN, el ENFEN
+      manda) para el gráfico.
+- [x] **Capas nuevas en el mapa**, agrupadas en el panel (Alertas y avisos, Lluvia, Ríos y
+      estaciones, El Niño, Comunidad), con selector, leyenda y una nota de qué muestra y de cuándo es:
+  - Avisos de SENAMHI (vigentes o próximos días), prendida por defecto.
+  - Quebradas que podrían activarse hoy (SILVIA de SENAMHI).
+  - Lloviendo ahora (estaciones), lluvia de ayer / 7 días (superficie de SENAMHI) y lluvia por
+    satélite (NASA IMERG).
+  - Eventos El Niño pasados (1982-83, 1997-98, 2017, 2023, 2023-24), coloreados por cuánto más o
+    menos llovió que lo normal.
+- [x] **Panel "El Niño en gráficos"** (chip del mapa y botón de la barra lateral): los 3 pasos del
+      Sistema de Alerta ENFEN con el actual resaltado, el ICEN de los últimos 24 meses coloreado por
+      categoría (con el estimado del mes siguiente punteado) y botones que muestran en el mapa cómo
+      llovió en otros El Niño.
+- [x] **Licencia de SENAMHI**: su leyenda literal va al pie del panel de capas y en "Qué significa
+      esto"; los avisos simplificados se rotulan "basado en el aviso de SENAMHI" con enlace al original.
+- [x] **Revisión del frontend** (un revisor de código y otro de "¿esto es cierto?" contra las
+      fuentes oficiales), 25 hallazgos corregidos. Lo principal: los mapas FEN dicen de qué meses son
+      (no de todo el evento); la capa de huaycos muestra el nivel 4 y qué significa cada color; ya no
+      se dice que El Niño trae lluvias fuertes a toda Cajamarca (es la costa norte y el oeste de
+      Cajamarca); la leyenda del satélite usa los colores reales de NASA; los avisos de calor ya no
+      se confunden con lluvia; un aviso cuenta una vez aunque cubra 17 departamentos; si el nivel
+      de la zona sale de un aviso se dice "Aviso amarillo", no "Alerta"; la leyenda literal de
+      SENAMHI queda siempre a la vista.
+- [x] **Verificación adversarial** de cada frente del backend (un agente implementa y otro intenta
+      romperlo, con pruebas contra la BD real en transacciones revertidas). Se corrigieron, entre
+      otros: una tabla de SENAMHI con otro formato o un WFS vacío ya no borran avisos y alertas;
+      las actualizaciones de un aviso reemplazan al original; una fila futura del IGP no queda
+      fija; la fecha de la lluvia de "ayer" no se adelanta de madrugada. **312 pruebas** sin red.
 
 **Refactor y correcciones (22 sep)** — probado y corriendo (imágenes reconstruidas el 22 sep)
 - [x] **Backend modular**: `config.py` (variables de entorno en un solo lugar), `db.py` (conexión),
@@ -220,25 +259,21 @@ capa FEN y la de lluvia en el mapa, y las demás páginas del front.
 - [x] **Departamento de las estaciones**: corregido (ver refactor).
 - [x] **Password de la BD reseteada** (22 sep); compartirla solo por canal privado.
 - [x] **Revocado `EXECUTE`** de `rls_auto_enable()` (migración `permisos_api_endurecidos`).
-- [ ] **Capas de lluvia en áreas (fase 3)**, todas gratis y sin key (investigadas y verificadas el 22 sep):
-  - Avisos meteorológicos de SENAMHI: polígonos oficiales por nivel en la GeoServer de IDESEP
-    (`g_aviso:view_aviso`). Van por el worker a Supabase, porque WFS no tiene CORS y el servidor es
-    intermitente. También alimentan las alertas (tipo `aviso`).
-  - Aviso de lluvia de 24 h (`g_prono_pp_24h:view_aviso24h`), por WMS.
-  - Lluvia observada de ayer y de 7 días (`monitoreo_meteorologico:prec_1`, `prec_1_ac07d`), por WMS.
-  - Lluvia horaria nacional con umbrales (`g_umbrales:umbrales_precipitacion`): ~180 estaciones,
-    26 en Cajamarca.
-  - NASA IMERG por GIBS: lluvia satelital de todo el Perú, con 5 a 6 h de retraso.
-  - Radar: no hay sobre Cajamarca. Windy, OpenWeatherMap y Tomorrow.io piden key o son pagos.
+- [x] **Capas de lluvia en áreas (fase 3)**: hechas (ver arriba). Radar: no hay sobre Cajamarca;
+      Windy, OpenWeatherMap y Tomorrow.io piden key o son pagos.
+- [ ] Repetir entre la 01:00 y las 08:00 la prueba de la fecha de la lluvia de "ayer" (la huella de
+      `prec_1_all_points` supone que SENAMHI publica los puntos y el ráster juntos).
 - [ ] **INPE (Hidroestimador, lluvia casi en tiempo real)**: su sitio exige autorización expresa de
       CPTEC/INPE para reproducirlo en medios de divulgación. Pedirla por correo antes de publicarlo.
 - [ ] Calibrar los **umbrales de lluvia** (hoy placeholders en `alerts.py`) con Defensa Civil.
 
 **Frontend / móvil**
 - [x] **Web (Mapa)**: React + Vite + Leaflet conectado a Supabase (ya está).
-- [ ] **Capa FEN en el mapa** (HU-12): polígonos coloreados por `RANGO` + selector de evento. Leer
-      `mapa` con `variable='FEN'`; conviene simplificar geometrías (`cargar_fen --simplificar`) porque
-      pesan hasta ~5.5 MB. El render actual de anomalías solo pinta puntos.
+- [x] **Capa FEN en el mapa** (HU-12): polígonos coloreados por `RANGO` + selector de evento
+      (geometrías simplificadas: 0,3 a 0,9 MB por evento).
+- [ ] **Mapas FEN: cargar los demás trimestres.** Cada registro de IDESEP trae varios (DEF, EFM,
+      FMA) y hoy se guarda solo el primero (dic a feb; en 2023, ene a mar), así que el mapa de
+      2017 no muestra marzo, cuando se desbordó el río Piura. La capa ya rotula los meses.
 - [ ] **Web (resto)**: páginas Alertas, Comunidad, Chat, Cuenta, crear reporte + react-router.
 - [ ] **App móvil**: arrancar `appmobile/` (React Native); GPS + push.
 - [ ] Crear el proyecto **Firebase (FCM)** para push y conseguir la server key.

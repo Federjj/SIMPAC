@@ -5,14 +5,24 @@ Regla de las alertas: solo se reemplazan las de las estaciones que se volvieron 
 evaluar (con dato). Si ANA o una estación no respondió, su alerta se queda: no es un
 "todo normal". Para que una fuente caída no deje alertas colgadas para siempre, las
 que no se refrescan caducan a las SIN_DATOS_HORAS.
+
+Serie del ICEN (icen_serie, para el gráfico): se guardan los últimos meses del IGP, con la
+categoría que calcula SIMPAC (igp.categoria; la de los meses del ENFEN es la oficial de la
+tabla de su informe). El latido cuenta en 'icen_serie' los meses escritos (insertados o
+cambiados), no los enviados: la ingesta reenvía los mismos cada hora. Si la migración de
+la tabla todavía no se aplicó, la serie se salta con un aviso y el resto de la pasada se
+guarda igual.
 """
 from __future__ import annotations
 
 import json
+import logging
 
 from backend.db import conectar
 from backend.ingesta.departamentos import DEPARTAMENTOS
 from backend.ingesta.recolectar import Pasada
+
+log = logging.getLogger(__name__)
 
 SIN_DATOS_HORAS = 6
 
@@ -60,6 +70,23 @@ SQL_ICEN = SQL_INDICE + (
 # El ICEN_TMP solo sale del Informe Técnico ENFEN: se refresca el mismo mes, pero nunca
 # retrocede (una fuente atrasada no lo pisa con el de un informe más viejo).
 SQL_ICEN_TMP = SQL_INDICE + " where excluded.periodo >= indice.periodo"
+# Serie mensual del ICEN (tabla icen_serie). Un mes del ENFEN (Informe Técnico) nunca lo
+# pisa el IGP; el IGP completa los meses que el ENFEN no trae y corrige los suyos; un
+# informe nuevo corrige al anterior. Si el mes no cambió no se reescribe: ts_captura dice
+# cuándo llegó el valor vigente, y el rowcount del executemany cuenta solo los meses
+# insertados o cambiados. Las filas van en orden de mes (así la ingesta y la tarea enfen
+# bloquean las filas en el mismo orden y no se trancan si coinciden).
+SQL_ICEN_SERIE = (
+    "insert into icen_serie (mes,valor,categoria,origen) values (%s,%s,%s,%s) "
+    "on conflict (mes) do update set valor=excluded.valor, categoria=excluded.categoria, "
+    "origen=excluded.origen, ts_captura=now() "
+    "where (excluded.origen = 'ENFEN' or icen_serie.origen = excluded.origen) "
+    "and (icen_serie.valor, icen_serie.categoria, icen_serie.origen) "
+    "is distinct from (excluded.valor, excluded.categoria, excluded.origen)"
+)
+# La migración de icen_serie puede no estar aplicada todavía (el worker se despliega aparte).
+SQL_HAY_ICEN_SERIE = "select to_regclass('public.icen_serie') is not null"
+AVISO_SIN_SERIE = "icen_serie: falta la tabla (migración pendiente); la serie del ICEN no se guardó"
 # Cuándo corrió de verdad cada tarea (el frontend avisa "sin actualizar" si se detiene).
 SQL_LATIDO = (
     "insert into latido (servicio, ts, resumen) values (%s, now(), %s::jsonb) "
@@ -82,9 +109,27 @@ def _filas_caudal(p: Pasada) -> list[tuple]:
             for fecha, c in (p.caudales or []) if c.lat is not None and c.lon is not None]
 
 
+def hay_icen_serie(cur) -> bool:
+    """La tabla icen_serie existe (su migración ya se aplicó)."""
+    cur.execute(SQL_HAY_ICEN_SERIE)
+    fila = cur.fetchone()
+    return bool(fila and fila[0])
+
+
+def filas_serie(meses: list[tuple[str, float, str]], origen: str) -> list[tuple]:
+    """
+    Filas de icen_serie a partir de [("AAAA-MM", valor, categoría)], en orden de mes. La
+    categoría va tal cual: la oficial de la tabla del informe (ENFEN) o la calculada por
+    SIMPAC con igp.categoria (IGP).
+    """
+    return [(mes, valor, categoria, origen) for mes, valor, categoria in sorted(meses)]
+
+
 def guardar(p: Pasada) -> dict:
     caudal = _filas_caudal(p)
     alertas = p.alertas_lluvia + p.alertas_caudal
+    avisos = list(p.avisos)
+    serie = 0   # meses del IGP escritos en icen_serie (insertados o cambiados)
     with conectar() as conn, conn.cursor() as cur:
         if p.estaciones:
             cur.executemany(SQL_ESTACION, [
@@ -98,6 +143,16 @@ def guardar(p: Pasada) -> dict:
         if p.icen:
             cur.execute(SQL_ICEN, ("ICEN", f"{p.icen.anio}-{p.icen.mes:02d}", p.icen.valor,
                                    p.icen.categoria, "IGP"))
+        if p.icen_serie:
+            if hay_icen_serie(cur):
+                cur.executemany(SQL_ICEN_SERIE, filas_serie(
+                    [(f"{x.anio}-{x.mes:02d}", x.valor, x.categoria) for x in p.icen_serie], "IGP"))
+                # psycopg 3 (el worker tiene 3.3.6) suma las filas afectadas de todo el
+                # executemany; las que el WHERE deja igual (sin cambios, mes del ENFEN) no cuentan
+                serie = cur.rowcount
+            else:
+                log.warning("Ingesta: %s", AVISO_SIN_SERIE)
+                avisos.append(AVISO_SIN_SERIE)
         if p.roni:
             cur.execute(SQL_INDICE, ("RONI", f"{p.roni.temporada} {p.roni.anio}", p.roni.anom,
                                      p.roni.fase, "NOAA"))
@@ -117,7 +172,9 @@ def guardar(p: Pasada) -> dict:
             "lluvia": len(p.lluvia),
             "caudal": len(caudal) if p.caudales is not None else None,
             "alertas": len(alertas),
+            "icen_serie": serie,
             "fallas": p.fallas,
+            "avisos": avisos,
         }
         cur.execute(SQL_LATIDO, ("ingesta", json.dumps(resumen)))
     return resumen

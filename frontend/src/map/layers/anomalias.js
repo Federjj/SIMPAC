@@ -10,6 +10,7 @@ const num = (v) => Number(v).toLocaleString("es-PE", { maximumFractionDigits: 2 
 // las clases oficiales de SENAMHI (campo PORCENTAJE) traducidas a palabras.
 export default {
   id: "anom",
+  grupo: "Lluvia",
   label: "Lluvia del mes frente a lo normal",
   Icon: Droplets,
   defaultVisible: false,

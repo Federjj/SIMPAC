@@ -92,13 +92,13 @@ export function textoMar(icen, icenTmp) {
   let frase;
   if (cat.startsWith("cálid") || cat.startsWith("calid")) {
     corto = fuerte ? "Muy caliente" : "Más caliente";
-    frase = `El mar frente al Perú está ${fuerte ? "mucho " : ""}más caliente de lo normal.`;
+    frase = `El mar frente a la costa norte está ${fuerte ? "mucho " : ""}más caliente de lo normal.`;
   } else if (cat.startsWith("frí") || cat.startsWith("fri")) {
     corto = fuerte ? "Muy frío" : "Más frío";
-    frase = `El mar frente al Perú está ${fuerte ? "mucho " : ""}más frío de lo normal.`;
+    frase = `El mar frente a la costa norte está ${fuerte ? "mucho " : ""}más frío de lo normal.`;
   } else {
     corto = "Normal";
-    frase = "El mar frente al Perú está en su temperatura normal.";
+    frase = "El mar frente a la costa norte está en su temperatura normal.";
   }
   const tmp = icenTmp && icenTmp.periodo > icen.periodo
     ? ` Estimado de ${MESES[Number(icenTmp.periodo.slice(5, 7)) - 1]}: ${signo(icenTmp.valor)}, ${icenTmp.categoria.toLowerCase()}.`

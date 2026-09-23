@@ -7,6 +7,10 @@ const TILES = "https://tiles.stadiamaps.com/tiles/alidade_smooth/{z}/{x}/{y}{r}.
 const ATRIBUCION =
   '© <a href="https://stadiamaps.com/">Stadia Maps</a> © <a href="https://openmaptiles.org/">OpenMapTiles</a> © <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>';
 
+// Al abrirse, un popup mueve el mapa para no quedar bajo los chips de arriba a la izquierda
+// (marca, ciudad, El Niño) ni bajo los botones de la derecha.
+L.Popup.mergeOptions({ autoPanPaddingTopLeft: L.point(16, 150), autoPanPaddingBottomRight: L.point(64, 16) });
+
 export function createBaseMap(el, { center, zoom }) {
   const map = L.map(el, { zoomControl: false }).setView(center, zoom);
   L.control.zoom({ position: "bottomright" }).addTo(map);

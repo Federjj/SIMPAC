@@ -6,6 +6,7 @@ import {
   User,
   LogIn,
   Radio,
+  BarChart3,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -37,6 +38,7 @@ export default function Sidebar({
   active = "mapa",
   depto,
   nivel = "normal",
+  etiqueta,
   alertCount = 0,
   enfen,
   mar,
@@ -44,6 +46,7 @@ export default function Sidebar({
   actualizado,
   desactualizado,
   sinConexion,
+  onElNino,
 }) {
   const nv = NIVEL[nivel];
   return (
@@ -72,7 +75,7 @@ export default function Sidebar({
           <div className="text-[0.68rem] uppercase tracking-wider text-muted-foreground">
             Estado en {depto}
           </div>
-          <div className={cn("text-sm font-semibold", nv.text)}>{nv.label}</div>
+          <div className={cn("text-sm font-semibold", nv.text)}>{etiqueta ?? nv.label}</div>
         </div>
       </div>
 
@@ -138,8 +141,12 @@ export default function Sidebar({
             detalle={enfen?.fuente}
             aviso={enfen?.atrasado ? "Puede haber un comunicado más nuevo." : null}
           />
-          <Contexto titulo="Mar frente al Perú" valor={mar?.corto} detalle={mar?.detalle} aviso={mar?.atrasado} />
+          <Contexto titulo="Mar frente a la costa norte" valor={mar?.corto} detalle={mar?.detalle} aviso={mar?.atrasado} />
           <Contexto titulo="Pacífico central" valor={pacifico?.corto} detalle={pacifico?.detalle} />
+          <Button variant="outline" size="sm" className="w-full" onClick={onElNino}>
+            <BarChart3 className="h-4 w-4" />
+            Ver El Niño en gráficos
+          </Button>
         </div>
         <p className="my-3 text-xs text-muted-foreground">
           Emergencias: <span className="font-semibold text-nivel-alerta">105 (Policía) · 116 (Bomberos)</span>

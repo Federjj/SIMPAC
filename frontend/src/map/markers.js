@@ -45,9 +45,18 @@ export function markerIcon(color, icono, { forma = "circulo" } = {}) {
   });
 }
 
-// Popup con título, contexto, una frase en lenguaje claro, filas etiqueta/valor y una
-// nota (qué hacer). Todo se escapa.
-export function popupHtml({ title, meta = [], resumen, filas = [], nota }) {
+// Solo enlaces https (los que vienen de una fuente, p. ej. la página de un aviso).
+function enlaceSeguro(href) {
+  try {
+    return new URL(href).protocol === "https:" ? href : null;
+  } catch {
+    return null;
+  }
+}
+
+// Popup con título, contexto, una frase en lenguaje claro, filas etiqueta/valor, una
+// nota (qué hacer) y un enlace opcional a la fuente. Todo se escapa.
+export function popupHtml({ title, meta = [], resumen, filas = [], nota, enlace }) {
   const m = meta.filter(Boolean).map(escapeHtml).join(" · ");
   const f = filas
     .filter(([, v]) => v != null && v !== "")
@@ -59,6 +68,9 @@ export function popupHtml({ title, meta = [], resumen, filas = [], nota }) {
     (resumen ? `<p class="resumen">${escapeHtml(resumen)}</p>` : "") +
     (f ? `<dl class="filas">${f}</dl>` : "") +
     (nota ? `<p class="nota">${escapeHtml(nota)}</p>` : "") +
+    (enlace && enlaceSeguro(enlace.href)
+      ? `<p class="nota"><a href="${escapeHtml(enlace.href)}" target="_blank" rel="noopener noreferrer">${escapeHtml(enlace.texto)}</a></p>`
+      : "") +
     `</div>`
   );
 }

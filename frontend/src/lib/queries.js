@@ -78,6 +78,49 @@ export async function getComunicadoENFEN() {
   return c ?? null;
 }
 
+// ICEN mes a mes (IGP y tabla del Informe Técnico ENFEN), los últimos `meses`, del más viejo
+// al más nuevo: para el gráfico de El Niño.
+export function getIcenSerie(meses = 24) {
+  return cached(`icen_serie:${meses}`, async () =>
+    (
+      await filas(
+        supabase.from("icen_serie").select("mes,valor,categoria,origen").order("mes", { ascending: false }).limit(meses)
+      )
+    ).reverse(),
+    10 * 60_000
+  );
+}
+
+// Avisos de SENAMHI que no han terminado (vista aviso_vigente), con el polígono en GeoJSON;
+// ya vienen ordenados por nivel (el rojo al final, para dibujarlo encima).
+export function getAvisosVigentes() {
+  return cached(
+    "avisos",
+    () =>
+      filas(
+        supabase
+          .from("aviso_vigente")
+          .select("id,tipo,numero,mapa,nivel,titulo,tema,descripcion,inicio,fin,en_curso,departamentos,url,geojson")
+      ),
+    5 * 60_000
+  );
+}
+
+// Lluvia de la última hora en ~200 estaciones automáticas de SENAMHI en todo el país
+// (vista lluvia_senamhi_actual: solo lecturas de las últimas 3 h).
+export function getLluviaAhora() {
+  return cached(
+    "lluvia_ahora",
+    () =>
+      filas(
+        supabase
+          .from("lluvia_senamhi_actual")
+          .select("clave,nombre,departamento,provincia,distrito,pp_1h,umbral_1h,pp_6h,medido_en,lat,lon")
+      ),
+    5 * 60_000
+  );
+}
+
 // Cuándo corrió de verdad la ingesta (para avisar "sin actualizar" si se detiene).
 export function getLatido() {
   return cached("latido", () => filas(supabase.from("latido").select("servicio,ts,resumen")));
@@ -134,6 +177,25 @@ export async function getMapaAnomalias() {
       .eq("variable", "precipitacion")
       .order("periodo", { ascending: false }) // el mes más reciente
       .limit(1)
+  );
+  return m ?? null;
+}
+
+// Mapa de un evento El Niño pasado (variable 'FEN'; periodo = "1997-1998", "2017", ...).
+// Son mapas fijos: se guardan en memoria toda la sesión.
+export async function getMapaFEN(periodo) {
+  const [m] = await cached(
+    `fen:${periodo}`,
+    () =>
+      filas(
+        supabase
+          .from("mapa")
+          .select("titulo,periodo,fuente,geojson")
+          .eq("variable", "FEN")
+          .eq("periodo", periodo)
+          .limit(1)
+      ),
+    Infinity
   );
   return m ?? null;
 }

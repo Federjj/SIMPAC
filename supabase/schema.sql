@@ -98,7 +98,86 @@ create table comunicado_enfen (
   primary key (anio, numero, extraordinario)
 );
 
--- Cuándo corrió de verdad cada tarea del worker ('ingesta', 'enfen').
+-- ICEN mes a mes para el gráfico de El Niño (la tabla indice solo guarda el último valor).
+-- La ingesta horaria trae 36 meses del IGP; la tarea 'enfen', los meses de la tabla de cada
+-- Informe Técnico. Un mes del ENFEN nunca lo pisa el IGP. Nada se borra.
+create table icen_serie (
+  mes        text primary key check (mes ~ '^[0-9]{4}-(0[1-9]|1[0-2])$'),   -- 'AAAA-MM'
+  valor      double precision not null,
+  categoria  text not null,              -- ENFEN: oficial de su tabla; IGP: calculada por SIMPAC
+  origen     text not null check (origen in ('IGP', 'ENFEN')),
+  ts_captura timestamptz not null default now()
+);
+
+-- Avisos oficiales de SENAMHI como áreas (tarea 'avisos', cada hora): una fila por aviso,
+-- día (mapa) y nivel (2 amarillo, 3 naranja, 4 rojo), con los polígonos unidos y
+-- simplificados. 'lluvia24h' es el aviso de lluvia acumulada en 24 h (sin número).
+create table aviso_senamhi (
+  id            bigint generated always as identity primary key,
+  tipo          text not null check (tipo in ('meteorologico', 'lluvia24h')),
+  anio          int not null,
+  numero        int,
+  mapa          smallint not null default 1 check (mapa >= 1),
+  nivel         smallint not null check (nivel between 2 and 4),
+  titulo        text not null,
+  tema          text not null check (tema in ('lluvia', 'temperatura', 'viento', 'otro')),
+  descripcion   text,                    -- párrafo oficial, si se leyó
+  emision       date,
+  inicio        timestamptz not null,
+  fin           timestamptz not null,
+  departamentos text[] not null default '{}',   -- de las estaciones que caen dentro
+  url           text,                    -- página oficial del aviso
+  geom          geometry(MultiPolygon, 4326) not null,
+  ts_captura    timestamptz not null default now(),
+  check (fin > inicio),
+  constraint aviso_senamhi_clave unique nulls not distinct (tipo, anio, numero, mapa, nivel)
+);
+create index aviso_senamhi_geom_idx on aviso_senamhi using gist (geom);
+create index aviso_senamhi_fin_idx on aviso_senamhi (fin);
+
+-- Para el frontend: los que no han terminado, con el polígono en GeoJSON, el rojo al final.
+create view aviso_vigente with (security_invoker = true) as
+select id, tipo, anio, numero, mapa, nivel, titulo, tema, descripcion, emision, inicio, fin,
+       inicio <= now() as en_curso, departamentos, url, ts_captura,
+       st_asgeojson(geom, 3)::json as geojson
+from aviso_senamhi
+where fin > now()
+order by nivel, inicio, tipo, numero, mapa;
+
+-- Lluvia de la última hora en ~216 estaciones automáticas de SENAMHI de todo el país (tarea
+-- 'lluvia_nacional', cada 30 min). Una fila por estación; no se borran las que no vienen:
+-- la vista las deja fuera pasadas 3 h.
+create table lluvia_senamhi (
+  clave        text primary key,         -- 'NOMBRE@lat,lon' (la capa no trae código)
+  nombre       text not null,
+  cod          text references estacion(cod) on delete set null,   -- nuestra estación, si se emparejó
+  departamento text,
+  provincia    text,
+  distrito     text,
+  cuenca       text,
+  altitud_m    double precision,
+  pp_1h        double precision check (pp_1h >= 0),   -- mm en la hora que termina en medido_en
+  umbral_1h    double precision,         -- referencia de SENAMHI para la estación (mm/h)
+  pp_6h        double precision check (pp_6h >= 0),   -- mm en las 6 h que terminan en medido_en
+  umbral_6h    double precision,
+  medido_en    timestamptz not null,
+  ts_captura   timestamptz not null default now(),
+  geom         geometry(Point, 4326) not null,
+  lat          double precision generated always as (st_y(geom)) stored,
+  lon          double precision generated always as (st_x(geom)) stored
+);
+create index lluvia_senamhi_geom_idx   on lluvia_senamhi using gist (geom);
+create index lluvia_senamhi_medido_idx on lluvia_senamhi (medido_en);
+create index lluvia_senamhi_cod_idx    on lluvia_senamhi (cod);
+
+create view lluvia_senamhi_actual with (security_invoker = true) as
+select clave, nombre, cod, departamento, provincia, distrito, cuenca, altitud_m,
+       pp_1h, umbral_1h, pp_6h, umbral_6h, medido_en, ts_captura, lat, lon
+from lluvia_senamhi
+where medido_en >= now() - interval '3 hours';
+
+-- Cuándo corrió de verdad cada tarea del worker ('ingesta', 'enfen', 'avisos',
+-- 'lluvia_nacional'), con su resumen (fallas, avisos y lo que escribió).
 create table latido (
   servicio text primary key,
   ts       timestamptz not null default now(),
@@ -110,9 +189,9 @@ create table latido (
 create table alerta (
   id         bigint generated always as identity primary key,
   tipo       text,                      -- 'lluvia' | 'caudal' (crecida) | 'nivel_bajo' (vaciante) | 'aviso'
-  referencia text,                      -- "Estación (cod)" o "Estación (río)"
+  referencia text,                      -- "Estación (cod)", "Estación (río)" o "SENAMHI aviso N"
   zona       text,                      -- departamento
-  nivel      text,                      -- normal | aviso | alerta | emergencia
+  nivel      text,                      -- aviso | alerta | emergencia (aviso SENAMHI: 2 aviso, 3 alerta, 4 emergencia)
   detalle    text,
   valor      double precision,
   umbral     double precision,
@@ -237,6 +316,9 @@ alter table alerta         enable row level security;
 alter table mapa           enable row level security;
 alter table comunicado_enfen enable row level security;
 alter table latido         enable row level security;
+alter table icen_serie     enable row level security;
+alter table aviso_senamhi  enable row level security;
+alter table lluvia_senamhi enable row level security;
 alter table perfil         enable row level security;
 alter table report         enable row level security;
 alter table voto           enable row level security;
@@ -245,7 +327,8 @@ alter table message        enable row level security;
 
 -- Datos oficiales: solo lectura para todos.
 grant select on estacion, lectura_lluvia, lectura_caudal, caudal_actual, indice, alerta, mapa,
-  comunicado_enfen, latido to anon, authenticated;
+  comunicado_enfen, latido, icen_serie, aviso_senamhi, aviso_vigente, lluvia_senamhi,
+  lluvia_senamhi_actual to anon, authenticated;
 create policy "lectura publica estacion" on estacion       for select using (true);
 create policy "lectura publica lluvia"   on lectura_lluvia for select using (true);
 create policy "lectura publica caudal"   on lectura_caudal for select using (true);
@@ -254,6 +337,9 @@ create policy "lectura publica alerta"   on alerta         for select using (tru
 create policy "lectura publica mapa"     on mapa           for select using (true);
 create policy "lectura publica comunicado" on comunicado_enfen for select using (true);
 create policy "lectura publica latido"   on latido         for select using (true);
+create policy "lectura publica icen_serie" on icen_serie   for select using (true);
+create policy "lectura publica aviso"    on aviso_senamhi  for select using (true);
+create policy "lectura publica lluvia senamhi" on lluvia_senamhi for select using (true);
 
 -- Comunidad: lo que no aparece aquí, el cliente no lo puede leer ni escribir.
 -- autor no se lee (con autor + GPS + hora se arma el historial de ubicación de alguien),

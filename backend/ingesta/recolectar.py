@@ -9,6 +9,7 @@ no borre como "resuelto" lo que en realidad no se pudo volver a consultar.
 from __future__ import annotations
 
 import logging
+import math
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
@@ -21,6 +22,8 @@ from backend.ingesta.departamentos import DEPARTAMENTOS, nombre_departamento
 log = logging.getLogger(__name__)
 
 HILOS = 8   # descargas simultáneas (no golpear de más a SENAMHI)
+MESES_SERIE_IGP = 36   # meses del ICEN.txt que van a icen_serie (el gráfico muestra ~24)
+MAX_ICEN = 10.0        # |ICEN| mayor que esto es una fila dañada (el récord ronda +4)
 
 
 @dataclass
@@ -33,9 +36,13 @@ class Pasada:
     caudales: list[tuple[date, ana.EstacionCaudal]] | None = None   # (fecha, lectura); None = ANA no respondió
     caudal_ok: list[str] = field(default_factory=list)         # referencias de alerta re-evaluadas
     alertas_caudal: list[dict] = field(default_factory=list)
+    # último mes del IGP (nunca posterior al mes anterior al actual) y los MESES_SERIE_IGP
+    # hasta él, en orden; su categoría la calcula SIMPAC (igp.categoria)
     icen: igp.PuntoICEN | None = None
+    icen_serie: list[igp.PuntoICEN] = field(default_factory=list)
     roni: noaa.PuntoRONI | None = None
     fallas: list[str] = field(default_factory=list)
+    avisos: list[str] = field(default_factory=list)            # datos raros que se descartaron
 
 
 def _inventario(pasada: Pasada) -> None:
@@ -126,13 +133,56 @@ def _caudal(pasada: Pasada) -> None:
     pasada.alertas_caudal = alerts.evaluar_caudal(actuales)
 
 
+def serie_icen_igp(puntos: list[igp.PuntoICEN], meses: int = MESES_SERIE_IGP,
+                   ahora: datetime | None = None) -> tuple[list[igp.PuntoICEN], int]:
+    """
+    Los últimos `meses` meses del ICEN.txt (contados desde su último mes, no por filas), en
+    orden. Descarta las filas imposibles (mes fuera de 1-12, año raro, valor no finito o
+    |ICEN| > MAX_ICEN) y las de meses posteriores al anterior al actual en hora de Perú
+    (igp.ultimo_mes_posible; `ahora`: por defecto, ya): una sola fila dañada no debe tumbar
+    la escritura de la pasada, y un mes futuro correría la ventana, quedaría para siempre en
+    icen_serie (nada se borra) y dejaría fijo el ICEN de indice. Si un mes se repite, vale
+    la última fila. Devuelve (serie, filas descartadas).
+    """
+    anio_tope, mes_tope = igp.ultimo_mes_posible(ahora)
+    tope = anio_tope * 12 + mes_tope - 1
+    por_mes: dict[int, igp.PuntoICEN] = {}
+    descartadas = 0
+    for p in puntos:
+        k = p.anio * 12 + p.mes - 1
+        if not (1 <= p.mes <= 12 and 1900 <= p.anio <= 2100 and k <= tope
+                and math.isfinite(p.valor) and abs(p.valor) <= MAX_ICEN):
+            descartadas += 1
+            continue
+        por_mes[k] = p
+    if not por_mes:
+        return [], descartadas
+    desde = max(por_mes) - meses + 1
+    return [por_mes[k] for k in sorted(por_mes) if k >= desde], descartadas
+
+
 def _indices(pasada: Pasada) -> None:
-    for nombre, fuente, campo in (("IGP", igp, "icen"), ("NOAA", noaa, "roni")):
-        try:
-            setattr(pasada, campo, fuente.ultimo())
-        except Exception as e:
-            log.warning("%s: %s", nombre, e)
-            pasada.fallas.append(nombre.lower())
+    # El ICEN.txt trae la serie completa: se baja una vez y de ahí salen el último mes
+    # (tabla indice) y la serie (icen_serie). El de indice sale de la serie ya filtrada:
+    # nunca es de un mes posterior al anterior al actual.
+    try:
+        puntos = igp.icen()
+    except Exception as e:
+        log.warning("IGP: %s", e)
+        pasada.fallas.append("igp")
+    else:
+        pasada.icen_serie, descartadas = serie_icen_igp(puntos)
+        pasada.icen = pasada.icen_serie[-1] if pasada.icen_serie else None
+        if descartadas:
+            pasada.avisos.append(f"igp: {descartadas} filas del ICEN.txt descartadas "
+                                 "(mes imposible o futuro, o valor imposible)")
+        if not pasada.icen_serie:
+            pasada.avisos.append("igp: el ICEN.txt no trae ningún mes válido")
+    try:
+        pasada.roni = noaa.ultimo()
+    except Exception as e:
+        log.warning("NOAA: %s", e)
+        pasada.fallas.append("noaa")
 
 
 def recolectar() -> Pasada:

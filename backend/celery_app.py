@@ -4,6 +4,9 @@ Worker de SIMPAC — Celery + Redis (cola/broker) con beat (programador).
 Tareas:
   - ingesta: baja datos de las fuentes y los escribe en Supabase (cada hora).
   - enfen: busca el último comunicado oficial del ENFEN (PDF) y lo guarda (cada 6 h).
+  - avisos: avisos oficiales de SENAMHI como áreas y sus alertas por departamento (cada hora).
+  - lluvia_nacional: lluvia de la última hora en ~200 estaciones de SENAMHI de todo el país
+    (cada 30 min: las estaciones reportan cada hora pero no todas a la misma hora).
   - refresh_cache: refresca el snapshot en Redis (cada 5 min).
 
 Los nombres de las tareas son fijos a propósito: beat las encola por nombre, así
@@ -27,6 +30,8 @@ celery.conf.beat_schedule = {
     "refresh-cache": {"task": "backend.celery_app.refresh_cache", "schedule": 300.0},
     # el comunicado sale cada ~2 semanas: revisar 4 veces al día basta y sobra
     "enfen": {"task": "backend.celery_app.enfen", "schedule": 6 * 3600.0},
+    "avisos": {"task": "backend.celery_app.avisos", "schedule": 3600.0},
+    "lluvia-nacional": {"task": "backend.celery_app.lluvia_nacional", "schedule": 1800.0},
 }
 
 
@@ -42,6 +47,18 @@ def enfen():
     return actualizar()
 
 
+@celery.task(name="backend.celery_app.avisos")
+def avisos():
+    from backend.ingesta.avisos import actualizar
+    return actualizar()
+
+
+@celery.task(name="backend.celery_app.lluvia_nacional")
+def lluvia_nacional():
+    from backend.ingesta.lluvia_nacional import actualizar
+    return actualizar()
+
+
 @celery.task(name="backend.celery_app.refresh_cache")
 def refresh_cache():
     from backend.snapshot import refresh_snapshot
@@ -52,6 +69,8 @@ def refresh_cache():
 def _al_arrancar(**_):
     # beat no guarda su programación entre despliegues (el contenedor se recrea en cada
     # 'docker compose up --build'): sin esto la tarea 'enfen' correría recién 6 h después
-    # de cada despliegue, y en una BD nueva el panel quedaría sin estado ENFEN.
+    # de cada despliegue, y en una BD nueva el panel quedaría sin estado ENFEN ni avisos.
     ingesta.delay()
     enfen.delay()
+    avisos.delay()
+    lluvia_nacional.delay()

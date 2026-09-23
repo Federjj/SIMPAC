@@ -11,6 +11,7 @@ const ESTADO = { sin_confirmar: "Sin confirmar", confirmado: "Confirmado", desca
 // comunidad se sigue viendo, pero atenuado.
 export default {
   id: "inc",
+  grupo: "Comunidad",
   label: "Reportes ciudadanos",
   Icon: TriangleAlert,
   defaultVisible: true,

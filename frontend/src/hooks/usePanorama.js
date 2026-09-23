@@ -21,7 +21,7 @@ function avisosDeFallas(fallas = []) {
   if (fallas.includes(`ana:${fechaPeru()}`)) avisos.push("ANA no respondió en la última actualización: los ríos pueden estar atrasados.");
   const series = fallas.find((f) => f.startsWith("senamhi:series:"));
   if (series) {
-    const [malas, total] = series.split(":").at(-1).split("/").map(Number);
+    const [malas, total] = series.split(":").pop().split("/").map(Number);
     if (malas === total) avisos.push("SENAMHI no respondió en la última actualización: la lluvia puede estar atrasada.");
   }
   return avisos;
@@ -100,6 +100,9 @@ export function usePanorama(depto) {
     ...frasesEstado(alertas, depto, cobertura, Boolean(errores.alertas)),
     alertas,
     enfen: textoEnfen(enfen),
+    // valores crudos para el gráfico de El Niño
+    icen: indice("ICEN"),
+    icenTmp: indice("ICEN_TMP"),
     mar: textoMar(indice("ICEN"), indice("ICEN_TMP")),
     pacifico: textoPacifico(indice("RONI")),
     lluvia: resumenLluvia(lluvia, depto),

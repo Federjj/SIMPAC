@@ -1,14 +1,18 @@
 import { useState } from "react";
-import { ChevronDown, ChevronRight, Droplets, Plus, ShieldAlert, TriangleAlert, Waves } from "lucide-react";
+import { ChevronDown, ChevronRight, ChevronUp, Droplets, Megaphone, Plus, ShieldAlert, TriangleAlert, Waves } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { NIVEL } from "@/lib/nivel";
-import { NIVEL_HEX } from "@/map/palette";
+import { ENFEN_HEX, NIVEL_HEX } from "@/map/palette";
 import { horaPeru } from "@/lib/tiempo";
+import { ATRIBUCION_SENAMHI } from "@/map/senamhi";
 
-// Color del estado ENFEN: alerta en naranja, vigilancia en amarillo, sin alerta en verde.
-const ENFEN_HEX = { Alerta: NIVEL_HEX.alerta, Vigilancia: "#EBEB3B", "Sin alerta": NIVEL_HEX.normal };
+const COLOR_AVISO = { aviso: "amarillo", alerta: "naranja", emergencia: "rojo" };
+const URL_AVISO = (referencia) =>
+  referencia === "SENAMHI lluvia 24h"
+    ? "https://www.senamhi.gob.pe/?p=aviso-24H"
+    : "https://www.senamhi.gob.pe/?p=aviso-meteorologico";
 
 function Metric({ Icon, color, value, label, title }) {
   return (
@@ -46,20 +50,25 @@ export default function StatusPanel({
   local,
   pais,
   nivelLocal = "normal",
+  etiqueta,
   cuantasAqui = 0,
   cuantasFuera = 0,
+  cuantasTotal = 0,
   enfen,
   mar,
   pacifico,
   lluvia,
   avisos = [],
+  avisosZona = [],
   alertasCargadas = true,
   actualizado,
   desactualizado,
 }) {
   const [abierto, setAbierto] = useState(false);
+  // plegado deja solo el titular: en pantallas chicas el panel tapa el mapa y sus capas
+  const [plegado, setPlegado] = useState(false);
   const nv = NIVEL[nivelLocal];
-  const total = cuantasAqui + cuantasFuera;
+  const total = cuantasTotal;
 
   return (
     <div className="pointer-events-none absolute inset-x-0 bottom-0 z-[600] p-3 md:p-4">
@@ -78,100 +87,142 @@ export default function StatusPanel({
             </div>
             <h3 className="text-base font-semibold leading-snug md:text-lg">{local}</h3>
           </div>
-          <Badge variant="outline" className={cn("ml-auto shrink-0 gap-1.5", nv.border, nv.text)}>
-            <TriangleAlert className="h-3.5 w-3.5" />
-            {nv.label}
-          </Badge>
-        </div>
-
-        <div className="space-y-1 px-4 pt-1 text-sm text-muted-foreground">
-          {avisos.map((a) => (
-            <p key={a} className="text-nivel-alerta">
-              {a}
-            </p>
-          ))}
-          {pais && <p>{pais}</p>}
-          {lluvia && (
-            <p className="flex gap-1.5">
-              <Droplets className="mt-0.5 h-4 w-4 shrink-0 text-met" />
-              <span>{lluvia.frase}</span>
-            </p>
-          )}
-        </div>
-
-        <div className="grid grid-cols-3 gap-2 px-4 py-3 sm:flex">
-          <Metric
-            Icon={ShieldAlert}
-            color={ENFEN_HEX[enfen?.corto] ?? "#9CA3AF"}
-            value={enfen?.corto ?? "Sin dato"}
-            label={enfen ? `${enfen.quien} (ENFEN)` : "Sistema de alerta ENFEN"}
-            title={enfen ? `${enfen.explica} ${enfen.fuente}` : undefined}
-          />
-          <Metric
-            Icon={Waves}
-            color="#3B3BEB"
-            value={mar?.corto ?? "Sin dato"}
-            label="Mar frente al Perú"
-            title={mar ? `${mar.frase} ${mar.detalle}` : undefined}
-          />
-          <Metric
-            Icon={TriangleAlert}
-            color={NIVEL_HEX[nivelLocal] ?? "#9CA3AF"}
-            value={alertasCargadas ? cuantasAqui : "Sin dato"}
-            label={alertasCargadas ? `alertas en ${depto} · ${cuantasFuera} en el resto del país` : "alertas"}
-          />
-        </div>
-
-        <button
-          type="button"
-          onClick={() => setAbierto((a) => !a)}
-          className="flex w-full items-center gap-1.5 px-4 pb-2 text-left text-xs font-medium text-muted-foreground hover:text-foreground"
-          aria-expanded={abierto}
-        >
-          {abierto ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
-          Qué significa esto
-        </button>
-        {abierto && (
-          <div className="space-y-2.5 px-4 pb-3">
-            {enfen && (
-              <Explica titulo={enfen.titulo + "."} pie={enfen.fuente} aviso={enfen.atrasado ? "Puede haber un comunicado más nuevo." : null}>
-                {enfen.explica} {enfen.accion}
-              </Explica>
-            )}
-            {mar && (
-              <Explica titulo="Mar frente al Perú:" pie={mar.detalle} aviso={mar.atrasado}>
-                {mar.frase} Un mar más caliente frente a la costa norte suele traer más lluvia a la costa y sierra norte, sobre todo de diciembre a abril.
-              </Explica>
-            )}
-            {pacifico && (
-              <Explica titulo={pacifico.frase} pie={pacifico.detalle}>
-                Es el índice mundial de El Niño; para las lluvias del norte del Perú pesa más el mar frente a nuestra costa.
-              </Explica>
-            )}
-            <p className="text-xs text-muted-foreground">
-              Las alertas de ríos usan los niveles de ANA; las de lluvia son referenciales de SIMPAC. Ante
-              una emergencia, sigue las indicaciones de SENAMHI, INDECI y Defensa Civil.
-            </p>
+          <div className="ml-auto flex shrink-0 items-center gap-1">
+            <Badge variant="outline" className={cn("gap-1.5", nv.border, nv.text)}>
+              <TriangleAlert className="h-3.5 w-3.5" />
+              {etiqueta ?? nv.label}
+            </Badge>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-7 w-7"
+              onClick={() => setPlegado((p) => !p)}
+              aria-expanded={!plegado}
+              aria-label={plegado ? "Mostrar el detalle" : "Plegar el panel"}
+            >
+              {plegado ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+            </Button>
           </div>
+        </div>
+
+        {plegado ? (
+          <div className="pb-2" />
+        ) : (
+          <>
+            <div className="space-y-1 px-4 pt-1 text-sm text-muted-foreground">
+              {avisos.map((a) => (
+                <p key={a} className="text-nivel-alerta">
+                  {a}
+                </p>
+              ))}
+              {avisosZona.map((a) => (
+                <p key={a.referencia} className="flex gap-1.5 text-foreground">
+                  <Megaphone className="mt-0.5 h-4 w-4 shrink-0" style={{ color: NIVEL_HEX[a.nivel] }} />
+                  <span>
+                    <span className="font-semibold">Aviso {COLOR_AVISO[a.nivel]} (según SENAMHI):</span> {a.detalle}.{" "}
+                    <a
+                      href={URL_AVISO(a.referencia)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="whitespace-nowrap text-xs text-muted-foreground underline"
+                    >
+                      Ver el aviso oficial
+                    </a>
+                  </span>
+                </p>
+              ))}
+              {pais && <p>{pais}</p>}
+              {lluvia && (
+                <p className="flex gap-1.5">
+                  <Droplets className="mt-0.5 h-4 w-4 shrink-0 text-met" />
+                  <span>{lluvia.frase}</span>
+                </p>
+              )}
+            </div>
+
+            <div className="grid grid-cols-3 gap-2 px-4 py-3 sm:flex">
+              <Metric
+                Icon={ShieldAlert}
+                color={ENFEN_HEX[enfen?.corto] ?? "#9CA3AF"}
+                value={enfen?.corto ?? "Sin dato"}
+                label={enfen ? `${enfen.quien} (ENFEN)` : "Sistema de alerta ENFEN"}
+                title={enfen ? `${enfen.explica} ${enfen.fuente}` : undefined}
+              />
+              <Metric
+                Icon={Waves}
+                color="#3B3BEB"
+                value={mar?.corto ?? "Sin dato"}
+                label="Mar frente a la costa norte"
+                title={mar ? `${mar.frase} ${mar.detalle}` : undefined}
+              />
+              <Metric
+                Icon={TriangleAlert}
+                color={NIVEL_HEX[nivelLocal] ?? "#9CA3AF"}
+                value={alertasCargadas ? cuantasAqui : "Sin dato"}
+                label={alertasCargadas ? `alertas y avisos en ${depto} · ${cuantasFuera} en el resto del país` : "alertas"}
+              />
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setAbierto((a) => !a)}
+              className="flex w-full items-center gap-1.5 px-4 pb-2 text-left text-xs font-medium text-muted-foreground hover:text-foreground"
+              aria-expanded={abierto}
+            >
+              {abierto ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
+              Qué significa esto
+            </button>
+            {abierto && (
+              <div className="space-y-2.5 px-4 pb-3">
+                {enfen && (
+                  <Explica titulo={enfen.titulo + "."} pie={enfen.fuente} aviso={enfen.atrasado ? "Puede haber un comunicado más nuevo." : null}>
+                    {enfen.explica} {enfen.accion}
+                  </Explica>
+                )}
+                {mar && (
+                  <Explica titulo="Mar frente a la costa norte:" pie={mar.detalle} aviso={mar.atrasado}>
+                    {mar.frase} Un mar más caliente suele traer lluvias fuertes a la costa norte y a las partes altas
+                    que miran al mar (como el oeste de Cajamarca), sobre todo de diciembre a abril.
+                  </Explica>
+                )}
+                {pacifico && (
+                  <Explica titulo={pacifico.frase} pie={pacifico.detalle}>
+                    Es el índice mundial de El Niño; para las lluvias del norte del Perú pesa más el mar frente a nuestra costa.
+                  </Explica>
+                )}
+                <p className="text-xs text-muted-foreground">
+                  Las alertas de ríos usan los niveles de ANA; las de lluvia son referenciales de SIMPAC; los
+                  avisos (amarillo, naranja y rojo) vienen de SENAMHI, y SIMPAC los resume en palabras simples: el
+                  aviso oficial es el que publica SENAMHI. Ante una emergencia, sigue las indicaciones de SENAMHI,
+                  INDECI y Defensa Civil.
+                </p>
+              </div>
+            )}
+
+            {/* Reportar dentro del panel (en pantallas anchas es el botón flotante) */}
+            <div className="px-4 pb-3 2xl:hidden">
+              <Button variant="destructive" className="w-full">
+                <Plus className="h-[18px] w-[18px]" />
+                Reportar incidente
+              </Button>
+            </div>
+
+            <Button
+              variant="ghost"
+              disabled={!alertasCargadas || total === 0}
+              className={cn("h-auto w-full justify-start gap-2 rounded-none border-t border-border py-3", nv.text)}
+            >
+              <TriangleAlert className="h-4 w-4" />
+              {!alertasCargadas ? "Alertas: sin datos todavía" : total === 0 ? "No hay alertas ahora" : `Ver alertas (${total})`}
+              {alertasCargadas && total > 0 && <ChevronRight className="ml-auto h-4 w-4" />}
+            </Button>
+          </>
         )}
 
-        {/* Reportar dentro del panel (solo móvil; en desktop es el botón flotante) */}
-        <div className="px-4 pb-3 sm:hidden">
-          <Button variant="destructive" className="w-full">
-            <Plus className="h-[18px] w-[18px]" />
-            Reportar incidente
-          </Button>
-        </div>
-
-        <Button
-          variant="ghost"
-          disabled={!alertasCargadas || total === 0}
-          className={cn("h-auto w-full justify-start gap-2 rounded-none border-t border-border py-3", nv.text)}
-        >
-          <TriangleAlert className="h-4 w-4" />
-          {!alertasCargadas ? "Alertas: sin datos todavía" : total === 0 ? "No hay alertas ahora" : `Ver alertas (${total})`}
-          {alertasCargadas && total > 0 && <ChevronRight className="ml-auto h-4 w-4" />}
-        </Button>
+        {/* Fuentes y la leyenda literal que exigen los términos de SENAMHI, siempre a la vista */}
+        <p className="border-t border-border px-4 py-1.5 text-[0.6rem] leading-snug text-muted-foreground">
+          Fuentes: SENAMHI, ANA, ENFEN, IGP, NOAA y NASA. {ATRIBUCION_SENAMHI}
+        </p>
       </div>
     </div>
   );

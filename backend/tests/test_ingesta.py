@@ -10,7 +10,8 @@ from backend import alerts, config
 from backend.connectors import ana, igp, noaa, senamhi
 from backend.ingesta import guardar as guardar_mod
 from backend.ingesta.departamentos import DEPARTAMENTOS, clave, nombre_departamento
-from backend.ingesta.guardar import SQL_BORRAR_ALERTAS, SQL_CAUDAL, SQL_ESTACION, SQL_ICEN, SQL_LATIDO, guardar
+from backend.ingesta.guardar import (SQL_BORRAR_ALERTAS, SQL_CAUDAL, SQL_ESTACION, SQL_HAY_ICEN_SERIE, SQL_ICEN,
+                                     SQL_ICEN_SERIE, SQL_LATIDO, guardar)
 from backend.ingesta.recolectar import Pasada, filas_lluvia, recolectar
 
 
@@ -103,8 +104,8 @@ class TestAlertas(unittest.TestCase):
 
 
 class _Cursor:
-    def __init__(self, registro):
-        self.registro = registro
+    def __init__(self, conn):
+        self.conn, self.registro, self.ultima, self.rowcount = conn, conn.registro, None, -1
 
     def __enter__(self):
         return self
@@ -114,23 +115,38 @@ class _Cursor:
 
     def execute(self, sql, params=None):
         self.registro.append((sql, params))
+        self.ultima = sql
 
     def executemany(self, sql, filas):
-        self.registro.append((sql, list(filas)))
+        filas = list(filas)
+        self.registro.append((sql, filas))
+        # como psycopg: filas afectadas de todo el executemany (sin `escritas`, todas)
+        self.rowcount = len(filas) if self.conn.escritas is None else self.conn.escritas
+
+    def fetchone(self):
+        assert self.ultima == SQL_HAY_ICEN_SERIE, self.ultima
+        return (self.conn.hay_serie,)
 
 
 class _Conexion:
-    def __init__(self):
-        self.registro = []
+    """
+    Anota cada sentencia. hay_serie: si la tabla icen_serie existe (migración aplicada).
+    escritas: filas que dice haber cambiado cada executemany (None: todas las enviadas).
+    """
+
+    def __init__(self, hay_serie=True, escritas=None):
+        self.registro, self.hay_serie, self.escritas = [], hay_serie, escritas
 
     def cursor(self):
-        return _Cursor(self.registro)
+        return _Cursor(self)
 
     def params(self, sql):
         return [p for s, p in self.registro if s == sql]
 
 
-class TestRecolectarYGuardar(unittest.TestCase):
+class _BaseIngesta(unittest.TestCase):
+    """Fuentes y BD simuladas (sin pruebas propias: las heredan las clases de abajo)."""
+
     def setUp(self):
         logging.disable(logging.CRITICAL)
         self.addCleanup(logging.disable, logging.NOTSET)
@@ -140,7 +156,8 @@ class TestRecolectarYGuardar(unittest.TestCase):
         env.start()
         self.addCleanup(env.stop)
 
-    def _recolectar(self, ana_ok=True, ana_por_fecha=None):
+    def _recolectar(self, ana_ok=True, ana_por_fecha=None, icen=None):
+        """icen: lista de PuntoICEN que devuelve el ICEN.txt (None: el IGP está caído)."""
         def inventario(dp):
             if dp == "piura":
                 raise OSError("caído")
@@ -166,13 +183,31 @@ class TestRecolectarYGuardar(unittest.TestCase):
             ana_mock = mock.Mock(return_value=[_caudal("C1", "CAJAMARCA", 25.0)])
         else:
             ana_mock = mock.Mock(side_effect=OSError("ANA caído"))
+        igp_mock = (mock.Mock(side_effect=OSError("IGP caído")) if icen is None
+                    else mock.Mock(return_value=icen))
         with mock.patch.object(senamhi, "inventario_estaciones", inventario), \
              mock.patch.object(senamhi, "datos_horarios", serie), \
              mock.patch.object(ana, "reporte_caudal", ana_mock), \
-             mock.patch.object(igp, "ultimo", side_effect=OSError("IGP caído")), \
+             mock.patch.object(igp, "icen", igp_mock), \
+             mock.patch.object(igp, "ultimo", side_effect=AssertionError("baja el ICEN.txt otra vez")), \
              mock.patch.object(noaa, "ultimo", return_value=None):
-            return recolectar(), ana_mock
+            p = recolectar()
+        self.igp_mock = igp_mock
+        return p, ana_mock
 
+    def _guardar(self, p, hay_serie=True, escritas=None):
+        conn = _Conexion(hay_serie, escritas)
+
+        @contextmanager
+        def falso_conectar():
+            yield conn
+
+        with mock.patch.object(guardar_mod, "conectar", falso_conectar):
+            resumen = guardar(p)
+        return conn, resumen
+
+
+class TestRecolectarYGuardar(_BaseIngesta):
     def test_recolectar_anota_cada_falla_y_sigue(self):
         p, ana_mock = self._recolectar(ana_ok=False)
         self.assertEqual({e.cod for _, e in p.estaciones}, {"111", "222", "333"})
@@ -192,17 +227,6 @@ class TestRecolectarYGuardar(unittest.TestCase):
         p, _ = self._recolectar()
         self.assertEqual(p.caudales[0][1].departamento, "Cajamarca")
         self.assertEqual(p.alertas_caudal[0]["zona"], "Cajamarca")
-
-    def _guardar(self, p):
-        conn = _Conexion()
-
-        @contextmanager
-        def falso_conectar():
-            yield conn
-
-        with mock.patch.object(guardar_mod, "conectar", falso_conectar):
-            resumen = guardar(p)
-        return conn, resumen
 
     def _borrados(self, conn):
         return {tipo: refs for tipo, refs, horas in conn.params(SQL_BORRAR_ALERTAS)}
@@ -279,6 +303,90 @@ class TestRecolectarYGuardar(unittest.TestCase):
         conn, _ = self._guardar(p)
         self.assertEqual(conn.params(SQL_ICEN), [("ICEN", "2026-05", 1.98, "Cálida moderada", "IGP")])
         self.assertIn("excluded.periodo > indice.periodo", SQL_ICEN)
+
+
+def _meses(desde_anio, desde_mes, n, valor=0.1):
+    """n PuntoICEN mensuales consecutivos desde (desde_anio, desde_mes)."""
+    k0 = desde_anio * 12 + desde_mes - 1
+    return [igp.PuntoICEN((k0 + i) // 12, (k0 + i) % 12 + 1, round(valor + i / 100, 2)) for i in range(n)]
+
+
+class TestSerieICENIngesta(_BaseIngesta):
+    """La ingesta horaria guarda los últimos 36 meses del IGP en icen_serie."""
+
+    def test_el_icen_txt_se_baja_una_vez_y_da_ultimo_y_serie(self):
+        # ICEN.txt desde 1950 hasta mayo de 2026: 917 filas, como el real
+        p, _ = self._recolectar(icen=_meses(1950, 1, 917))
+        self.igp_mock.assert_called_once_with()
+        self.assertEqual(len(p.icen_serie), 36)
+        primero, ultimo = p.icen_serie[0], p.icen_serie[-1]
+        self.assertEqual(((primero.anio, primero.mes), (ultimo.anio, ultimo.mes)), ((2023, 6), (2026, 5)))
+        self.assertIs(p.icen, ultimo)
+        self.assertNotIn("igp", p.fallas)
+        self.assertEqual(p.avisos, [])
+
+    def test_igp_caido_no_deja_serie(self):
+        p, _ = self._recolectar()   # igp.icen lanza OSError
+        self.assertEqual((p.icen, p.icen_serie), (None, []))
+        self.assertIn("igp", p.fallas)
+        conn, resumen = self._guardar(p)
+        self.assertEqual(conn.params(SQL_ICEN_SERIE) + conn.params(SQL_HAY_ICEN_SERIE), [])
+        self.assertEqual(resumen["icen_serie"], 0)
+
+    def test_guardar_escribe_la_serie_con_origen_igp_en_orden(self):
+        p, _ = self._recolectar(icen=_meses(2023, 1, 41, valor=-0.5))
+        conn, resumen = self._guardar(p)
+        [filas] = conn.params(SQL_ICEN_SERIE)
+        self.assertEqual(len(filas), 36)
+        self.assertEqual(filas[0], ("2023-06", -0.45, "Neutra", "IGP"))
+        self.assertEqual(filas[-1], ("2026-05", -0.1, "Neutra", "IGP"))
+        self.assertEqual([f[0] for f in filas], sorted(f[0] for f in filas))
+        self.assertEqual({f[3] for f in filas}, {"IGP"})
+        # el último mes también va a indice, como antes
+        self.assertEqual(conn.params(SQL_ICEN), [("ICEN", "2026-05", -0.1, "Neutra", "IGP")])
+        self.assertEqual((resumen["icen_serie"], resumen["avisos"]), (36, []))
+
+    def test_latido_cuenta_los_meses_escritos_no_los_enviados(self):
+        # cada hora se reenvían los mismos 36 meses: si ninguno cambió, el latido dice 0
+        p, _ = self._recolectar(icen=_meses(2023, 1, 41))
+        conn, resumen = self._guardar(p, escritas=0)
+        [filas] = conn.params(SQL_ICEN_SERIE)
+        self.assertEqual((len(filas), resumen["icen_serie"]), (36, 0))
+        [(_, datos)] = conn.params(SQL_LATIDO)
+        self.assertEqual(json.loads(datos)["icen_serie"], 0)
+        _, resumen = self._guardar(p, escritas=1)   # p. ej. el IGP corrigió un mes
+        self.assertEqual(resumen["icen_serie"], 1)
+
+    def test_mes_futuro_del_icen_txt_no_llega_a_indice_ni_a_la_serie(self):
+        # ICEN.txt real hasta 2026-05 más una fila de 2099 (dañada o alterada: se baja por
+        # http). Antes era el "último mes": corría la ventana y dejaba fijo el ICEN de indice.
+        p, _ = self._recolectar(icen=_meses(1950, 1, 917) + [igp.PuntoICEN(2099, 1, 0.3)])
+        self.assertEqual((p.icen.anio, p.icen.mes), (2026, 5))
+        self.assertEqual((len(p.icen_serie), p.icen_serie[0].anio, p.icen_serie[0].mes), (36, 2023, 6))
+        self.assertEqual(p.avisos, ["igp: 1 filas del ICEN.txt descartadas (mes imposible o futuro, o valor imposible)"])
+        conn, _ = self._guardar(p)
+        self.assertEqual([x[1] for x in conn.params(SQL_ICEN)], ["2026-05"])
+        [filas] = conn.params(SQL_ICEN_SERIE)
+        self.assertEqual(max(f[0] for f in filas), "2026-05")
+
+    def test_sin_la_tabla_la_serie_se_salta_y_el_resto_se_guarda(self):
+        # migración pendiente: no se intenta el INSERT (tumbaría la transacción entera)
+        p, _ = self._recolectar(icen=_meses(2025, 1, 17))
+        conn, resumen = self._guardar(p, hay_serie=False)
+        self.assertEqual(conn.params(SQL_ICEN_SERIE), [])
+        self.assertEqual(len(conn.params(SQL_ICEN)), 1)
+        self.assertEqual(len(conn.params(SQL_ESTACION)), 1)
+        self.assertEqual(resumen["avisos"], [guardar_mod.AVISO_SIN_SERIE])
+        self.assertEqual(resumen["icen_serie"], 0)
+        [(_, datos)] = conn.params(SQL_LATIDO)
+        self.assertEqual(json.loads(datos)["avisos"], [guardar_mod.AVISO_SIN_SERIE])
+
+    def test_filas_danadas_del_icen_txt_se_descartan_con_aviso(self):
+        puntos = _meses(2025, 1, 12) + [igp.PuntoICEN(2026, 13, 0.5), igp.PuntoICEN(2026, 1, float("nan")),
+                                        igp.PuntoICEN(2026, 2, 99.0)]
+        p, _ = self._recolectar(icen=puntos)
+        self.assertEqual((p.icen.anio, p.icen.mes), (2025, 12))   # la basura no es "el último mes"
+        self.assertEqual(p.avisos, ["igp: 3 filas del ICEN.txt descartadas (mes imposible o futuro, o valor imposible)"])
 
 
 class TestConfig(unittest.TestCase):

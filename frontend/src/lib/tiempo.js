@@ -6,7 +6,7 @@ export const MESES = [
   "enero", "febrero", "marzo", "abril", "mayo", "junio",
   "julio", "agosto", "setiembre", "octubre", "noviembre", "diciembre",
 ];
-const MESES_CORTOS = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "set", "oct", "nov", "dic"];
+export const MESES_CORTOS = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "set", "oct", "nov", "dic"];
 
 // "AAAA-MM-DD" de hoy (o de una fecha) en Perú.
 export function fechaPeru(d = new Date()) {
@@ -33,6 +33,15 @@ export function diaLegible(iso) {
   if (iso === ayer) return "ayer";
   const [, m, d] = iso.split("-").map(Number);
   return `${d} ${MESES_CORTOS[m - 1]}`;
+}
+
+// "hoy 13:00", "mañana 13:00" o "24 set 23:59" (inicio y fin de un aviso).
+export function momentoPeru(fecha) {
+  const d = new Date(fecha);
+  const hhmm = d.toLocaleTimeString("es-PE", { timeZone: PERU, hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
+  const iso = fechaPeru(d);
+  const dia = iso === fechaPeru(Date.now() + 86_400_000) ? "mañana" : diaLegible(iso);
+  return `${dia} ${hhmm}`;
 }
 
 // Horas enteras desde una fecha (para avisar de datos desactualizados).

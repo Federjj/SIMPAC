@@ -9,6 +9,7 @@ const num = (v) => Number(v).toLocaleString("es-PE", { maximumFractionDigits: 2 
 
 export default {
   id: "rio",
+  grupo: "Ríos y estaciones",
   label: "Ríos",
   Icon: Waves,
   defaultVisible: true,
