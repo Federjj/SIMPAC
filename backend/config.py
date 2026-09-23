@@ -19,7 +19,8 @@ class Ajustes:
     supabase_publishable_key: str
     supabase_db_url: str | None      # secreto: solo lo recibe el worker
     snapshot_ttl: int                # segundos; mayor que el refresco del beat (300 s)
-    lluvia_deptos: tuple[str, ...]   # slugs de SENAMHI con lluvia horaria
+    lluvia_deptos: tuple[str, ...]   # slugs de SENAMHI; solo decide qué series de 24 h guarda
+                                     # la ingesta (lectura_lluvia), no las alertas
 
 
 @lru_cache

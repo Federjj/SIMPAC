@@ -1,10 +1,11 @@
 """
 Escritura de una Pasada en Supabase, en una sola transacción.
 
-Regla de las alertas: solo se reemplazan las de las estaciones que se volvieron a
-evaluar (con dato). Si ANA o una estación no respondió, su alerta se queda: no es un
-"todo normal". Para que una fuente caída no deje alertas colgadas para siempre, las
-que no se refrescan caducan a las SIN_DATOS_HORAS.
+Regla de las alertas de ríos (caudal, nivel_bajo): solo se reemplazan las de las
+estaciones que se volvieron a evaluar (con dato). Si ANA o una estación no respondió, su
+alerta se queda: no es un "todo normal". Para que una fuente caída no deje alertas
+colgadas para siempre, las que no se refrescan caducan a las SIN_DATOS_HORAS. Las de
+lluvia las escribe la tarea lluvia_nacional (backend/ingesta/lluvia_nacional.py).
 
 Serie del ICEN (icen_serie, para el gráfico): se guardan los últimos meses del IGP, con la
 categoría que calcula SIMPAC (igp.categoria; la de los meses del ENFEN es la oficial de la
@@ -127,7 +128,7 @@ def filas_serie(meses: list[tuple[str, float, str]], origen: str) -> list[tuple]
 
 def guardar(p: Pasada) -> dict:
     caudal = _filas_caudal(p)
-    alertas = p.alertas_lluvia + p.alertas_caudal
+    alertas = p.alertas_caudal
     avisos = list(p.avisos)
     serie = 0   # meses del IGP escritos en icen_serie (insertados o cambiados)
     with conectar() as conn, conn.cursor() as cur:
@@ -160,7 +161,6 @@ def guardar(p: Pasada) -> dict:
         # una estación puede pasar de crecida a nivel bajo: se limpian las dos familias
         for tipo in ("caudal", "nivel_bajo"):
             cur.execute(SQL_BORRAR_ALERTAS, (tipo, p.caudal_ok, SIN_DATOS_HORAS))
-        cur.execute(SQL_BORRAR_ALERTAS, ("lluvia", p.lluvia_ok, SIN_DATOS_HORAS))
         if alertas:
             cur.executemany(SQL_ALERTA, [
                 (a["tipo"], a["referencia"], a.get("zona"), a["nivel"],

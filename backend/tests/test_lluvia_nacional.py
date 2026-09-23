@@ -1,8 +1,8 @@
 """
 Lluvia nacional: capa de umbrales de SENAMHI (WFS), fechas del visor de lluvia observada y
 huella de prec_1_all_points, emparejamiento con nuestra tabla estacion y la tarea
-'lluvia_nacional' con la BD simulada (incluido el latido anterior). Sin red ni psycopg: solo
-librería estándar.
+'lluvia_nacional' con la BD simulada (incluidos el latido anterior y las alertas de lluvia).
+Sin red ni psycopg: solo librería estándar.
 """
 import json
 import logging
@@ -26,7 +26,7 @@ def _punto(nombre, lon, lat, pp=0, umbral=5, pp_acum=0, hora="19:00:00", fecha="
     return {"type": "Feature", "id": "umbrales_precipitacion.fid-x",
             "geometry": {"type": "Point", "coordinates": [lon, lat, alt]}, "geometry_name": "geom",
             "properties": {"nombre": nombre, "pp": pp, "umbral": umbral, "pp_acum": pp_acum,
-                           "umb_acum": umbral * 3, "hora": hora, "fecha": fecha,
+                           "umb_acum": None if umbral is None else umbral * 3, "hora": hora, "fecha": fecha,
                            "departamento": departamento, "provincia": "P", "distrito": "D",
                            "cuenca": "C", "control": 2}}
 
@@ -409,7 +409,7 @@ class TestEmparejamiento(unittest.TestCase):
 
 class _Cursor:
     def __init__(self, conn):
-        self.conn, self.ultima, self.rowcount = conn, None, -1
+        self.conn, self.ultima, self.ultimos, self.rowcount = conn, None, None, -1
 
     def __enter__(self):
         return self
@@ -419,24 +419,35 @@ class _Cursor:
 
     def execute(self, sql, params=None):
         self.conn.registro.append((sql, params))
-        self.ultima = sql
+        self.ultima, self.ultimos = sql, params
         self.rowcount = 2 if sql == tarea.SQL_PURGA else 1
 
     def executemany(self, sql, filas):
         self.conn.registro.append((sql, list(filas)))
 
     def fetchall(self):
-        assert self.ultima == tarea.SQL_ESTACIONES
+        if self.ultima == tarea.SQL_LLUVIA_VIGENTE:
+            return self.conn.vigentes_en_bd(self.ultimos[0])
+        assert self.ultima == tarea.SQL_ESTACIONES, self.ultima
         return [(e.cod, e.nombre, e.tipo, e.estado, e.departamento, e.lat, e.lon) for e in self.conn.estaciones]
 
     def fetchone(self):
+        if self.ultima == tarea.SQL_HAY_ALERTA_LLUVIA:
+            return (self.conn.migrada,)
         assert self.ultima == tarea.SQL_LATIDO_PREVIO, self.ultima
         return None if self.conn.latido is None else (self.conn.latido,)   # jsonb ya decodificado
 
 
 class _Conexion:
-    def __init__(self, estaciones, latido=None):
+    """
+    Anota cada sentencia. migrada: si la migración de alertas de lluvia está aplicada.
+    en_bd: {clave: fila de SQL_LLUVIA_SENAMHI} que la BD tiene después del upsert y que
+    manda sobre lo que trajo la capa (una lectura más nueva, o una estación que no vino).
+    """
+
+    def __init__(self, estaciones, latido=None, migrada=True, en_bd=None):
         self.estaciones, self.latido, self.registro = estaciones, latido, []
+        self.migrada, self.en_bd = migrada, en_bd or {}
 
     def cursor(self):
         return _Cursor(self)
@@ -444,15 +455,49 @@ class _Conexion:
     def params(self, sql):
         return [p for s, p in self.registro if s == sql]
 
+    def sentencias(self):
+        return [s for s, _ in self.registro]
 
-class TestTareaLluviaNacional(unittest.TestCase):
+    def vigentes_en_bd(self, desde):
+        """
+        SQL_LLUVIA_VIGENTE sobre la BD simulada: el último upsert más en_bd, con su filtro y el
+        orden de sus columnas (el texto lo fija test_sql_fija_tipo_y_nivel).
+        """
+        subidas = self.params(tarea.SQL_LLUVIA_SENAMHI)
+        bd = {f[0]: f for f in (subidas[-1] if subidas else [])}
+        bd.update(self.en_bd)
+        return [(f[0], f[1], f[3], f[4], f[8], f[9], f[10], f[11], f[12], f[13], f[14])
+                for f in sorted(bd.values(), key=lambda f: f[0]) if f[12] >= desde]
+
+
+def _fila_bd(nombre, lon, lat, pp_1h, umbral_1h, pp_6h=0.0, medido_en=AHORA - timedelta(minutes=40),
+             departamento="Cajamarca", provincia="CHOTA"):
+    """Una fila de lluvia_senamhi como la guarda SQL_LLUVIA_SENAMHI (clave, fila)."""
+    lec = su.LecturaUmbral(nombre=nombre, lat=lat, lon=lon, altitud_m=None, departamento=None,
+                           provincia=provincia, distrito=None, cuenca=None, pp_1h=pp_1h, umbral_1h=umbral_1h,
+                           pp_6h=pp_6h, umbral_6h=umbral_1h * 3, medido_en=medido_en)
+    [fila] = tarea.filas([lec], {lec.clave: tarea.Pareja(cod=None, departamento=departamento)})
+    return lec.clave, fila
+
+
+# Las tres claves de la evaluación cuando no se tocaron las alertas.
+SIN_EVALUAR = {"evaluadas": None, "alertas": None, "alertas_6h": None}
+DETALLE_COTAHUASI = ("En Cotahuasi (provincia de La Union) llovió 29.1 mm en las 6 horas que terminaron a las "
+                     "18:00. SENAMHI usa 15 mm en 6 horas como referencia para esta estación. Es lo que midió "
+                     "la estación, no un aviso oficial.")
+
+
+class _BaseTarea(unittest.TestCase):
+    """Fuentes y BD simuladas (sin pruebas propias: las heredan las clases de abajo)."""
+
     def setUp(self):
         logging.disable(logging.ERROR)   # la tarea avisa de las fallas simuladas
         self.addCleanup(logging.disable, logging.NOTSET)
 
     def correr(self, capa=REAL, error_capa=None, visor=VISOR, error_visor=None, huella=PUNTOS,
-               error_huella=None, latido=None, ahora=AHORA):
-        conn = _Conexion(ESTACIONES_REALES, latido)
+               error_huella=None, latido=None, ahora=AHORA, migrada=True, en_bd=None,
+               estaciones=ESTACIONES_REALES):
+        conn = _Conexion(estaciones, latido, migrada=migrada, en_bd=en_bd)
         self.huellas_pedidas = 0
 
         @contextmanager
@@ -487,11 +532,22 @@ class TestTareaLluviaNacional(unittest.TestCase):
         [(servicio, datos)] = conn.params(SQL_LATIDO)   # el latido se escribe siempre
         self.assertEqual(servicio, "lluvia_nacional")
         self.assertEqual(conn.params(tarea.SQL_LATIDO_PREVIO), [("lluvia_nacional",)])
+        # el candado va primero, siempre, y una sola vez
+        self.assertEqual(conn.registro[0][0], tarea.SQL_CANDADO)
+        self.assertEqual(conn.sentencias().count(tarea.SQL_CANDADO), 1)
         resumen = json.loads(datos)
         if devuelto is not None:
             self.assertEqual(resumen, devuelto)
         return conn, resumen
 
+    def assertAlertasSinTocar(self, conn, resumen):
+        for sql in (tarea.SQL_HAY_ALERTA_LLUVIA, tarea.SQL_LLUVIA_VIGENTE, tarea.SQL_BORRAR_ALERTAS_LLUVIA,
+                    tarea.SQL_ALERTA_LLUVIA):
+            self.assertEqual(conn.params(sql), [], sql)
+        self.assertEqual({k: resumen[k] for k in SIN_EVALUAR}, SIN_EVALUAR)
+
+
+class TestTareaLluviaNacional(_BaseTarea):
     def test_corrida_normal(self):
         conn, resumen = self.correr()
         self.assertIsNone(self.excepcion)
@@ -504,9 +560,14 @@ class TestTareaLluviaNacional(unittest.TestCase):
         self.assertEqual((pp1, u1, pp6, u6), (0.0, 5.0, 29.1, 15.0))
         self.assertEqual((lon, lat), (-72.89331, -15.21134))    # ST_MakePoint(lon, lat)
         self.assertIsNotNone(medido.tzinfo)
+        # COTAHUASI (18:00): 0 mm en la hora frente a 5, pero 29,1 mm en 6 h frente a 15
+        [alertas] = conn.params(tarea.SQL_ALERTA_LLUVIA)
+        self.assertEqual(alertas, [("COTAHUASI@-15.21134,-72.89331", "Arequipa", DETALLE_COTAHUASI,
+                                    29.1, 15.0, 6, medido, -72.89331, -15.21134)])
         self.assertEqual(resumen, {
             # VON HUMBOLDT (01:00) y BAMBAMARCA H (14:00) pasan de 3 h
             "estaciones": 9, "vigentes": 7, "lloviendo": 3, "sobre_umbral": 0,
+            "evaluadas": 7, "alertas": 1, "alertas_6h": 1,
             "cajamarca": {"estaciones": 3, "vigentes": 2, "lloviendo": 0},
             "sin_pareja": 1, "hora": "2026-09-22T19:00:00-05:00", "purgadas": 2,
             # sin latido anterior: se acepta la fecha del visor y se guarda la huella de sus datos
@@ -521,9 +582,19 @@ class TestTareaLluviaNacional(unittest.TestCase):
                           _punto("CUTERVO GORE", -78.81339, -6.37914, pp=3, umbral=10),
                           # igual al umbral no lo supera: el mapa marca con > (lluviaAhora.js)
                           _punto("SANTA CRUZ", -78.94, -6.62, pp=10, umbral=10))
-        _, resumen = self.correr(capa=capa)
+        conn, resumen = self.correr(capa=capa)
         self.assertEqual((resumen["lloviendo"], resumen["sobre_umbral"]), (3, 1))
         self.assertEqual(resumen["cajamarca"], {"estaciones": 3, "vigentes": 3, "lloviendo": 3})
+        # una sola alerta, la misma que cuenta sobre_umbral (SANTA CRUZ, 10 = 10, no)
+        [alertas] = conn.params(tarea.SQL_ALERTA_LLUVIA)
+        [(referencia, zona, detalle, valor, umbral, ventana, *_)] = alertas
+        self.assertEqual((referencia, zona, valor, umbral, ventana),
+                         ("CHOTA GORE@-6.55405,-78.67588", "Cajamarca", 12.4, 10.0, 1))
+        self.assertEqual(detalle, "En Chota GORE (provincia de P) llovió 12.4 mm en la hora que terminó a las "
+                                  "19:00. SENAMHI usa 10 mm en una hora como referencia para esta estación. "
+                                  "Es lo que midió la estación, no un aviso oficial.")
+        self.assertEqual((resumen["evaluadas"], resumen["alertas"], resumen["alertas_6h"]), (3, 1, 0))
+        self.assertEqual(resumen["alertas"], resumen["sobre_umbral"])
 
     def test_sobre_umbral_con_decimales(self):
         lec = su.LecturaUmbral(nombre="X", lat=-7.1, lon=-78.5, altitud_m=None, departamento="CAJAMARCA",
@@ -546,12 +617,14 @@ class TestTareaLluviaNacional(unittest.TestCase):
         self.assertEqual(resumen["avisos"], ["umbrales: TimeoutError: timed out"])
         self.assertIsNone(resumen["estaciones"])
         self.assertEqual(resumen["prec_1"], "2026-09-21")        # las fechas se leyeron igual
+        self.assertAlertasSinTocar(conn, resumen)                # ni se borran las de lluvia
 
     def test_capa_vacia_es_falla(self):
         conn, resumen = self.correr(capa=_coleccion())
         self.assertIsInstance(self.excepcion, RuntimeError)
         self.assertEqual(conn.params(tarea.SQL_PURGA), [])
         self.assertEqual(resumen["fallas"], ["umbrales"])
+        self.assertAlertasSinTocar(conn, resumen)
 
     def test_visor_caido_sigue_con_la_capa(self):
         conn, resumen = self.correr(error_visor=ValueError("No se encontró la fecha de prec_1"))
@@ -620,6 +693,7 @@ class TestTareaLluviaNacional(unittest.TestCase):
         self.assertEqual(resumen["vigentes"], 0)
         self.assertEqual(resumen["fallas"], ["umbrales"])
         self.assertIn("umbrales: ninguna estación tiene dato de las últimas 3 h", resumen["avisos"])
+        self.assertAlertasSinTocar(conn, resumen)
 
     def test_menos_de_la_mitad_vigentes_es_aviso(self):
         capa = _coleccion(_punto("A", -78.5, -7.1), _punto("B", -78.4, -7.1, hora="10:00:00"),
@@ -650,6 +724,107 @@ class TestTareaLluviaNacional(unittest.TestCase):
         self.assertIn("where excluded.medido_en >= lluvia_senamhi.medido_en", tarea.SQL_LLUVIA_SENAMHI)
         self.assertIn("on conflict (clave)", tarea.SQL_LLUVIA_SENAMHI)
         self.assertIn("ts_captura < now()", tarea.SQL_PURGA)
+
+
+class TestAlertasLluviaNacional(_BaseTarea):
+    """Alertas de lluvia (tipo 'lluvia'): las escribe solo esta tarea, desde la BD."""
+
+    def test_candado_primero(self):
+        # beat + corrida suelta: el candado va antes que todo, también con la capa caída
+        for kwargs in ({}, {"error_capa": TimeoutError("timed out")}):
+            conn, _ = self.correr(**kwargs)
+            self.assertEqual(conn.registro[0], (tarea.SQL_CANDADO, None), kwargs)
+        self.assertEqual(tarea.SQL_CANDADO, "select pg_advisory_xact_lock(hashtext('lluvia_nacional'))")
+
+    def test_reemplazo_despues_del_upsert(self):
+        conn, _ = self.correr()
+        pasos = (tarea.SQL_LLUVIA_SENAMHI, tarea.SQL_LLUVIA_VIGENTE, tarea.SQL_BORRAR_ALERTAS_LLUVIA,
+                 tarea.SQL_ALERTA_LLUVIA)
+        self.assertEqual([s for s in conn.sentencias() if s in pasos], list(pasos))
+        self.assertEqual(conn.sentencias()[-1], SQL_LATIDO)
+        # vigentes = medido_en de las últimas 3 h respecto de la corrida
+        [(desde,)] = conn.params(tarea.SQL_LLUVIA_VIGENTE)
+        self.assertEqual(desde, AHORA - timedelta(hours=3))
+
+    def test_estacion_trabada_no_alerta(self):
+        # VON HUMBOLDT sigue en la capa con su lectura de la 01:00: 5 mm frente a 1
+        capa = _coleccion(_punto("VON HUMBOLDT", -76.93931, -12.08221, pp=5, umbral=1, hora="01:00:00",
+                                 departamento="LIMA"),
+                          _punto("BAMBAMARCA GORE", -78.52363, -6.67996))
+        conn, resumen = self.correr(capa=capa)
+        self.assertEqual(conn.params(tarea.SQL_ALERTA_LLUVIA), [])
+        self.assertEqual(conn.params(tarea.SQL_BORRAR_ALERTAS_LLUVIA), [None])   # ninguna pasa: se van
+        self.assertEqual((resumen["evaluadas"], resumen["alertas"], resumen["alertas_6h"]), (1, 0, 0))
+
+    def test_bd_mas_nueva_manda(self):
+        # la capa trae CHOTA GORE vieja (18:00) sobre la referencia; la BD ya tiene las 19:00 sin lluvia
+        capa = _coleccion(_punto("CHOTA GORE", -78.67588, -6.55405, pp=12.4, umbral=10, hora="18:00:00"))
+        clave, fila = _fila_bd("CHOTA GORE", -78.67588, -6.55405, pp_1h=0.0, umbral_1h=10.0,
+                               medido_en=datetime(2026, 9, 23, 0, 0, tzinfo=timezone.utc))
+        conn, resumen = self.correr(capa=capa, en_bd={clave: fila})
+        self.assertEqual(conn.params(tarea.SQL_ALERTA_LLUVIA), [])
+        self.assertEqual((resumen["evaluadas"], resumen["alertas"]), (1, 0))
+        self.assertEqual(resumen["sobre_umbral"], 1)   # el conteo del lote solo mira la capa
+
+    def test_estacion_ausente_conserva_su_alerta(self):
+        # CHOTA GORE no vino en esta corrida, pero su lectura de las 19:00 sigue vigente en la BD
+        clave, fila = _fila_bd("CHOTA GORE", -78.67588, -6.55405, pp_1h=12.4, umbral_1h=10.0)
+        conn, resumen = self.correr(en_bd={clave: fila})
+        [alertas] = conn.params(tarea.SQL_ALERTA_LLUVIA)
+        self.assertEqual(sorted((a[0], a[5]) for a in alertas),
+                         [(clave, 1), ("COTAHUASI@-15.21134,-72.89331", 6)])
+        self.assertEqual((resumen["evaluadas"], resumen["alertas"], resumen["alertas_6h"]), (8, 2, 1))
+
+    def test_sin_evaluables_no_toca(self):
+        # sin referencia (o con 0) no se sabe si "no pasa ninguna": se quedan las que había
+        capa = _coleccion(_punto("A", -78.5, -7.1, pp=30, umbral=None), _punto("B", -78.4, -7.1, pp=2, umbral=None),
+                          _punto("C", -78.3, -7.1, pp=3, umbral=0))
+        conn, resumen = self.correr(capa=capa)
+        self.assertIsNone(self.excepcion)
+        self.assertEqual(conn.params(tarea.SQL_LLUVIA_VIGENTE), [(AHORA - timedelta(hours=3),)])
+        self.assertEqual(conn.params(tarea.SQL_BORRAR_ALERTAS_LLUVIA), [])
+        self.assertEqual(conn.params(tarea.SQL_ALERTA_LLUVIA), [])
+        self.assertEqual((resumen["evaluadas"], resumen["alertas"], resumen["alertas_6h"]), (0, None, None))
+        self.assertEqual(resumen["avisos"], [tarea.AVISO_SIN_EVALUABLES])
+        self.assertEqual(resumen["fallas"], [])
+
+    def test_migracion_pendiente(self):
+        # el worker salió antes que la migración: lluvia_senamhi y el latido se guardan igual
+        conn, resumen = self.correr(migrada=False)
+        self.assertIsNone(self.excepcion)
+        self.assertEqual(len(conn.params(tarea.SQL_LLUVIA_SENAMHI)[0]), 9)
+        self.assertEqual(conn.params(tarea.SQL_HAY_ALERTA_LLUVIA), [None])
+        for sql in (tarea.SQL_LLUVIA_VIGENTE, tarea.SQL_BORRAR_ALERTAS_LLUVIA, tarea.SQL_ALERTA_LLUVIA):
+            self.assertEqual(conn.params(sql), [], sql)
+        self.assertEqual({k: resumen[k] for k in SIN_EVALUAR}, SIN_EVALUAR)
+        self.assertEqual(resumen["avisos"], [tarea.AVISO_SIN_MIGRACION])
+        self.assertEqual(resumen["fallas"], [])
+
+    def test_zona_canonica_y_referencia_clave(self):
+        # la capa escribe 'SAN MARTIN'; la referencia es la clave, con o sin estación emparejada
+        capa = _coleccion(_punto("TOCACHE", -76.51, -8.18, pp=8, umbral=5, departamento="SAN MARTIN"))
+        propia = EstacionRef("4720TOC0", "TOCACHE", "M", "AUTOMATICA", "San Martín", -8.18, -76.51)
+        alertas = []
+        for estaciones, cod in (([], None), ([propia], "4720TOC0")):
+            conn, _ = self.correr(capa=capa, estaciones=estaciones)
+            [[fila]] = conn.params(tarea.SQL_LLUVIA_SENAMHI)
+            self.assertEqual(fila[2], cod)
+            [[alerta]] = conn.params(tarea.SQL_ALERTA_LLUVIA)
+            alertas.append(alerta)
+        self.assertEqual(alertas[0], alertas[1])
+        self.assertEqual(alertas[0][:2], ("TOCACHE@-8.18000,-76.51000", "San Martín"))
+
+    def test_sql_fija_tipo_y_nivel(self):
+        self.assertIn("'lluvia'", tarea.SQL_ALERTA_LLUVIA)
+        self.assertIn("'aviso'", tarea.SQL_ALERTA_LLUVIA)
+        self.assertEqual(tarea.SQL_ALERTA_LLUVIA.count("%s"), 9)
+        self.assertEqual(tarea.SQL_BORRAR_ALERTAS_LLUVIA, "delete from alerta where tipo = 'lluvia'")
+        self.assertIn("'public.alerta_lluvia_referencia_key'", tarea.SQL_HAY_ALERTA_LLUVIA)
+        # _Conexion.vigentes_en_bd no ejecuta el SELECT: imita este texto (filtro de vigencia y
+        # orden de las columnas), así que se fija entero
+        self.assertEqual(tarea.SQL_LLUVIA_VIGENTE,
+                         "select clave, nombre, departamento, provincia, pp_1h, umbral_1h, pp_6h, umbral_6h, "
+                         "medido_en, lon, lat from lluvia_senamhi where medido_en >= %s order by clave")
 
 
 if __name__ == "__main__":

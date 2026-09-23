@@ -6,7 +6,7 @@ Backend de SIMPAC.
   config.py      configuración (variables de entorno) en un solo lugar
   db.py          conexión a Supabase para quien escribe (worker y cargadores)
   snapshot.py    panorama cacheado en Redis que sirve la API
-  alerts.py      motor de umbrales (lluvia y caudal)
+  alerts.py      motor de umbrales (caudal de ANA; lluvia con la referencia de SENAMHI)
   ingesta/       ingesta horaria: recolectar de las fuentes y guardar en la BD
   connectors/    un conector por fuente (solo librería estándar)
   mapas/         cargador de mapas históricos FEN

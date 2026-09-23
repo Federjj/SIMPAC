@@ -8,6 +8,7 @@
 //   ENFEN       estado del Sistema de Alerta según el comunicado oficial vigente
 //   Ríos        umbrales de alerta y emergencia de ANA (crecida o nivel bajo)
 //   Lluvia      escala horaria de AEMET como referencia (no hay escala oficial internacional)
+//   Referencia  la que SENAMHI usa para cada estación (1 h y 6 h); no es un aviso oficial
 //   "Atento" (80 % del umbral o menos de 0.5 m) y lo de meses secos son criterios de SIMPAC.
 import { MESES, diaLegible, diasDesde, fechaPeru } from "./tiempo";
 
@@ -222,6 +223,16 @@ export function intensidad(mmHora) {
 }
 
 const ORDEN_INTENSIDAD = ["sin lluvia", "ligera", "moderada", "fuerte", "muy fuerte", "torrencial"];
+
+// Si una lectura de lluvia_senamhi_actual pasó la referencia de SENAMHI de su estación.
+// Misma regla que backend/alerts.py (lluvia_evaluable / pasa): mayor estricto, referencia > 0,
+// y las 6 h solo se miran si la estación es evaluable (trae la lluvia de la hora y su referencia).
+export function referenciaLluvia(e) {
+  const evaluable = e.pp_1h != null && e.umbral_1h != null && e.umbral_1h > 0;
+  const pasa1 = evaluable && e.pp_1h > e.umbral_1h;
+  const pasa6 = evaluable && e.pp_6h != null && e.umbral_6h != null && e.umbral_6h > 0 && e.pp_6h > e.umbral_6h;
+  return { evaluable, pasa1, pasa6, pasa: pasa1 || pasa6 };
+}
 
 // Resumen de las últimas 24 h de las estaciones de un departamento.
 // filas: [{ cod, medido_en, precip_mm, estacion: { nombre } }]. Un precip_mm nulo es

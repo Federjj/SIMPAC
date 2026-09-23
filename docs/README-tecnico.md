@@ -59,7 +59,7 @@ VigiaFEN/
 │  │  ├─ departamentos.py # slugs de SENAMHI y nombres canónicos de departamento
 │  │  ├─ enfen.py        # tarea 'enfen' (cada 6 h): comunicado + ICEN del Informe Técnico
 │  │  ├─ avisos.py       # tarea 'avisos' (cada hora): áreas de avisos SENAMHI + alertas por departamento
-│  │  └─ lluvia_nacional.py # tarea 'lluvia_nacional' (cada 30 min): lluvia de la última hora en el país
+│  │  └─ lluvia_nacional.py # tarea 'lluvia_nacional' (cada 30 min): lluvia de la última hora en el país + alertas de lluvia
 │  ├─ mapas/
 │  │  └─ cargar_fen.py   # carga los mapas históricos de eventos El Niño a la tabla mapa
 │  ├─ prototipo/         # versión sin dependencias (SQLite + http.server), congelada
@@ -69,7 +69,7 @@ VigiaFEN/
 │  ├─ config.py          # variables de entorno, en un solo lugar
 │  ├─ db.py              # conexión a Supabase para quien escribe (worker, cargadores)
 │  ├─ snapshot.py        # panorama cacheado en Redis que sirve la API
-│  ├─ alerts.py          # motor de umbrales (lluvia + caudal)
+│  ├─ alerts.py          # motor de umbrales (caudal ANA + referencia de lluvia SENAMHI)
 │  └─ requirements.txt   # + requirements-mapas.txt (geopandas, solo worker)
 ├─ frontend/             # React + Vite + Leaflet (ver frontend/README.md)
 ├─ supabase/
@@ -106,7 +106,7 @@ flowchart LR
     J[(Ingesta horaria\nCelery beat)]
   end
   DB[(PostgreSQL\n+ PostGIS)]
-  M[Motor de umbrales\npor zona]
+  M[Motor de umbrales\npor estación]
   API[API FastAPI]
   W[Web React+Leaflet]
   F[Firebase\npush geolocalizada]
@@ -167,6 +167,12 @@ GET .../map_red_graf.php?cod={cod}&estado={estado}&tipo_esta={M|H}&cate={cate}&c
 El parser extrae `xAxis.categories` (timestamps `YYYY/MM/DD - HH`) y las `series[].data`
 (precip mm/h y temp °C). **Gotcha:** los textos vienen con escapes `\uXXXX` del lado del
 servidor; se busca por palabra clave antes del escape (`"Precipitaci"`, `"Temperatura"`).
+
+> **Las hidrológicas automáticas también miden lluvia horaria** (verificado el 22-09-2026 en 63
+> estaciones, 10 de ellas en Cajamarca): la serie viene si se pide con `tipo_esta=M`; con
+> `tipo_esta=H` viene vacía. El conector pide con el tipo de la estación y la ingesta solo baja las
+> de tipo `M`, así que `lectura_lluvia` no las tiene (pendiente, §10). La tarea `lluvia_nacional`
+> sí trae su última hora (§5.6.2).
 
 ```python
 from backend.connectors import senamhi
@@ -350,7 +356,7 @@ GET https://idesep.senamhi.gob.pe/geoserver/g_prono_pp_24h/ows?...typeName=g_pro
   - Candado (`pg_advisory_xact_lock`) contra corridas simultáneas.
 - Un aviso guardado hace menos de 6 h no se vuelve a bajar (sus polígonos no cambian).
 
-### 5.6.2. SENAMHI — lluvia de la última hora en todo el país (tarea `lluvia_nacional`)
+### 5.6.2. SENAMHI — lluvia de la última hora en todo el país y alertas de lluvia (tarea `lluvia_nacional`)
 
 `connectors/senamhi_umbrales.py` + `ingesta/lluvia_nacional.py`, cada 30 min (las estaciones
 reportan cada hora, pero no todas a la misma hora).
@@ -358,11 +364,75 @@ reportan cada hora, pero no todas a la misma hora).
 GET https://idesep.senamhi.gob.pe/geoserver/g_umbrales/ows?service=WFS&request=GetFeature
     &typeName=g_umbrales:umbrales_precipitacion&outputFormat=application/json
 ```
-~216 estaciones automáticas de 24 departamentos (25 en Cajamarca), una petición de ~90 KB. Campos:
-`pp` = mm de la hora; `pp_acum` = **las últimas 6 h** (no el día; verificado contra las series
-horarias); `umbral` = referencia de SENAMHI por estación (1 a 25 mm/h, no documentado como umbral
-oficial de alerta). Tabla `lluvia_senamhi` (una fila por estación; una lectura más vieja no pisa
-a la guardada) y vista `lluvia_senamhi_actual` (solo las de las últimas 3 h).
+~216 estaciones automáticas de 24 departamentos (25 en Cajamarca), una petición de ~90 KB. Entre
+ellas hay hidrológicas automáticas que la ingesta horaria no baja (§5.1). Campos: `pp` = mm de la
+hora; `pp_acum` = **las últimas 6 h** (no el día; verificado contra las series horarias);
+`umbral` = referencia de SENAMHI por estación (1 a 25 mm/h, no documentado como umbral oficial de
+alerta) y `umb_acum` = la de 6 h (3 × `umbral` en las 216). Tabla `lluvia_senamhi` (una fila por
+estación, con `pp_1h`, `umbral_1h`, `pp_6h` y `umbral_6h`; una lectura más vieja no pisa a la
+guardada) y vista `lluvia_senamhi_actual` (solo las de las últimas 3 h).
+
+**Alertas de lluvia** (tipo `lluvia`). Las escribe solo esta tarea, en todo el país; la ingesta
+horaria ya no las evalúa ni las borra. Regla en `alerts.py` (`evaluar_lluvia_referencia`):
+- **Cuándo pasa:** `pp_1h > umbral_1h` o `pp_6h > umbral_6h`, siempre mayor estricto (igual a la
+  referencia no pasa). Solo se evalúa la estación que trae `pp_1h` y `umbral_1h > 0`; sin eso
+  tampoco se mira la de 6 h. El frontend usa la misma regla (`referenciaLluvia` en `lenguaje.js`).
+- **Una fila por estación:** `ventana_h` = 1 si pasó la de 1 h (aunque pase también la de 6 h), si
+  no 6; `valor` y `umbral` son los de esa ventana. `referencia` = `lluvia_senamhi.clave`, `zona` =
+  departamento (null = resto del país), `geom` = punto de la estación, `ts` = hora de la medición.
+- **Nivel siempre `aviso`**, asegurado en tres lugares: literal en el INSERT, restricción
+  `alerta_lluvia_referencia_check` en la BD y tope en el frontend (`nivelEfectivo`). En la interfaz
+  se rotula "Atentos a la lluvia". La referencia no está documentada como umbral de alerta (la
+  palabra "Alerta" solo aparece en la leyenda del visor, y ese estado cambia con el reloj) y,
+  según las curvas IDF de SENAMHI, se supera casi cada año en 2 de cada 3 estaciones (20 de 25 en
+  Cajamarca). El detalle termina en "Es lo que midió la estación, no un aviso oficial." y nunca dice
+  "fuerte", "intensa", "alerta", "emergencia", "peligro" ni "extrema".
+- **Reemplazo:** en la misma transacción, después del upsert, se leen de la BD las estaciones con
+  `medido_en` de las últimas 3 h (también las que no vinieron en esta corrida; si la BD guarda una
+  lectura más nueva que la de la capa, manda la de la BD), se borran todas las `tipo='lluvia'` y se
+  insertan las que pasan. El candado `pg_advisory_xact_lock(hashtext('lluvia_nacional'))` es la
+  primera sentencia de la transacción, siempre (también con la capa caída): pone en serie el beat y
+  una corrida suelta, y también la lectura y escritura del latido. El índice único
+  `alerta_lluvia_referencia_key` (una por estación) hace que un error falle en vez de duplicar.
+- **No se toca ninguna** si la capa está caída o vacía, si no trae lecturas vigentes, si ninguna
+  estación es evaluable o si falta la migración (se mira con `to_regclass` de ese índice). En los
+  dos últimos casos queda un aviso en el latido (no una falla) y `lluvia_senamhi` se escribe igual.
+- **Vigencia:** la vista **`alerta_actual`** (la que leen el frontend y el snapshot) muestra la
+  lluvia solo mientras su `ts` tenga 3 h o menos, igual que `lluvia_senamhi_actual`: si el worker se
+  detiene, desaparecen solas. También oculta las filas `lluvia` sin `ventana_h` (formato viejo).
+- **UNC CAJAMARCA** (472645F0), una de las 14 de `lectura_lluvia`, no está en la capa y no tiene
+  referencia: queda fuera de las alertas y de la cobertura, y sigue en el resumen de 24 h.
+
+Claves del latido `lluvia_nacional` para las alertas. Van siempre (que existan indica worker
+nuevo). El frontend solo dice "ninguna pasa la referencia" si `alertas` no es nulo (esa corrida de
+verdad evaluó) y su consulta a `lluvia_senamhi_actual` respondió; la frase del resto del país,
+además, solo si hay estaciones evaluables fuera de la zona.
+
+| Clave | Qué es |
+|---|---|
+| `evaluadas` | estaciones vigentes en la BD, después del upsert, con `pp_1h` y referencia mayor que 0 |
+| `alertas` | filas `tipo='lluvia'` escritas; `null` = en esta corrida no se tocaron |
+| `alertas_6h` | de esas, las que pasaron solo por las 6 h |
+| `sobre_umbral` | vigentes del lote de la capa con `pp_1h > umbral_1h` (solo 1 h; no son las alertas) |
+
+`fallas` puede traer `"umbrales"` (capa caída, vacía o sin lecturas vigentes) y el panel lo avisa:
+"la lluvia de la última hora puede estar atrasada".
+
+**Despliegue** (migración `alerta_lluvia_referencia_senamhi`), en este orden:
+1. La migración, que es aditiva: el frontend viejo sigue leyendo `alerta`, que hoy no tiene filas
+   de lluvia.
+2. El frontend: lee `alerta_actual` y, mientras el latido no traiga `alertas`, dice "No se pudo
+   revisar la lluvia…", que es cierto.
+3. Worker y API (reconstruir las dos imágenes, §8). La primera corrida, que se encola al arrancar,
+   borra todas las `tipo='lluvia'` e inserta las nuevas.
+
+Si el worker se adelanta a la migración no rompe: se salta las alertas con aviso. Lo que no puede
+adelantarse es el worker al frontend: el frontend viejo describiría las nuevas como "lluvia fuerte"
+o con "umbral referencial de SIMPAC". Control después del despliegue (los dos números iguales, y
+`count(*)` igual a `latido.alertas`):
+```sql
+select count(*), count(distinct referencia) from alerta where tipo = 'lluvia';
+```
 
 **Fechas de la lluvia observada** (capas WMS `prec_1` y `prec_1_ac07d` que el frontend pide
 directo): salen del visor `monitoreo-precipitacion.php` y van al latido (`prec_1`,
@@ -459,17 +529,31 @@ geopandas solo está en la imagen del **worker** (`requirements-mapas.txt`, buil
 
 ## 6. Motor de alertas y predicción
 
-**Alertas (reactivas, tiempo real):** el motor compara, por zona de Cajamarca, las entradas
-horarias contra umbrales:
-- **Lluvia** (SENAMHI automáticas): umbral configurable por estación (mm/h y acumulado 24 h).
-- **Caudal** (ANA): usa los umbrales `UALERTA`/`UEMERGENCIA` que la propia fuente entrega.
+**Alertas (reactivas, tiempo real):** el motor (`alerts.py`, puro y sin red) compara cada
+lectura, estación por estación y en todo el país, con el umbral que da la propia fuente:
+- **Caudal** (ANA): usa los umbrales `UALERTA`/`UEMERGENCIA` que la propia fuente entrega (de
+  crecida o de nivel bajo). Lo evalúa la ingesta horaria.
+- **Lluvia** (SENAMHI automáticas): la referencia de SENAMHI de cada estación (capa `g_umbrales`),
+  en la última hora o sumando las últimas 6 h (§5.6.2). Nivel siempre `aviso`, con el rótulo
+  "Atentos a la lluvia". **No es un aviso oficial**: es lo que midió una estación. Lo evalúa la
+  tarea `lluvia_nacional`.
 - **Aviso oficial** (SENAMHI): eleva el nivel cuando el aviso aplica a la zona.
+
+Se retiraron los umbrales provisionales de SIMPAC para la lluvia (20 y 40 mm en 24 h, 15 mm en
+1 h): eran los mismos en todo el país y no se ajustaban a cada lugar (20 mm en 24 h es lluvia
+normal en la selva).
 
 Los avisos de SENAMHI llegan como alertas tipo `aviso` (§5.6.1): amarillo = `aviso`, naranja =
 `alerta`, rojo = `emergencia`. El nivel resultante (normal/aviso/alerta/emergencia) alimenta el
-titular, el mapa y la push
-(Firebase). En fase 2 se **cruza con los reportes ciudadanos** para ponderar su confianza
-(un reporte en zona con alerta oficial pesa más).
+titular, el mapa y la push (Firebase). La lluvia medida va aparte de lo oficial:
+- Si la zona está en `aviso` solo por lluvia medida, el rótulo es "Atentos a la lluvia"; con un
+  aviso amarillo de SENAMHI además, "Aviso amarillo".
+- No cuenta en la insignia ni en la métrica "alertas y avisos" (en temporada de lluvias serían
+  decenas de estaciones).
+- **No dispara una push como alerta**: el snapshot la marca `oficial: false` (§8).
+
+En fase 2 se **cruza con los reportes ciudadanos** para ponderar su confianza (un reporte en zona
+con alerta oficial pesa más).
 
 **Predicción (fase 2+):** con la serie horaria histórica por estación (48 h de SENAMHI +
 acumulación propia en la BD) se puede:
@@ -493,11 +577,12 @@ acumulación propia en la BD) se puede:
    viene casi vacío) y los índices IGP/NOAA. Cada fuente va protegida por separado: si una
    falla, queda anotada en `Pasada.fallas` y la corrida sigue.
 2. `guardar()` escribe todo en una transacción. Las horas de SENAMHI se guardan con zona horaria
-   (`medido_en`, UTC-5). **Regla de alertas:** solo se reemplazan las de las estaciones que se
-   volvieron a evaluar con dato (si ANA o una estación no respondió, su alerta se queda) y las
-   que nadie refresca caducan a las 6 h.
-3. El resultado de la tarea Celery es el resumen: `estaciones`, `lluvia`, `caudal`, `alertas`,
-   `icen_serie`, `fallas`, `avisos`. Corrida suelta: `docker compose run --rm worker python -m backend.ingesta`.
+   (`medido_en`, UTC-5). **Regla de alertas de ríos** (`caudal`, `nivel_bajo`): solo se
+   reemplazan las de las estaciones que se volvieron a evaluar con dato (si ANA o una estación no
+   respondió, su alerta se queda) y las que nadie refresca caducan a las 6 h. La ingesta ya no
+   evalúa ni borra las de lluvia: las escribe la tarea `lluvia_nacional` (§5.6.2).
+3. El resultado de la tarea Celery es el resumen: `estaciones`, `lluvia`, `caudal`, `alertas` (de
+   ríos), `icen_serie`, `fallas`, `avisos`. Corrida suelta: `docker compose run --rm worker python -m backend.ingesta`.
 
 **Tareas del worker** (`backend/celery_app.py`; las cuatro primeras también corren al arrancar,
 porque el beat pierde su programación al recrear el contenedor). Cada una deja su latido en la
@@ -505,16 +590,17 @@ tabla `latido` (servicio = nombre de la tarea) con lo que escribió, `fallas` y 
 
 | Tarea | Cada | Qué hace |
 |---|---|---|
-| `ingesta` | 1 h | estaciones, lluvia de Cajamarca, caudales, índices, serie ICEN del IGP, alertas |
+| `ingesta` | 1 h | estaciones, lluvia de Cajamarca (24 h), caudales, índices, serie ICEN del IGP, alertas de ríos |
 | `enfen` | 6 h | comunicado ENFEN + ICEN del Informe Técnico (§5.3.1) |
 | `avisos` | 1 h | avisos oficiales de SENAMHI como áreas + alertas tipo `aviso` (§5.6.1) |
-| `lluvia_nacional` | 30 min | lluvia de la última hora en ~216 estaciones del país (§5.6.2) |
+| `lluvia_nacional` | 30 min | lluvia de la última hora en ~216 estaciones del país + alertas de lluvia con la referencia de SENAMHI (§5.6.2) |
 | `refresh_cache` | 5 min | snapshot en Redis para la API |
 
 **BD:** la estructura está en `supabase/migrations/` (historia) y `supabase/schema.sql` (foto).
 `lectura_caudal` es el historial; la vista **`caudal_actual`** da la última lectura de ayer u
-hoy de cada estación (es la que usan el mapa y el snapshot). Todo cambio de BD va como
-migración nueva.
+hoy de cada estación (es la que usan el mapa y el snapshot). La vista **`alerta_actual`** da las
+alertas que se muestran: las vigentes, y la lluvia medida solo con 3 h o menos (§5.6.2); la leen el
+frontend y el snapshot, no la tabla `alerta`. Todo cambio de BD va como migración nueva.
 
 ### 7.2. Prototipo (sin dependencias, congelado)
 
@@ -532,7 +618,7 @@ librería estándar. Sirve para mostrar los conectores sin Docker ni Supabase; n
 | `alerta` | alertas vigentes (se reescriben cada corrida) | autoincrement |
 
 **Ingesta** (`prototipo/ingest.py`): una pasada = inventario + lluvia (automáticas) + caudales +
-índices + recálculo de alertas. Última corrida real: `93 estaciones, 672 filas de lluvia,
+índices + recálculo de alertas (solo de caudal: el prototipo ya no evalúa lluvia). Última corrida real: `93 estaciones, 672 filas de lluvia,
 12 de caudal, 0 alertas` (estiaje). Programarla **cada hora**:
 
 ```bash
@@ -600,6 +686,15 @@ docker compose up --build
 - La API es **de solo lectura**: `GET /health` y `GET /api/snapshot` (índices, último caudal por
   estación, alertas vigentes). El snapshot vive `SNAPSHOT_TTL` s (900) y hay una copia sin
   vencimiento que se sirve si Supabase no responde.
+- **Alertas del snapshot** (vista `alerta_actual`): `tipo, referencia, zona, nivel, detalle, valor,
+  umbral, ventana_h, ts, lat, lon` más `oficial`, que pone el snapshot (`alerts.es_oficial`).
+  - `aviso`, `caudal` y `nivel_bajo` tienen `oficial: true`.
+  - `lluvia` tiene `oficial: false`: una estación midió más que la referencia de SENAMHI para ese
+    lugar, no es un aviso. Su `umbral` es de esa estación y se lee con `ventana_h` (1 = mm en la
+    última hora, 6 = mm en las últimas 6 h). Una app o una push nunca deben tratarla como alerta
+    oficial.
+  - `resumen.alertas` sigue contando filas (compatibilidad); `alertas_oficiales` y
+    `lluvia_sobre_referencia` las separan.
 - **Async / rendimiento:** la API es async (`httpx.AsyncClient` + `redis.asyncio`, consultas en
   paralelo con `asyncio.gather`) y sirve el snapshot **cacheado en Redis**: sus clientes no golpean
   Supabase en cada request (la web, en cambio, lee Supabase directo).
@@ -689,8 +784,21 @@ Reglas:
 - [x] Capa de **áreas FEN** en el frontend (polígonos por `RANGO` + selector de evento).
 - [x] Capa de **lluvia ahora** en todo el país (§5.6.2), más lluvia observada, satélite y SILVIA (§5.6.3).
 - [x] **Serie del ICEN** (`icen_serie`) y panel gráfico de El Niño en el frontend.
-- [ ] Conector de **push** (Firebase) que dispare la notificación cuando `alerta` cambie de nivel.
-- [ ] Reejecutar la verificación en **temporada de lluvias (dic–abr)**, cuando disparan los umbrales.
+- [x] **Alertas de lluvia con la referencia de SENAMHI** por estación, en todo el país (§5.6.2); se
+      retiraron los umbrales provisionales de SIMPAC.
+- [ ] Conector de **push** (Firebase) que dispare la notificación cuando `alerta` cambie de nivel,
+      solo con lo oficial (`oficial: true`): la lluvia medida no se notifica como alerta.
+- [ ] Reejecutar la verificación en **temporada de lluvias (oct–abr)** y revisar las alertas de lluvia:
+  - cada cuánto salen (`latido.alertas` y `alertas_6h`);
+  - las 8 estaciones de valle amazónico con referencia de 5 mm/h y lluvia de llano amazónico (Jaén,
+    San Ignacio, Cumba y Huallape en Cajamarca; Bagua, Corral Quemado, Naranjito y Magunchal en
+    Amazonas), que la pasarían muy seguido;
+  - las 16 de la costa de Lima, Ica y Arequipa con 1 mm/h, donde basta una lectura mala (CONTA GORE
+    marcó 9.9 mm en una hora con las 6 vecinas en 0).
+- [ ] Serie horaria de las **hidrológicas automáticas** con `tipo_esta=M` (§5.1): 63 en el país, 10 en
+      Cajamarca. La lluvia de 24 h de Cajamarca pasaría de 14 a unas 24 estaciones.
+- [ ] **Candado** (`pg_advisory_xact_lock`) en `guardar()`: con corridas simultáneas las alertas de
+      caudal pueden duplicarse.
 
 ---
 

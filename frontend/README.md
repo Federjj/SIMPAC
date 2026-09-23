@@ -46,7 +46,7 @@ pane `areas`, debajo de zonas y marcadores. **Sumar una capa** = crear su archiv
 | Alertas y avisos | Avisos de SENAMHI (ahora / mañana / pasado mañana) | `avisos.js` | vista `aviso_vigente` (tarea `avisos` del worker) |
 | Alertas y avisos | Zonas a vigilar (río crecido) | `zonasCaudal.js` | `caudal_actual` en alerta/emergencia por crecida (no los ríos bajos) |
 | Alertas y avisos | Quebradas que podrían activarse (huaycos) | `huaycos.js` | WMS SENAMHI `silvia:cuencas_nivel_12_prono1_silvia` (niveles 2 a 4) |
-| Lluvia | Lluvia de la última hora (estaciones) | `lluviaAhora.js` | vista `lluvia_senamhi_actual` (tarea `lluvia_nacional`) |
+| Lluvia | Lluvia de la última hora (estaciones) | `lluviaAhora.js` | vista `lluvia_senamhi_actual` (tarea `lluvia_nacional`); color por intensidad, borde amarillo si pasó la referencia de SENAMHI (1 h o 6 h) |
 | Lluvia | Lluvia de ayer / de la semana | `lluviaObservada.js` | WMS SENAMHI `prec_1` / `prec_1_ac07d` (superficie interpolada) |
 | Lluvia | Lluvia por satélite (NASA) | `lluviaSatelite.js` | NASA GIBS, GPM IMERG 30 min (llega con 5-6 h de retraso) |
 | Lluvia | Lluvia del mes frente a lo normal | `anomalias.js` | `mapa` con `variable = 'precipitacion'` |
@@ -88,19 +88,21 @@ país. Nunca se dice "todo normal" a secas: solo lo que SIMPAC mide.
 | Ríos (caudal m³/s) | % del caudal que activa la alerta; "atento" desde el 80 % | ANA; "atento" es criterio SIMPAC |
 | Ríos (nivel en m) | cuánto falta para el nivel de alerta; "atento" a 0.5 m | ANA; "atento" es criterio SIMPAC |
 | Ríos con nivel bajo | si UEMERGENCIA < UALERTA el peligro es que baje (vaciante) | ANA |
-| Lluvia por hora | ligera ≤2 · moderada ≤15 · fuerte ≤30 · muy fuerte ≤60 · torrencial | AEMET (referencia) |
+| Lluvia por hora (intensidad) | ligera ≤2 · moderada ≤15 · fuerte ≤30 · muy fuerte ≤60 · torrencial | AEMET (referencia); solo para el color y el tamaño del punto en el mapa, no para las alertas |
+| Lluvia sobre la referencia | pasa si `pp_1h > umbral_1h` o `pp_6h > umbral_6h` (mayor estricto; solo si la estación trae `pp_1h` y `umbral_1h > 0`). Nivel siempre `aviso`, con el rótulo "Atentos a la lluvia"; siempre "no es un aviso oficial" | Referencia de SENAMHI por estación (capa `g_umbrales`). `referenciaLluvia` (`lenguaje.js`) es la misma regla que `backend/alerts.py` |
 | Lluvia del mes | clases oficiales ±15/±30/±60 %; si lo normal es < 10 mm se habla en mm | SENAMHI; lo de 10 mm es criterio SIMPAC |
 
 ## Qué tabla alimenta cada parte
 
 | UI | Tabla / consulta | Notas |
 |---|---|---|
-| Estado, titular y contador | `alerta` (`vigente = true`) | tipos `caudal`, `nivel_bajo`, `lluvia`, `aviso` (SENAMHI: amarillo = `aviso`, naranja = `alerta`, rojo = `emergencia`); `zona` = departamento |
+| Estado, titular y contador | vista `alerta_actual` (las vigentes; la lluvia medida, solo con 3 h o menos) | tipos `caudal`, `nivel_bajo`, `aviso` (SENAMHI: amarillo = `aviso`, naranja = `alerta`, rojo = `emergencia`) y `lluvia` (una estación que pasó la referencia de SENAMHI: siempre `aviso`, `valor` y `umbral` de la ventana `ventana_h`, 1 o 6 h, y `detalle` listo para mostrar); `zona` = departamento. El contador y el color de la métrica "alertas y avisos" son solo de lo oficial: la lluvia no cuenta |
 | El Niño costero | `comunicado_enfen` (el más reciente) | lo llena la tarea `enfen` del worker |
 | Mar y Pacífico | `indice` | `ICEN` (+ `ICEN_TMP`) con su `origen`, y `RONI` |
 | Gráfico del ICEN | `icen_serie` (`mes,valor,categoria,origen`) | IGP y tabla del Informe Técnico ENFEN (el ENFEN manda) |
+| Cobertura de lluvia | `lluvia_senamhi_actual` + `latido` (`servicio = 'lluvia_nacional'`) | estaciones del departamento con lluvia de la hora y referencia (`referenciaLluvia(e).evaluable`). "Ninguna pasa la referencia" solo si el latido trae `alertas` no nulo (la última corrida evaluó) y la consulta respondió; si no, "No se pudo revisar la lluvia…". La frase del resto del país lo dice solo si hay estaciones evaluables fuera de la zona (`cobertura.lluviaFuera`) |
 | Lluvia de tu zona (24 h) | `lectura_lluvia` + `estacion!inner(nombre,departamento)` | hoy solo Cajamarca tiene lluvia horaria |
-| "Actualizado HH:MM" | `latido` (`servicio = 'ingesta'`) | aviso "sin actualizar" si pasan 3 h |
+| "ríos: actualizado HH:MM · lluvia: actualizada HH:MM" | `latido` (`servicio = 'ingesta'` y `'lluvia_nacional'`) | "sin actualizar desde" si pasan 3 h (ríos) o 1.5 h (lluvia). Si `lluvia_nacional` trae la falla `umbrales`, se avisa que la lluvia de la última hora puede estar atrasada |
 | Ríos | `caudal_actual` | **no** `lectura_caudal`: esa es el historial (repite estaciones) |
 | Gráfico de lluvia (detalle) | `lectura_lluvia` (`ts,medido_en,precip_mm,temp_c` where `cod=…`) | ordenar por `medido_en` (ya en hora correcta) |
 | Mapas FEN históricos | `mapa` con `variable = 'FEN'` | se pide el `geojson` del evento elegido (`periodo`); solo trae la propiedad `RANGO` (mm frente a lo normal) |

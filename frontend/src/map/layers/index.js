@@ -7,7 +7,7 @@
 //   grupo          uno de GRUPOS
 //   label, Icon    cómo se ve en el panel de capas
 //   defaultVisible si arranca encendida
-//   legend         [{ color, label, zona?, gota? }] bajo el switch, o fn(opcion) que la devuelve
+//   legend         [{ color, label, zona?, gota?, anillo? }] bajo el switch, o fn(opcion) que la devuelve
 //   opciones       opcional: { etiqueta, valores: [{ valor, etiqueta }], defecto } (un selector)
 //   fuente         opcional: de dónde sale el dato (y la atribución que pida la licencia)
 //   load(opcion)   Promise con los datos (al encenderla y cada vez que cambia la opción)

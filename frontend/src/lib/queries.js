@@ -107,7 +107,8 @@ export function getAvisosVigentes() {
 }
 
 // Lluvia de la última hora en ~200 estaciones automáticas de SENAMHI en todo el país
-// (vista lluvia_senamhi_actual: solo lecturas de las últimas 3 h).
+// (vista lluvia_senamhi_actual: solo lecturas de las últimas 3 h), con la referencia de
+// SENAMHI de cada estación en 1 h y en 6 h. La comparten el mapa y el panel de estado.
 export function getLluviaAhora() {
   return cached(
     "lluvia_ahora",
@@ -115,7 +116,7 @@ export function getLluviaAhora() {
       filas(
         supabase
           .from("lluvia_senamhi_actual")
-          .select("clave,nombre,departamento,provincia,distrito,pp_1h,umbral_1h,pp_6h,medido_en,lat,lon")
+          .select("clave,nombre,departamento,provincia,distrito,pp_1h,umbral_1h,pp_6h,umbral_6h,medido_en,lat,lon")
       ),
     5 * 60_000
   );
@@ -141,14 +142,15 @@ export function getLluvia24h(depto) {
   );
 }
 
-// Alertas que calcula la ingesta (lluvia y caudal), con su departamento en `zona`.
+// Alertas vigentes, con su departamento en `zona` (ríos: ingesta; avisos: tarea avisos;
+// lluvia: tarea lluvia_nacional). La vista alerta_actual ya deja fuera la lluvia medida
+// hace más de 3 h; en la de lluvia, `valor` y `umbral` son los de la ventana `ventana_h`.
 export function getAlertasVigentes() {
   return cached("alertas", () =>
     filas(
       supabase
-        .from("alerta")
-        .select("tipo,referencia,zona,nivel,detalle,valor,umbral,ts")
-        .eq("vigente", true)
+        .from("alerta_actual")
+        .select("tipo,referencia,zona,nivel,detalle,valor,umbral,ventana_h,ts")
         .order("ts", { ascending: false })
     )
   );

@@ -9,6 +9,13 @@ Se guardan dos copias: "snapshot" (vence a los SNAPSHOT_TTL segundos) y
 "snapshot:ultimo" (no vence). Si la primera venció y Supabase no responde, se
 sirve la última buena en vez de un error.
 
+Alertas (vista alerta_actual): cada una trae `oficial`. Las de tipo 'lluvia' tienen
+oficial=false: una estación midió más lluvia que la referencia de SENAMHI para ese lugar,
+no es un aviso. Su `umbral` es de esa estación y se lee con `ventana_h` (1 = mm en la
+última hora, 6 = mm en las últimas 6 h). La app o las notificaciones nunca deben tratarlas
+como alerta oficial. resumen.alertas cuenta filas (compatibilidad); alertas_oficiales y
+lluvia_sobre_referencia las separan.
+
 Nota sobre el cliente Redis y los event loops: un cliente redis.asyncio ata su
 pool de conexiones al loop donde se usa por primera vez. El worker corre cada
 tarea con asyncio.run(), que crea y CIERRA un loop nuevo en cada corrida, así que
@@ -27,6 +34,7 @@ from datetime import datetime, timezone
 import httpx
 import redis.asyncio as aioredis
 
+from backend import alerts
 from backend.config import ajustes
 
 log = logging.getLogger(__name__)
@@ -60,6 +68,27 @@ async def _leer(c: httpx.AsyncClient, tabla: str, select: str, **filtros: str) -
     return r.json()
 
 
+async def _alertas(c: httpx.AsyncClient) -> list[dict]:
+    """
+    alerta_actual = las vigentes, sin la lluvia medida de más de 3 h. Si la vista todavía no
+    existe (el worker o la API salieron antes que la migración alerta_lluvia_referencia_senamhi,
+    PostgREST da 404), las vigentes de la tabla alerta sin las de tipo 'lluvia' (antes de la
+    migración ninguna tiene ventana_h, y la vista tampoco las mostraría). Así el snapshot no se
+    congela en el respaldo viejo ni falla refresh_snapshot.
+    """
+    try:
+        return await _leer(c, "alerta_actual",
+                           "tipo,referencia,zona,nivel,detalle,valor,umbral,ventana_h,ts,lat,lon", order="ts.desc")
+    except httpx.HTTPStatusError as e:
+        if e.response.status_code != 404:
+            raise
+    log.warning("Falta la vista alerta_actual (migración pendiente): se leen las alertas de la tabla alerta")
+    filas = await _leer(c, "alerta", "tipo,referencia,zona,nivel,detalle,valor,umbral,ts",
+                        vigente="eq.true", order="ts.desc")
+    return [{**a, "ventana_h": None, "lat": None, "lon": None}   # las mismas claves que la vista
+            for a in filas if a["tipo"] != "lluvia"]
+
+
 async def _armar() -> dict:
     cfg = ajustes()
     clave = cfg.supabase_publishable_key
@@ -74,8 +103,7 @@ async def _armar() -> dict:
             _leer(c, "caudal_actual",
                   "estacion,rio,departamento,fecha,hora,valor,unidad,umbral_alerta,umbral_emergencia,"
                   "tendencia,estado,lat,lon"),
-            _leer(c, "alerta", "tipo,referencia,zona,nivel,detalle,valor,umbral,ts",
-                  vigente="eq.true", order="ts.desc"),
+            _alertas(c),
             _leer(c, "comunicado_enfen", "anio,numero,extraordinario,fecha,estado,proximo,url",
                   order="fecha.desc", limit="1"),
         )
@@ -83,6 +111,8 @@ async def _armar() -> dict:
         ua, ue = c.get("umbral_alerta"), c.get("umbral_emergencia")
         return ua is not None and ue is not None and ue < ua
 
+    for a in alertas:
+        a["oficial"] = alerts.es_oficial(a["tipo"])
     activos = [c for c in caudales if c.get("estado") in ("alerta", "emergencia")]
     en_alerta = [c["estacion"] for c in activos if not bajo(c)]      # ríos crecidos
     nivel_bajo = [c["estacion"] for c in activos if bajo(c)]         # ríos demasiado bajos
@@ -93,7 +123,9 @@ async def _armar() -> dict:
         "caudales": caudales,
         "alertas": alertas,
         "resumen": {"caudales": len(caudales), "en_alerta": en_alerta, "nivel_bajo": nivel_bajo,
-                    "alertas": len(alertas)},
+                    "alertas": len(alertas),
+                    "alertas_oficiales": sum(1 for a in alertas if a["oficial"]),
+                    "lluvia_sobre_referencia": sum(1 for a in alertas if a["tipo"] == "lluvia")},
     }
 
 

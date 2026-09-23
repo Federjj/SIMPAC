@@ -18,7 +18,8 @@ programadas en el worker. Faltan las demás páginas del front (Alertas, Comunid
 - [x] Conectores en vivo: **SENAMHI** (estaciones + lluvia horaria), **ANA** (caudales+umbrales),
       **IGP** (ICEN), **NOAA** (RONI), **ENFEN** (comunicado e Informe Técnico, PDF). `backend/connectors/`
 - [x] Prototipo sin dependencias: ingesta → SQLite → API JSON, hoy en `backend/prototipo/` (congelado).
-- [x] Motor de umbrales (`alerts.py`).
+- [x] Motor de umbrales (`alerts.py`): caudal con los umbrales de ANA; lluvia con la referencia de
+      SENAMHI de cada estación.
 - [x] **Tiempo real verificado** con evidencia: SENAMHI y ANA se actualizan a la hora en curso.
 
 **Base de datos (Supabase)**
@@ -99,13 +100,17 @@ programadas en el worker. Faltan las demás páginas del front (Alertas, Comunid
   - Lluvia de las últimas 24 h de tu departamento.
   - El Niño en palabras ("El Niño costero: Alerta", "mar más caliente"), con su mes y su fuente.
   - Anomalías con las clases oficiales de SENAMHI.
-  - Lo que es criterio de SIMPAC ("atento", umbrales de lluvia de 24 h) se rotula como referencial.
+  - Lo que es criterio de SIMPAC ("atento" de los ríos) se rotula como referencial. La lluvia ya no
+    usa umbrales de SIMPAC: se compara con la referencia de SENAMHI de cada estación (ver "Alertas
+    de lluvia con la referencia de SENAMHI").
 - [x] **Revisión adversarial de este cambio** (8 agentes, 24 hallazgos confirmados, corregidos). Lo principal:
   - Nunca "Normal" en verde por algo que no se midió: mientras carga, si falla la consulta o si
-    SIMPAC no vigila nada en la zona (Callao) sale "Sin datos". En Lima aclara que la lluvia aún no
-    se mide ahí.
-  - Una alerta de lluvia de 24 h (umbral provisional) sube la zona a "Alerta" como mucho, nunca a
-    "Emergencia", y se describe como lo que es: "mucha lluvia acumulada" (referencial).
+    SIMPAC no vigila nada en la zona (Callao) sale "Sin datos". En Lima aclaraba que la lluvia aún
+    no se medía ahí (hoy la lluvia de la última hora cubre todo el país).
+  - La lluvia medida sube la zona a "Aviso" como mucho (rótulo "Atentos a la lluvia"), nunca a
+    "Alerta" ni "Emergencia", y se describe como lo que es: lo que midió una estación frente a la
+    referencia de SENAMHI, no un aviso oficial. Reemplazó a la alerta de 24 h con umbral
+    provisional, que llegaba hasta "Alerta".
   - Avisos cuando ANA o SENAMHI no respondieron en la última corrida.
   - La etiqueta dice "La Niña costera" si el ENFEN declara La Niña.
   - La lluvia de otra ciudad ya no queda pegada al cambiar de ciudad.
@@ -121,7 +126,8 @@ programadas en el worker. Faltan las demás páginas del front (Alertas, Comunid
       suben el estado de la zona: hoy Cajamarca sale en "Aviso" por el 376 (lluvias de ligera a
       moderada intensidad en la sierra norte, 23 y 24 set) y el de 24 h.
 - [x] **Lluvia de la última hora en todo el país** (tarea `lluvia_nacional`, cada 30 min): ~216
-      estaciones automáticas de SENAMHI en 24 departamentos, con la referencia de lluvia de cada una.
+      estaciones automáticas de SENAMHI en 24 departamentos, con la referencia de lluvia de cada una
+      (1 h y 6 h). La misma tarea escribe ahora las alertas de lluvia (ver el bloque siguiente).
 - [x] **Serie del ICEN** mes a mes (`icen_serie`: IGP + tabla del Informe Técnico ENFEN, el ENFEN
       manda) para el gráfico.
 - [x] **Capas nuevas en el mapa**, agrupadas en el panel (Alertas y avisos, Lluvia, Ríos y
@@ -151,6 +157,43 @@ programadas en el worker. Faltan las demás páginas del front (Alertas, Comunid
       otros: una tabla de SENAMHI con otro formato o un WFS vacío ya no borran avisos y alertas;
       las actualizaciones de un aviso reemplazan al original; una fila futura del IGP no queda
       fija; la fecha de la lluvia de "ayer" no se adelanta de madrugada. **312 pruebas** sin red.
+
+**Alertas de lluvia con la referencia de SENAMHI (22 sep, noche)** — **338 pruebas** sin red,
+migración `alerta_lluvia_referencia_senamhi` aplicada e imágenes reconstruidas (primera corrida: 213
+estaciones evaluadas, 1 alerta real de 6 h en Cotahuasi, Arequipa)
+- [x] **Fuera los umbrales provisionales de SIMPAC** (20 y 40 mm en 24 h, 15 mm en 1 h): eran los
+      mismos en todo el país. 20 mm en 24 h es lluvia normal en la selva, y 15 mm/h casi no se
+      alcanzaría en Cajamarca.
+- [x] **Regla nueva** (`alerts.py`, tarea `lluvia_nacional`): una estación pasa si la lluvia de su
+      última hora supera la referencia de SENAMHI para ella (1 a 25 mm) o si la de las últimas 6 h
+      supera la de 6 h (hoy, el triple). Mayor estricto, una fila por estación, en todo el país. Se
+      evalúa desde la BD, con candado, y deja de verse a las 3 h de la medición (vista
+      `alerta_actual`). Detalle en `README-tecnico.md` §5.6.2.
+- [x] **Solo "Aviso", nunca "Alerta"**: SENAMHI no documenta esa referencia como umbral de alerta y,
+      según sus curvas IDF, se supera casi cada año en 2 de cada 3 estaciones (20 de 25 en
+      Cajamarca). El nivel queda fijo en el SQL, en una restricción de la BD y en el frontend.
+- [x] **En la web**:
+  - Rótulo "Atentos a la lluvia"; si además hay un aviso amarillo de SENAMHI, gana "Aviso amarillo".
+  - Hasta 3 líneas "Lluvia medida:" con el texto del worker, que termina en "no un aviso oficial".
+  - La insignia y la métrica "alertas y avisos" cuentan solo lo oficial.
+  - "Ninguna de sus N estaciones... pasa la referencia" solo si la última corrida de
+    `lluvia_nacional` de verdad evaluó (`alertas` no nulo en el latido) y la consulta respondió; si
+    no, "No se pudo revisar la lluvia de las estaciones de SENAMHI". La frase del resto del país
+    solo lo dice si hay estaciones evaluables fuera de tu zona.
+  - Lima, Piura o Loreto ya no dicen "SIMPAC aún no mide la lluvia aquí": la cobertura sale de
+    las estaciones de SENAMHI del departamento.
+  - La cabecera separa "ríos" y "lluvia", cada una con su hora y su aviso de atraso.
+  - En el mapa, borde amarillo en las estaciones que pasaron la referencia (1 h o 6 h).
+- [x] **API**: cada alerta del snapshot trae `oficial` (la lluvia, `false`) y el resumen suma
+      `alertas_oficiales` y `lluvia_sobre_referencia`. Si la vista `alerta_actual` no existiera
+      (worker desplegado antes que la migración), lee la tabla sin la lluvia.
+- [x] **Verificación adversarial** (3 verificadores: backend con la migración y la BD real en
+      transacciones revertidas, frontend con los módulos reales en node, y textos contra la
+      especificación): 10 hallazgos, 9 corregidos (el décimo era el nombre provisional de la
+      migración). Entre ellos: la restricción aceptaba nivel nulo; faltaban pruebas del snapshot y
+      de la consulta de vigentes; dos casos en que la web decía "ninguna pasa" sin haber revisado.
+- [x] **Hallazgo**: las hidrológicas automáticas sí dan lluvia horaria si se piden con `tipo_esta=M`
+      (el repo decía que no). Sumarlas a la ingesta queda pendiente (ver "En progreso").
 
 **Refactor y correcciones (22 sep)** — probado y corriendo (imágenes reconstruidas el 22 sep)
 - [x] **Backend modular**: `config.py` (variables de entorno en un solo lugar), `db.py` (conexión),
@@ -243,8 +286,14 @@ programadas en el worker. Faltan las demás páginas del front (Alertas, Comunid
       reporte) + **react-router** para la navegación de la barra lateral. Ver `frontend-brief.md`.
 - [ ] **Reportes reales**: la capa ya lee `report` (vigentes); falta login (Supabase Auth) y la
       pantalla de creación y voto. El contrato para el front está en `frontend/README.md`.
-- [ ] **Lluvia en más departamentos**: hoy la ingesta baja la lluvia horaria solo de Cajamarca
-      (`SIMPAC_LLUVIA_DEPTS`); sumar otros es cambiar esa variable (slugs de SENAMHI).
+- [x] **Alertas de lluvia desplegadas** (migración aplicada, imágenes reconstruidas). Kevin, tras el
+      pull: reconstruir frontend, worker y API. Consulta de control en `README-tecnico.md` §5.6.2.
+- [ ] **Serie de lluvia (24 h) en más estaciones y departamentos**: hoy la ingesta baja la serie
+      horaria solo de Cajamarca (`SIMPAC_LLUVIA_DEPTS`; sumar otros es cambiar esa variable) y solo
+      de las meteorológicas. Las hidrológicas automáticas también la dan si se pide con
+      `tipo_esta=M` (63 en el país, 10 en Cajamarca; con `tipo_esta=H` la serie viene vacía):
+      sumarlas lleva la lluvia de 24 h de Cajamarca de 14 a unas 24 estaciones. La lluvia de la
+      última hora y sus alertas ya cubren todo el país (tarea `lluvia_nacional`).
 
 ---
 
@@ -265,7 +314,11 @@ programadas en el worker. Faltan las demás páginas del front (Alertas, Comunid
       `prec_1_all_points` supone que SENAMHI publica los puntos y el ráster juntos).
 - [ ] **INPE (Hidroestimador, lluvia casi en tiempo real)**: su sitio exige autorización expresa de
       CPTEC/INPE para reproducirlo en medios de divulgación. Pedirla por correo antes de publicarlo.
-- [ ] Calibrar los **umbrales de lluvia** (hoy placeholders en `alerts.py`) con Defensa Civil.
+- [x] **Umbrales de lluvia**: los placeholders de `alerts.py` se reemplazaron por la referencia de
+      SENAMHI de cada estación (ver "Alertas de lluvia con la referencia de SENAMHI").
+- [ ] Validar con SENAMHI o Defensa Civil, en temporada de lluvias (oct–abr), esa referencia como
+      disparador de "Atentos a la lluvia": cada cuánto sale (`latido.alertas`, `alertas_6h`), las
+      estaciones de valle amazónico con 5 mm/h y las de la costa con 1 mm/h (`README-tecnico.md` §10).
 
 **Frontend / móvil**
 - [x] **Web (Mapa)**: React + Vite + Leaflet conectado a Supabase (ya está).
@@ -305,8 +358,11 @@ programadas en el worker. Faltan las demás páginas del front (Alertas, Comunid
 - **Cambios de BD = archivo nuevo en `supabase/migrations/`** (y reflejarlo en `schema.sql`).
 - **La anon key es pública por diseño** (no es fuga): viaja en cada request y se ve en el navegador;
   lo que protege es **RLS**, que está activo en todas las tablas de datos.
-- **Umbrales de lluvia = placeholder**, deben calibrarse antes de confiar en las alertas de lluvia
-  (candidatos: umbrales por estación de `g_umbrales` de SENAMHI o sus percentiles diarios).
+- **Referencia de lluvia no documentada**: la de SENAMHI por estación (capa `g_umbrales`) no tiene
+  documentación pública ni se presenta como umbral de alerta. Por eso la lluvia medida queda en
+  "Aviso" ("Atentos a la lluvia") y cada texto dice que no es un aviso oficial. En temporada de
+  lluvias saldrá seguido (se supera casi cada año en 2 de cada 3 estaciones), y donde la referencia
+  es de 1 mm/h (costa de Lima, Ica y Arequipa) basta una lectura mala de una sola estación.
 - **ANA cambia de juego de umbrales según la temporada** (crecida / nivel bajo). ANA no publica el
   nivel amarillo que sí usa SENAMHI en sus avisos hidrológicos.
 - **Worker corriendo como root** en el contenedor: solo un `SecurityWarning` de Celery, inofensivo

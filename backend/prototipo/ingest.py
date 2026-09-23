@@ -43,9 +43,8 @@ def correr() -> dict:
             for ts, p, t in zip(s.timestamps, s.precip_mm, s.temp_c):
                 store.insert_lluvia(conn, e.cod, e.nombre, ts, p, t)
                 resumen["lluvia_filas"] += 1
-            a = alerts.evaluar_lluvia(e.cod, e.nombre, s, zona="Cajamarca")
-            if a:
-                alertas_vigentes.append(a)
+            # las alertas de lluvia las calcula lluvia_nacional con la referencia de SENAMHI;
+            # el prototipo ya no evalúa lluvia
         except Exception as ex:
             print(f"  [lluvia {e.nombre}] error:", ex)
 

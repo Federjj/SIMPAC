@@ -100,11 +100,12 @@ export default function App() {
           onNota={onNota}
         />
 
-        {/* Chip de marca + estado */}
-        <div className="absolute left-4 top-4 z-[600] flex items-center gap-2 rounded-full border border-border bg-card/85 px-3.5 py-1.5 text-sm font-semibold shadow-lg backdrop-blur">
-          <span className="text-primary">SIMPAC</span>
-          <span className={`h-1.5 w-1.5 rounded-full ${nv.dot}`} />
-          <span className={nv.text}>
+        {/* Chip de marca + estado. No pasa bajo los botones de la derecha: en un celular angosto
+            la letra baja un poco y, si aún no cabe ("Atentos a la lluvia en Madre de Dios"), se corta. */}
+        <div className="absolute left-4 top-4 z-[600] flex max-w-[calc(100%-5rem)] items-center gap-1.5 rounded-full border border-border bg-card/85 px-3 py-1.5 text-[0.8rem] font-semibold shadow-lg backdrop-blur sm:gap-2 sm:px-3.5 sm:text-sm">
+          <span className="shrink-0 text-primary">SIMPAC</span>
+          <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${nv.dot}`} />
+          <span className={`min-w-0 truncate ${nv.text}`} title={`${p.etiquetaLocal ?? nv.label} en ${depto}`}>
             {p.etiquetaLocal ?? nv.label} en {depto}
           </span>
         </div>
@@ -224,9 +225,13 @@ export default function App() {
           lluvia={p.lluvia}
           avisos={p.avisos}
           avisosZona={p.avisosAqui}
+          lluviaZona={p.lluviaAqui}
+          nivelOficialAqui={p.nivelOficialAqui}
           alertasCargadas={p.alertas != null}
           actualizado={p.actualizado}
           desactualizado={p.desactualizado}
+          lluviaActualizada={p.lluviaActualizada}
+          lluviaDesactualizada={p.lluviaDesactualizada}
         />
       </main>
     </div>

@@ -4,9 +4,9 @@ import { cn } from "@/lib/utils";
 import { GRUPOS } from "@/map/layers";
 import { ATRIBUCION_SENAMHI } from "@/map/senamhi";
 
-// Muestra de color de la leyenda: punto (marcadores), gota (reportes) o
-// cuadro translúcido (áreas sombreadas).
-function Muestra({ color, zona, gota }) {
+// Muestra de color de la leyenda: punto (marcadores), anillo (borde de un marcador),
+// gota (reportes) o cuadro translúcido (áreas sombreadas).
+function Muestra({ color, zona, gota, anillo }) {
   return (
     <span
       className={cn(
@@ -14,7 +14,13 @@ function Muestra({ color, zona, gota }) {
         gota ? "-rotate-45 rounded-[50%_50%_50%_0]" : zona ? "rounded-[3px]" : "rounded-full",
         zona && "border"
       )}
-      style={zona ? { background: `${color}66`, borderColor: color } : { background: color }}
+      style={
+        anillo
+          ? { background: "transparent", border: `2px solid ${color}` }
+          : zona
+            ? { background: `${color}66`, borderColor: color }
+            : { background: color }
+      }
     />
   );
 }

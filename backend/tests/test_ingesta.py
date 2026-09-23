@@ -10,8 +10,8 @@ from backend import alerts, config
 from backend.connectors import ana, igp, noaa, senamhi
 from backend.ingesta import guardar as guardar_mod
 from backend.ingesta.departamentos import DEPARTAMENTOS, clave, nombre_departamento
-from backend.ingesta.guardar import (SQL_BORRAR_ALERTAS, SQL_CAUDAL, SQL_ESTACION, SQL_HAY_ICEN_SERIE, SQL_ICEN,
-                                     SQL_ICEN_SERIE, SQL_LATIDO, guardar)
+from backend.ingesta.guardar import (SQL_ALERTA, SQL_BORRAR_ALERTAS, SQL_CAUDAL, SQL_ESTACION, SQL_HAY_ICEN_SERIE,
+                                     SQL_ICEN, SQL_ICEN_SERIE, SQL_LATIDO, guardar)
 from backend.ingesta.recolectar import Pasada, filas_lluvia, recolectar
 
 
@@ -86,17 +86,6 @@ class TestInventarioSenamhi(unittest.TestCase):
 
 
 class TestAlertas(unittest.TestCase):
-    def test_lluvia_lleva_la_zona_recibida(self):
-        a = alerts.evaluar_lluvia("X", "Est X", _serie("X", [2.0] * 24), zona="Piura")
-        self.assertEqual((a["nivel"], a["zona"], a["valor"]), ("emergencia", "Piura", 48.0))
-
-    def test_lluvia_intensa_de_una_hora(self):
-        a = alerts.evaluar_lluvia("X", "Est X", _serie("X", [0.0] * 23 + [16.0]))
-        self.assertEqual((a["nivel"], a["valor"], a["umbral"]), ("alerta", 16.0, alerts.LLUVIA_1H_ALERTA))
-
-    def test_sin_lluvia_no_hay_alerta(self):
-        self.assertIsNone(alerts.evaluar_lluvia("X", "Est X", _serie("X", [0.1] * 24)))
-
     def test_caudal_sin_departamento_no_inventa_zona(self):
         [a] = alerts.evaluar_caudal([_caudal("C", "", 15.0)])
         self.assertIsNone(a["zona"])
@@ -217,9 +206,8 @@ class TestRecolectarYGuardar(_BaseIngesta):
         ayer = hoy - timedelta(days=1)
         for falla in ("senamhi:inventario:piura", "senamhi:series:1/2", f"ana:{ayer}", f"ana:{hoy}", "igp"):
             self.assertIn(falla, p.fallas)
-        # solo la estación que respondió se re-evaluó; su alerta lleva el departamento
-        self.assertEqual(p.lluvia_ok, ["Est 111 (111)"])
-        self.assertEqual([(a["referencia"], a["zona"]) for a in p.alertas_lluvia], [("Est 111 (111)", "Cajamarca")])
+        # solo se guarda la serie de la estación que respondió
+        self.assertEqual({f[0] for f in p.lluvia}, {"111"})
         # a ANA se le piden ayer y hoy, en fechas de Perú (no del reloj UTC del contenedor)
         self.assertEqual([c.args[0] for c in ana_mock.call_args_list], [ayer, hoy])
 
@@ -234,7 +222,7 @@ class TestRecolectarYGuardar(_BaseIngesta):
     def test_ana_caida_no_borra_sus_alertas(self):
         p, _ = self._recolectar(ana_ok=False)
         conn, resumen = self._guardar(p)
-        self.assertEqual(self._borrados(conn), {"caudal": [], "nivel_bajo": [], "lluvia": ["Est 111 (111)"]})
+        self.assertEqual(self._borrados(conn), {"caudal": [], "nivel_bajo": []})
         self.assertIsNone(resumen["caudal"])
 
     def test_ana_ok_reemplaza_sus_alertas(self):
@@ -289,7 +277,19 @@ class TestRecolectarYGuardar(_BaseIngesta):
     def test_pasada_vacia_no_falla(self):
         conn, resumen = self._guardar(Pasada())
         self.assertEqual(resumen["estaciones"], 0)
-        self.assertEqual(self._borrados(conn), {"caudal": [], "nivel_bajo": [], "lluvia": []})
+        self.assertEqual(self._borrados(conn), {"caudal": [], "nivel_bajo": []})
+
+    def test_ingesta_no_toca_alertas_de_lluvia(self):
+        # 3 mm cada hora (72 mm en 24 h) eran una emergencia con los umbrales retirados de
+        # SIMPAC; ahora las de lluvia las escribe solo la tarea lluvia_nacional
+        p, _ = self._recolectar()
+        self.assertEqual(len(p.lluvia), 24)
+        conn, resumen = self._guardar(p)
+        familias = {"caudal", "nivel_bajo"}
+        self.assertLessEqual(set(self._borrados(conn)), familias)
+        [filas] = conn.params(SQL_ALERTA)
+        self.assertLessEqual({f[0] for f in filas}, familias)
+        self.assertEqual(resumen["alertas"], 1)   # la de caudal de C1
 
     def test_latido_con_el_resumen(self):
         p, _ = self._recolectar()

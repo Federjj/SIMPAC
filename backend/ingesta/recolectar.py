@@ -31,8 +31,6 @@ class Pasada:
     """Todo lo que se bajó en una corrida, listo para guardar."""
     estaciones: list[tuple[str, senamhi.Estacion]] = field(default_factory=list)   # (departamento, estación)
     lluvia: list[tuple] = field(default_factory=list)          # filas de lectura_lluvia
-    lluvia_ok: list[str] = field(default_factory=list)         # referencias de alerta re-evaluadas
-    alertas_lluvia: list[dict] = field(default_factory=list)
     caudales: list[tuple[date, ana.EstacionCaudal]] | None = None   # (fecha, lectura); None = ANA no respondió
     caudal_ok: list[str] = field(default_factory=list)         # referencias de alerta re-evaluadas
     alertas_caudal: list[dict] = field(default_factory=list)
@@ -90,15 +88,12 @@ def _lluvia(pasada: Pasada) -> None:
 
     fallidas = 0
     with ThreadPoolExecutor(max_workers=HILOS) as ex:
-        for dp, e, serie in ex.map(bajar, autos):
+        for _, e, serie in ex.map(bajar, autos):
             if serie is None:
                 fallidas += 1
                 continue
+            # solo la serie: las alertas de lluvia las escribe la tarea lluvia_nacional
             pasada.lluvia += filas_lluvia(e.cod, serie)
-            pasada.lluvia_ok.append(alerts.referencia_lluvia(e.cod, e.nombre))
-            a = alerts.evaluar_lluvia(e.cod, e.nombre, serie, zona=DEPARTAMENTOS.get(dp))
-            if a:
-                pasada.alertas_lluvia.append(a)
     if fallidas:
         pasada.fallas.append(f"senamhi:series:{fallidas}/{len(autos)}")
 

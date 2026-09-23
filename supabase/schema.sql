@@ -184,22 +184,50 @@ create table latido (
   resumen  jsonb
 );
 
--- La ingesta reemplaza cada hora solo las alertas de las estaciones que re-evaluó (con
--- dato); las que no se pudieron re-evaluar caducan a las 6 h (backend/ingesta/guardar.py).
+-- La ingesta reemplaza las de ríos (caudal y nivel_bajo), avisos las de tipo aviso y
+-- lluvia_nacional las de lluvia. Ríos y avisos: solo las que re-evaluó (con dato); las que no
+-- se pudieron re-evaluar caducan a las 6 h (backend/ingesta/guardar.py). Lluvia: cada corrida
+-- las reemplaza todas (backend/ingesta/lluvia_nacional.py) y se muestran mientras su lectura
+-- tenga 3 h o menos (vista alerta_actual).
 create table alerta (
   id         bigint generated always as identity primary key,
-  tipo       text,                      -- 'lluvia' | 'caudal' (crecida) | 'nivel_bajo' (vaciante) | 'aviso'
-  referencia text,                      -- "Estación (cod)", "Estación (río)" o "SENAMHI aviso N"
+  tipo       text,                      -- 'caudal' (crecida) | 'nivel_bajo' (vaciante) | 'aviso' (aviso
+                                        -- oficial de SENAMHI) | 'lluvia' (una estación midió más que la
+                                        -- referencia de SENAMHI; NO es aviso oficial)
+  referencia text,                      -- "Estación (río)", "SENAMHI aviso N", "SENAMHI lluvia 24h" o,
+                                        -- en lluvia, lluvia_senamhi.clave
   zona       text,                      -- departamento
-  nivel      text,                      -- aviso | alerta | emergencia (aviso SENAMHI: 2 aviso, 3 alerta, 4 emergencia)
+  nivel      text,                      -- aviso | alerta | emergencia (aviso SENAMHI: 2 aviso, 3 alerta,
+                                        -- 4 emergencia; lluvia: siempre aviso)
   detalle    text,
   valor      double precision,
-  umbral     double precision,
+  umbral     double precision,          -- lluvia: la referencia de la estación en ventana_h
+  ventana_h  smallint,                  -- solo lluvia: 1 = pasó la de la última hora; 6 = pasó la
+                                        -- de las últimas 6 h (y la de 1 h no)
   geom       geometry(Point, 4326),
+  lat        double precision generated always as (st_y(geom)) stored,
+  lon        double precision generated always as (st_x(geom)) stored,
   vigente    boolean default true,
-  ts         timestamptz default now()
+  ts         timestamptz default now(), -- lluvia: hora de la medición; los demás: hora en que se escribió
+  -- ventana_h solo existe en la lluvia medida, y esa lluvia nunca pasa de 'aviso' (el coalesce:
+  -- con tipo o nivel NULL la comparación da NULL y el CHECK dejaría pasar la fila)
+  constraint alerta_lluvia_referencia_check
+    check (ventana_h is null or coalesce(tipo = 'lluvia' and nivel = 'aviso' and ventana_h in (1, 6), false))
 );
 create index alerta_vigente_idx on alerta (vigente, nivel);
+-- Una alerta de lluvia por estación (lluvia_nacional usa to_regclass de este índice para
+-- saber si la migración ya se aplicó).
+create unique index alerta_lluvia_referencia_key on alerta (referencia)
+  where tipo = 'lluvia' and ventana_h is not null;
+
+-- Lo que se muestra: las vigentes; la lluvia medida, solo mientras su lectura tenga 3 h o
+-- menos (igual que lluvia_senamhi_actual); las de lluvia sin ventana_h (formato viejo), nunca.
+create view alerta_actual with (security_invoker = true) as
+select tipo, referencia, zona, nivel, detalle, valor, umbral, ventana_h, ts, lat, lon
+from alerta
+where vigente
+  and (tipo is distinct from 'lluvia'
+       or (ventana_h is not null and ts >= now() - interval '3 hours'));
 
 create table mapa (
   id         bigint generated always as identity primary key,
@@ -326,9 +354,9 @@ alter table comentario     enable row level security;
 alter table message        enable row level security;
 
 -- Datos oficiales: solo lectura para todos.
-grant select on estacion, lectura_lluvia, lectura_caudal, caudal_actual, indice, alerta, mapa,
-  comunicado_enfen, latido, icen_serie, aviso_senamhi, aviso_vigente, lluvia_senamhi,
-  lluvia_senamhi_actual to anon, authenticated;
+grant select on estacion, lectura_lluvia, lectura_caudal, caudal_actual, indice, alerta,
+  alerta_actual, mapa, comunicado_enfen, latido, icen_serie, aviso_senamhi, aviso_vigente,
+  lluvia_senamhi, lluvia_senamhi_actual to anon, authenticated;
 create policy "lectura publica estacion" on estacion       for select using (true);
 create policy "lectura publica lluvia"   on lectura_lluvia for select using (true);
 create policy "lectura publica caudal"   on lectura_caudal for select using (true);

@@ -60,15 +60,21 @@ export default function StatusPanel({
   lluvia,
   avisos = [],
   avisosZona = [],
+  lluviaZona = [],
+  nivelOficialAqui = "normal",
   alertasCargadas = true,
   actualizado,
   desactualizado,
+  lluviaActualizada,
+  lluviaDesactualizada,
 }) {
   const [abierto, setAbierto] = useState(false);
   // plegado deja solo el titular: en pantallas chicas el panel tapa el mapa y sus capas
   const [plegado, setPlegado] = useState(false);
   const nv = NIVEL[nivelLocal];
   const total = cuantasTotal;
+  // estaciones de la zona que pasaron la referencia de SENAMHI: las 3 primeras con su detalle
+  const masLluvia = lluviaZona.length - 3;
 
   return (
     <div className="pointer-events-none absolute inset-x-0 bottom-0 z-[600] p-3 md:p-4">
@@ -81,7 +87,12 @@ export default function StatusPanel({
               {porGps && <span className="normal-case tracking-normal"> (tu ubicación)</span>}
               {actualizado && (
                 <span className={cn("ml-1 normal-case tracking-normal", desactualizado && "text-nivel-alerta")}>
-                  · ríos y lluvia: {desactualizado ? "sin actualizar desde" : "actualizado"} {horaPeru(actualizado)}
+                  · ríos: {desactualizado ? "sin actualizar desde" : "actualizado"} {horaPeru(actualizado)}
+                </span>
+              )}
+              {lluviaActualizada && (
+                <span className={cn("ml-1 normal-case tracking-normal", lluviaDesactualizada && "text-nivel-alerta")}>
+                  · lluvia: {lluviaDesactualizada ? "sin actualizar desde" : "actualizada"} {horaPeru(lluviaActualizada)}
                 </span>
               )}
             </div>
@@ -131,6 +142,22 @@ export default function StatusPanel({
                   </span>
                 </p>
               ))}
+              {/* lluvia medida sobre la referencia: no es un aviso oficial, no lleva enlace a uno */}
+              {lluviaZona.slice(0, 3).map((a) => (
+                <p key={a.referencia} className="flex gap-1.5 text-foreground">
+                  <Droplets className="mt-0.5 h-4 w-4 shrink-0" style={{ color: NIVEL_HEX.aviso }} />
+                  <span>
+                    <span className="font-semibold">Lluvia medida:</span> {a.detalle}
+                  </span>
+                </p>
+              ))}
+              {masLluvia > 0 && (
+                <p className="pl-[22px] text-foreground">
+                  {masLluvia === 1
+                    ? `Y 1 estación más en ${depto} pasó la referencia de SENAMHI.`
+                    : `Y ${masLluvia} estaciones más en ${depto} pasaron la referencia de SENAMHI.`}
+                </p>
+              )}
               {pais && <p>{pais}</p>}
               {lluvia && (
                 <p className="flex gap-1.5">
@@ -157,7 +184,7 @@ export default function StatusPanel({
               />
               <Metric
                 Icon={TriangleAlert}
-                color={NIVEL_HEX[nivelLocal] ?? "#9CA3AF"}
+                color={NIVEL_HEX[nivelOficialAqui] ?? "#9CA3AF"}
                 value={alertasCargadas ? cuantasAqui : "Sin dato"}
                 label={alertasCargadas ? `alertas y avisos en ${depto} · ${cuantasFuera} en el resto del país` : "alertas"}
               />
@@ -191,10 +218,14 @@ export default function StatusPanel({
                   </Explica>
                 )}
                 <p className="text-xs text-muted-foreground">
-                  Las alertas de ríos usan los niveles de ANA; las de lluvia son referenciales de SIMPAC; los
-                  avisos (amarillo, naranja y rojo) vienen de SENAMHI, y SIMPAC los resume en palabras simples: el
-                  aviso oficial es el que publica SENAMHI. Ante una emergencia, sigue las indicaciones de SENAMHI,
-                  INDECI y Defensa Civil.
+                  Las alertas de ríos usan los niveles de ANA. Los avisos (amarillo, naranja y rojo) vienen de
+                  SENAMHI, y SIMPAC los resume en palabras simples: el aviso oficial es el que publica SENAMHI.
+                  “Atentos a la lluvia” es otra cosa: una estación automática de SENAMHI midió más lluvia que la
+                  referencia que SENAMHI usa para ese lugar, en la última hora o sumando las últimas 6 horas. Esa
+                  referencia cambia de un lugar a otro: es baja donde casi no llueve (1 mm en una hora en partes de
+                  la costa) y alta en la selva (hasta 25 mm). No es un aviso oficial, es la lectura de una sola
+                  estación (que puede fallar) y en temporada de lluvias puede pasar varias veces. Ante una
+                  emergencia, sigue las indicaciones de SENAMHI, INDECI y Defensa Civil.
                 </p>
               </div>
             )}

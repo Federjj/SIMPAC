@@ -60,14 +60,6 @@ class TestNivelBajo(unittest.TestCase):
         self.assertEqual(_rio(15.0, 14.0, 18.0, unidad="m³/s").estado, "alerta")
         self.assertEqual(_rio(18.0, 14.0, 18.0, unidad="m³/s").estado, "emergencia")
 
-    def test_lluvia_de_una_hora_es_fuerte_solo_sobre_15(self):
-        from backend.connectors import senamhi
-        def serie(ultima):
-            return senamhi.SerieHoraria(estacion="E", codigo="X", timestamps=[f"2026/09/22 - {h:02d}" for h in range(24)],
-                                        precip_mm=[0.0] * 23 + [ultima], temp_c=[])
-        self.assertIsNone(alerts.evaluar_lluvia("X", "E", serie(15.0)))   # 15 mm/h es moderada
-        self.assertEqual(alerts.evaluar_lluvia("X", "E", serie(15.5))["umbral"], alerts.LLUVIA_1H_ALERTA)
-
     def test_alerta_de_vaciante_tiene_su_tipo(self):
         [a] = alerts.evaluar_caudal([_rio(108.5, 108.78, 107.97, tendencia="Descendente")])
         self.assertEqual((a["tipo"], a["nivel"]), ("nivel_bajo", "alerta"))
