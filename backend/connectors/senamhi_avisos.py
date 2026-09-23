@@ -5,8 +5,10 @@ Dos productos, los dos servidos por la GeoServer de IDESEP (WFS, GeoJSON, sin ke
   1. Avisos meteorológicos (lluvia, temperatura, viento...): g_aviso:view_aviso. El WFS pide
      viewparams=qry:{nro}_{mapa}_{año} (un mapa por día de vigencia), así que primero hay que
      saber qué números están emitidos o vigentes: se leen de la tabla HTML de la web de
-     SENAMHI (tabla_avisos). La página de detalle trae el párrafo oficial de cada aviso
-     (descripciones), del que sale la intensidad ("de ligera a moderada intensidad").
+     SENAMHI (tabla_avisos). La página de avisos vigentes trae los textos oficiales de todos
+     (textos): el párrafo general de cada aviso, del que sale la intensidad ("de ligera a
+     moderada intensidad") y si menciona descargas eléctricas, y un párrafo por día (mapa)
+     con la lluvia esperada por subregión ("hasta los 12 mm/día en Tumbes...").
   2. Aviso de lluvia acumulada en 24 h: g_prono_pp_24h:view_aviso24h, sin parámetros (siempre
      el último). Rige 24 h desde las 13:00 de Lima de su 'fecha' (Aviso N°265 del 22-09-2026:
      "Fecha de inicio: ... 13:00 horas", "Duración: 24 hrs").
@@ -35,6 +37,12 @@ Trampas verificadas (22-09-2026):
     N") continúan al original, no lo reemplazan.
   - La vista de 24 h sin filtro siempre trae el Nivel 1 (el resto del país): la respuesta
     filtrada vacía se confirma con una consulta liviana (solo nivel y fecha, ~1 kB).
+  - Página de vigentes: las pestañas de los días tienen ids internos (v-pills-tab-2-289672026),
+    no el número del aviso; el aviso y el mapa de cada párrafo salen del iframe que lo sigue
+    (?av=376&nl=2&mp=1&fc=2026). La página repite la pestaña tabs-3762026 al final, en un
+    bloque de 1,2 MB: gana la primera. Hay párrafos con la fecha de otro día (el del mapa 2
+    del 375 dice "El martes 22" y su mapa es del 24): lo revisa backend/ingesta/avisos.py. Siete
+    avisos históricos escriben "El Senamhi informa" (se busca sin distinguir mayúsculas).
 
 Licencia (https://www.senamhi.gob.pe/?p=terminos-condiciones): uso libre, con o sin fines de
 lucro, sin comercializar la información, y con la leyenda literal ATRIBUCION en todo soporte.
@@ -80,6 +88,8 @@ MAX_WFS_BYTES = 30 * 1024 * 1024     # un mapa filtrado pesa de 0,1 a 1,4 MB
 MAX_LIVIANO_BYTES = 1024 * 1024      # la vista de 24 h con solo nivel y fecha pesa ~1 kB
 MAX_MAPAS = 5                        # un mapa por día; los avisos duran de 1 a 4 días
 HORA_INICIO_24H = time(13, 0)        # el aviso de 24 h rige desde las 13:00 de Lima
+MAX_GENERAL = 2000                   # caracteres del párrafo general (hoy ~600)
+MAX_TEXTO_DIA = 1500                 # caracteres del párrafo de un día (hoy ~250)
 
 NIVEL_COLOR = {2: "amarillo", 3: "naranja", 4: "rojo"}
 _COLOR_NIVEL = {"AMARILLO": 2, "NARANJA": 3, "ROJO": 4}
@@ -155,6 +165,13 @@ class Area:
     inicio: datetime           # UTC
     fin: datetime              # UTC
     geometrias: list[dict] = field(default_factory=list)   # geometrías GeoJSON (EPSG:4326)
+
+
+@dataclass
+class TextoAviso:
+    """Textos oficiales de un aviso en la página de vigentes, literales (sin etiquetas HTML)."""
+    general: str | None                                    # 'El SENAMHI informa que...'
+    dias: dict[int, str] = field(default_factory=dict)     # número de mapa -> párrafo de ese día
 
 
 # ---------------------------------------------------------------------------------------
@@ -341,28 +358,62 @@ def tabla_avisos(hoy: date | None = None) -> TablaAvisos:
 
 
 # ---------------------------------------------------------------------------------------
-# 2) Párrafo oficial de cada aviso (página de detalle; es opcional)
+# 2) Textos oficiales de cada aviso (página de avisos vigentes; son opcionales)
 # ---------------------------------------------------------------------------------------
-def parse_descripciones(pagina: str) -> dict[tuple[int, int], str]:
+_PESTANA_AVISO = re.compile(r"""<div[^>]*\bid=["']tabs-(\d+)(\d{4})["']""")   # tabs-3762026: 376 de 2026
+_GENERAL = re.compile(r"(El\s+SENAMHI\s+informa.*?)<", re.S | re.I)
+# Pestaña de un día: su primer <p> y el iframe del mapa que la sigue, que dice de qué aviso
+# (av), mapa (mp) y año (fc) es. Verificado en la página del 22-09-2026 (los 5 avisos).
+_DIA_AVISO = re.compile(
+    r"""\bid=["']v-pills-tab-(?P<pest>\d+)-\d+["'][^>]*>\s*<p[^>]*>(?P<texto>.*?)</p>"""
+    r""".{0,800}?<iframe[^>]*?\bsrc=["'][^"']*?\bav=(?P<av>\d+)&(?:amp;)?nl=\d+&(?:amp;)?mp=(?P<mp>\d+)&(?:amp;)?fc=(?P<fc>\d{4})""",
+    re.S | re.I)
+
+
+def parse_textos(pagina: str) -> dict[tuple[int, int], TextoAviso]:
     """
-    {(año, número): 'El SENAMHI informa que...'} de la página de avisos vigentes, que trae
-    una pestaña por aviso (id="tabs-3762026" = aviso 376 de 2026).
+    {(año, número): TextoAviso} de la página de avisos vigentes, que trae una pestaña por
+    aviso (id="tabs-3762026" = aviso 376 de 2026) con el párrafo general y una pestaña por día.
+    Un párrafo de día cuenta solo si su iframe es del mismo aviso y año. Si un aviso aparece
+    dos veces (la página repite uno al final), gana el primer texto no vacío.
     """
-    out: dict[tuple[int, int], str] = {}
-    cortes = list(re.finditer(r"""<div[^>]*\bid=["']tabs-(\d+)(\d{4})["']""", pagina))
+    out: dict[tuple[int, int], TextoAviso] = {}
+    cortes = list(_PESTANA_AVISO.finditer(pagina))
     for i, m in enumerate(cortes):
         bloque = pagina[m.end():cortes[i + 1].start() if i + 1 < len(cortes) else len(pagina)]
-        p = re.search(r"(El SENAMHI informa.*?)<", bloque, re.S)
-        if p:
-            out[(int(m.group(2)), int(m.group(1)))] = _texto(p.group(1))
+        numero, anio = int(m.group(1)), int(m.group(2))
+        t = out.setdefault((anio, numero), TextoAviso(general=None))
+        if not t.general:
+            p = _GENERAL.search(bloque)
+            t.general = (_texto(p.group(1))[:MAX_GENERAL] or None) if p else None
+        for d in _DIA_AVISO.finditer(bloque):
+            if int(d["av"]) != numero or int(d["fc"]) != anio:
+                continue
+            texto = _texto(d["texto"])[:MAX_TEXTO_DIA]
+            if texto and int(d["mp"]) not in t.dias:
+                t.dias[int(d["mp"])] = texto
     return out
 
 
-def descripciones(url: str) -> dict[tuple[int, int], str]:
-    """Párrafos oficiales de todos los avisos vigentes (una página de ~1,3 MB los trae todos)."""
+def parse_descripciones(pagina: str) -> dict[tuple[int, int], str]:
+    """{(año, número): 'El SENAMHI informa que...'}: solo el párrafo general de parse_textos."""
+    return {k: t.general for k, t in parse_textos(pagina).items() if t.general}
+
+
+def _pagina_vigentes(url: str) -> str:
     if not _es_enlace_web(url):
         raise ValueError(f"Enlace de aviso fuera de {_HOST_WEB}: {url}")
-    return parse_descripciones(_http.con_reintentos(_bajar_texto, url))
+    return _http.con_reintentos(_bajar_texto, url)
+
+
+def textos(url: str) -> dict[tuple[int, int], TextoAviso]:
+    """Textos oficiales de todos los avisos vigentes (una página de ~1,3 MB los trae todos)."""
+    return parse_textos(_pagina_vigentes(url))
+
+
+def descripciones(url: str) -> dict[tuple[int, int], str]:
+    """Párrafos generales de todos los avisos vigentes (la misma página que textos)."""
+    return parse_descripciones(_pagina_vigentes(url))
 
 
 # ---------------------------------------------------------------------------------------

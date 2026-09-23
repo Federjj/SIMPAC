@@ -1,12 +1,41 @@
 import { useEffect, useRef, useState } from "react";
 import { Switch } from "@/components/ui/switch";
+import Glifo from "@/components/Glifo";
+import InsigniaCapa from "@/components/InsigniaCapa";
 import { cn } from "@/lib/utils";
 import { GRUPOS } from "@/map/layers";
 import { ATRIBUCION_SENAMHI } from "@/map/senamhi";
 
 // Muestra de color de la leyenda: punto (marcadores), anillo (borde de un marcador),
-// gota (reportes) o cuadro translúcido (áreas sombreadas).
-function Muestra({ color, zona, gota, anillo }) {
+// gota (reportes) o cuadro translúcido (áreas sombreadas). Con `forma`: insignia de un aviso
+// (aro del color con su glifo), disco del pronóstico (blanco con su glifo; punteado = "tendencia
+// a") o mancha del nowcasting (cuadro con borde punteado).
+function Muestra({ color, zona, gota, anillo, forma, glifo, punteado }) {
+  if (forma === "insignia")
+    return (
+      <span
+        className="grid h-[18px] w-[18px] shrink-0 place-items-center rounded-full bg-white"
+        style={{ border: `2.5px solid ${color}` }}
+      >
+        <Glifo nombre={glifo} className="h-3 w-3" />
+      </span>
+    );
+  if (forma === "disco")
+    return (
+      <span
+        className="grid h-[18px] w-[18px] shrink-0 place-items-center rounded-full bg-white shadow"
+        style={punteado ? { border: "1.5px dashed #475569" } : undefined}
+      >
+        <Glifo nombre={glifo} className="h-3.5 w-3.5" />
+      </span>
+    );
+  if (forma === "mancha")
+    return (
+      <span
+        className="h-3 w-3 shrink-0 rounded-[3px]"
+        style={{ background: `${color}8C`, border: `1.5px dashed ${color}` }}
+      />
+    );
   return (
     <span
       className={cn(
@@ -26,7 +55,9 @@ function Muestra({ color, zona, gota, anillo }) {
 }
 
 function Capa({ layer, on, opcion, nota, destacada, onToggle, onOpcion }) {
-  const { id, label, Icon, legend = [], opciones, fuente } = layer;
+  const { id, label, Icon, legend = [], opciones, fuente, insignia } = layer;
+  // la nota puede ser un texto o un objeto {texto, ...} (p. ej. el nowcasting)
+  const textoNota = nota && typeof nota === "object" ? nota.texto : nota;
   const leyenda = typeof legend === "function" ? legend(opcion ?? opciones?.defecto) : legend;
   const ref = useRef(null);
   const [anillo, setAnillo] = useState(false);
@@ -43,7 +74,10 @@ function Capa({ layer, on, opcion, nota, destacada, onToggle, onOpcion }) {
     <div ref={ref} className={cn("rounded-md transition-shadow", anillo && "ring-1 ring-primary/40")}>
       <label className="flex cursor-pointer items-center gap-3 rounded-md px-1.5 py-1.5 text-sm hover:bg-accent">
         <Icon className="h-[18px] w-[18px] shrink-0 text-muted-foreground" />
-        <span className="leading-tight">{label}</span>
+        <span className="leading-tight">
+          {label}
+          {insignia && <InsigniaCapa tipo={insignia} className="relative -top-px whitespace-nowrap" />}
+        </span>
         <Switch className="ml-auto shrink-0" checked={on} onCheckedChange={() => onToggle(id)} />
       </label>
       {on && (
@@ -62,7 +96,7 @@ function Capa({ layer, on, opcion, nota, destacada, onToggle, onOpcion }) {
               ))}
             </select>
           )}
-          {nota && <div className="text-xs text-foreground">{nota}</div>}
+          {textoNota && <div className="text-xs text-foreground">{textoNota}</div>}
           {leyenda.map((item) => (
             <div key={item.label} className="flex items-center gap-2 text-xs text-muted-foreground">
               <Muestra {...item} />
@@ -78,7 +112,7 @@ function Capa({ layer, on, opcion, nota, destacada, onToggle, onOpcion }) {
 
 export default function LayersPanel({ layers, visible, opciones = {}, notas = {}, destacar, onToggle, onOpcion }) {
   return (
-    <div className="absolute right-[70px] top-4 z-[601] max-h-[calc(100%-2rem)] w-72 overflow-y-auto rounded-xl border border-border bg-popover/95 p-4 shadow-2xl backdrop-blur">
+    <div data-tapa-mapa className="absolute right-[70px] top-4 z-[601] max-h-[calc(100%-2rem)] w-72 overflow-y-auto rounded-xl border border-border bg-popover/95 p-4 shadow-2xl backdrop-blur">
       <h4 className="mb-2 text-[0.68rem] font-semibold uppercase tracking-widest text-muted-foreground">
         Capas del mapa
       </h4>
@@ -106,8 +140,8 @@ export default function LayersPanel({ layers, visible, opciones = {}, notas = {}
         );
       })}
       <p className="mt-3 border-t border-border pt-2 text-[0.62rem] leading-snug text-muted-foreground">
-        Ríos: ANA. Lluvia, avisos y mapas: SENAMHI. {ATRIBUCION_SENAMHI} Lluvia por satélite: NASA. El Niño: ENFEN,
-        IGP y NOAA.
+        Ríos: ANA. Lluvia, avisos y mapas: SENAMHI. Pronóstico y nowcasting: SENAMHI. {ATRIBUCION_SENAMHI} Lluvia por
+        satélite: NASA. El Niño: ENFEN, IGP y NOAA.
       </p>
     </div>
   );

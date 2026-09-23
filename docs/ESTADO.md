@@ -1,14 +1,15 @@
 # SIMPAC — Estado del proyecto
 
-> Panel vivo de "dónde estamos". Actualizado: **2026-09-22**.
+> Panel vivo de "dónde estamos". Actualizado: **2026-09-23**.
 > Repo: `github.com/Federjj/SIMPAC` (monorepo, rama `main`).
 
 ## Resumen en una línea
 Backend + Supabase con datos reales (**ríos a nivel nacional**, **avisos oficiales de SENAMHI
-como áreas**, **lluvia de la última hora en todo el país**, **serie del ICEN** y **5 mapas
-históricos de eventos El Niño**); **frontend React (Mapa) con datos reales, capas de lluvia
-sombreadas y un panel gráfico de El Niño**; **stack dockerizado y corriendo** con 4 tareas
-programadas en el worker. Faltan las demás páginas del front (Alertas, Comunidad, Chat, Cuenta).
+como áreas, con ícono**, **pronóstico oficial por localidad**, **nowcasting experimental**,
+**lluvia de la última hora en todo el país**, **serie del ICEN** y **5 mapas históricos de eventos
+El Niño**); **frontend React (Mapa) con datos reales, capas de lluvia sombreadas, selector de día,
+franja de 3 días y un panel gráfico de El Niño**; **stack dockerizado y corriendo** con 6 tareas de
+datos programadas en el worker. Faltan las demás páginas del front (Alertas, Comunidad, Chat, Cuenta).
 
 ---
 
@@ -24,9 +25,11 @@ programadas en el worker. Faltan las demás páginas del front (Alertas, Comunid
 
 **Base de datos (Supabase)**
 - [x] Proyecto **DATASYMPAC** (ref `clrnommkjyksnyrtnisf`, región São Paulo).
-- [x] **Esquema aplicado**: 16 tablas + vistas `caudal_actual`, `aviso_vigente` y
-      `lluvia_senamhi_actual` + **PostGIS** + **RLS**. Historia en `supabase/migrations/`
-      (18 migraciones, versionadas en el repo); foto final en `supabase/schema.sql`.
+- [x] **Esquema aplicado**: 16 tablas + vistas `caudal_actual`, `aviso_vigente`,
+      `lluvia_senamhi_actual` y `alerta_actual` + **PostGIS** + **RLS**. Historia en
+      `supabase/migrations/` (22 migraciones, versionadas en el repo); foto final en
+      `supabase/schema.sql`: 19 tablas y 7 vistas con las de los avisos con ícono, el pronóstico
+      y el nowcasting (ver abajo).
 - [x] **Datos (22 sep, los llena la ingesta horaria)**: 982 estaciones SENAMHI en 24 departamentos
       (con `lat`/`lon`) · lluvia horaria de las 14 automáticas de Cajamarca · ~120 ríos con caudal y
       umbrales en 23 departamentos · ICEN / RONI / estado ENFEN · capa de **anomalías de
@@ -75,6 +78,49 @@ programadas en el worker. Faltan las demás páginas del front (Alertas, Comunid
       Conectores con TLS siempre verificado; BD por pooler con `sslmode=require`.
 - [x] **Endurecido**: Redis publicado solo en `127.0.0.1`; geopandas solo en la imagen del worker
       (`requirements-mapas.txt`), la imagen de la API bajó a ~310 MB.
+
+**Avisos con ícono, pronóstico por localidad y nowcasting (23 sep)** — **467 pruebas** del backend
+sin red, 24 del frontend (`npm test`) y build OK; cada tarea probada contra la BD real en
+transacciones revertidas (con su migración aplicada adentro). **Desplegado**: migraciones
+aplicadas e imágenes reconstruidas; primera corrida con 277 localidades, 3 avisos con ícono y el
+nowcasting detenido por SENAMHI desde las 20:40 del 22 (la capa se oculta y lo explica). Revisado
+en el navegador en escritorio y celular. Diseño aprobado por el usuario sobre una maqueta con
+datos reales; 20 hallazgos de 2 verificadores corregidos (entre ellos un XSS en el tooltip de
+las localidades).
+- [x] **Íconos en los avisos de SENAMHI**: sobre cada área, una insignia redonda (disco blanco con
+      aro del color del nivel) con gota, gota con rayo o copo; en calor, frío y viento, termómetro o
+      viento (así su amarillo no se confunde con el de la lluvia).
+  - **El rayo nunca se inventa:** solo si el aviso es de UNA región y SENAMHI afirma las descargas.
+    Sobre 439 avisos de 2024 a 2026: 245 gota con rayo, 182 gota, 12 copo. El 376 ("sierra norte y
+    costa norte") lleva gota y el popup cita la frase de las descargas.
+  - **Popup en lenguaje claro:** "puede llover en algún momento en esta zona" (no en toda ni todo el
+    día), los mm por subregión con barras, viento, rayos, granizo, nieve y el texto oficial sin
+    cambios. Los mm se leen "todo o nada" (el 92% de los párrafos, ninguno atribuido a otro lugar);
+    si no, va la cita literal.
+  - El párrafo de cada día se empareja por su mapa **y** por su fecha: el 375 decía "martes 22" en
+    el mapa del jueves 24 y no se muestra.
+- [x] **Pronóstico oficial de SENAMHI por localidad** (tarea `pronostico`, cada hora): 277
+      localidades (17 en Cajamarca), cada una como un disco blanco con el glifo del tiempo, nunca
+      como área; punteado si SENAMHI escribe "tendencia a". Catálogo de coordenadas revisado a mano
+      (236 con punto, entre ellas las 17 de Cajamarca y las 25 ciudades del selector). En el panel de
+      estado, **franja de 3 días** de tu localidad (la de la ciudad elegida o, con GPS, la más cercana).
+- [x] **Nowcasting de SENAMHI, experimental** (tarea `nowcast`, cada 10 min): manchas azules y
+      violeta de lluvia moderada, fuerte o extrema para la próxima hora, en 2 horas o ahora. Si
+      SENAMHI no publica hace más de 30 min no se muestra nada y el chip dice desde cuándo (el 22-09
+      se detuvo a las 20:40). Apagado por defecto.
+- [x] **Selector de día** (Hoy / Mañana / Viernes) que mueve a la vez los avisos y el pronóstico; el
+      nowcasting solo va con "Hoy".
+- [x] **Acomodo en pantalla**: tres escalas por zoom; las insignias que se tocan se juntan ("2
+      avisos"), los discos que chocan pasan a punto de color, tu localidad siempre se ve (aro negro y
+      nombre) y la insignia sigue a la vista aunque su punto salga de la pantalla. Dos amarillos
+      superpuestos ya no se ven naranja.
+- [x] **Robustez**: si el worker llega antes que las migraciones, los avisos se guardan igual (sin
+      íconos) y las otras dos tareas solo dejan su latido; si el frontend no encuentra las columnas
+      nuevas, vuelve a las de antes. Una página de SENAMHI cambiada falla y lo dice el latido (nunca
+      se muestra "sin lluvia" por error). Nada se borra por una fuente caída; candado por tarea.
+- **Fuera de alcance:** ETA, Open-Meteo, GLM (rayos por satélite) y `appmobile`.
+- **Decisiones del usuario:** al elegir una ciudad el zoom sigue en 14 (la insignia sigue a la
+  vista); sin modo "ejemplo grabado" para la presentación.
 
 **Datos correctos y lenguaje claro (22 sep, noche)** — investigación en vivo verificada por agentes
 - [x] **Falsas emergencias de Loreto corregidas**: en temporada seca ANA publica, para algunos ríos
@@ -288,6 +334,10 @@ estaciones evaluadas, 1 alerta real de 6 h en Cotahuasi, Arequipa)
       pantalla de creación y voto. El contrato para el front está en `frontend/README.md`.
 - [x] **Alertas de lluvia desplegadas** (migración aplicada, imágenes reconstruidas). Kevin, tras el
       pull: reconstruir frontend, worker y API. Consulta de control en `README-tecnico.md` §5.6.2.
+- [x] **Avisos con ícono, pronóstico y nowcasting desplegados** (migraciones `avisos_iconos`,
+      `pronostico_localidad` y `nowcast_senamhi` aplicadas; imágenes reconstruidas). Kevin, tras el
+      pull: reconstruir frontend, worker y API. Control con las consultas de `README-tecnico.md`
+      §5.6.6.
 - [ ] **Serie de lluvia (24 h) en más estaciones y departamentos**: hoy la ingesta baja la serie
       horaria solo de Cajamarca (`SIMPAC_LLUVIA_DEPTS`; sumar otros es cambiar esa variable) y solo
       de las meteorológicas. Las hidrológicas automáticas también la dan si se pide con
@@ -367,3 +417,15 @@ estaciones evaluadas, 1 alerta real de 6 h en Cotahuasi, Arequipa)
   nivel amarillo que sí usa SENAMHI en sus avisos hidrológicos.
 - **Worker corriendo como root** en el contenedor: solo un `SecurityWarning` de Celery, inofensivo
   en Docker; si se quiere limpio, correrlo con un usuario no-root en el Dockerfile.
+- **HTML de SENAMHI sin API**: el pronóstico por localidad y los párrafos de los avisos se leen de
+  páginas HTML. Si SENAMHI cambia su formato, la tarea falla y lo dice el latido (`fallas`), en vez
+  de mostrar "sin lluvia"; los avisos siguen saliendo, con gota. Sus pruebas usan muestras reales
+  guardadas (`backend/tests/muestras/`).
+- **Huecos del nowcasting**: SENAMHI lo publica cada 10 min, pero con huecos (el 22-09 no publicó
+  nada entre las 20:40 y pasadas las 23:25) y lo llama "referencial y en calibración". Pasados 30 min
+  el mapa se vacía solo y el chip lo dice; `retraso_min` del latido sirve para calibrar ese umbral.
+- **Localidades sin ubicar**: 41 de las 277 del pronóstico no tienen punto en el catálogo (no
+  coinciden con una estación): se guardan pero no se ven. Van en `sin_ubicar` del catálogo y en
+  `sin_ubicacion` del latido.
+- **Términos de SENAMHI**: además de la leyenda literal, dicen que la página es "para el uso
+  personal y del usuario". Conviene mencionarlo al presentar el proyecto.

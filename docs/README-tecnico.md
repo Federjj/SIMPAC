@@ -50,22 +50,31 @@ VigiaFEN/
 │  │  ├─ igp.py          # Índice Costero El Niño (ICEN)
 │  │  ├─ noaa.py         # RONI (contexto ENSO global, índice oficial de NOAA desde feb-2026)
 │  │  ├─ enfen.py        # comunicado oficial ENFEN (estado de alerta) + ICEN del Informe Técnico (PDF)
-│  │  ├─ senamhi_avisos.py   # avisos oficiales de SENAMHI (tabla HTML + polígonos WFS) y aviso de 24 h
+│  │  ├─ senamhi_avisos.py   # avisos oficiales de SENAMHI (tabla HTML + polígonos WFS + párrafos) y aviso de 24 h
 │  │  ├─ senamhi_umbrales.py # lluvia de la última hora en ~216 estaciones (WFS) + fechas de prec_1
+│  │  ├─ senamhi_pronostico.py # pronóstico oficial por localidad (una página HTML, ~277 localidades)
+│  │  ├─ senamhi_nowcast.py  # nowcasting de lluvia (visor + WFS g_nowcasting), experimental
 │  │  └─ idesep.py       # catálogo GeoNetwork de SENAMHI: shapefile -> GeoJSON (no lo importa __init__)
 │  ├─ ingesta/
 │  │  ├─ recolectar.py   # baja de todas las fuentes en paralelo -> Pasada (no toca la BD)
 │  │  ├─ guardar.py      # escribe una Pasada en Supabase (una transacción)
 │  │  ├─ departamentos.py # slugs de SENAMHI y nombres canónicos de departamento
 │  │  ├─ enfen.py        # tarea 'enfen' (cada 6 h): comunicado + ICEN del Informe Técnico
-│  │  ├─ avisos.py       # tarea 'avisos' (cada hora): áreas de avisos SENAMHI + alertas por departamento
-│  │  └─ lluvia_nacional.py # tarea 'lluvia_nacional' (cada 30 min): lluvia de la última hora en el país + alertas de lluvia
+│  │  ├─ avisos.py       # tarea 'avisos' (cada hora): áreas de avisos SENAMHI + ícono + alertas por departamento
+│  │  ├─ lectura_aviso.py # puro: ícono del aviso y lectura de su texto (descargas, granizo, mm/día)
+│  │  ├─ lluvia_nacional.py # tarea 'lluvia_nacional' (cada 30 min): lluvia de la última hora en el país + alertas de lluvia
+│  │  ├─ pronostico.py   # tarea 'pronostico' (cada hora): pronóstico por localidad
+│  │  ├─ lectura_pronostico.py # puro: qué dice cada día del pronóstico (lluvia, tormenta, "tendencia a")
+│  │  └─ nowcast.py      # tarea 'nowcast' (cada 10 min): manchas de lluvia de las próximas 2 horas
+│  ├─ data/
+│  │  └─ localidades_senamhi.json # coordenadas de las localidades del pronóstico (revisado a mano)
 │  ├─ mapas/
-│  │  └─ cargar_fen.py   # carga los mapas históricos de eventos El Niño a la tabla mapa
+│  │  ├─ cargar_fen.py   # carga los mapas históricos de eventos El Niño a la tabla mapa
+│  │  └─ semilla_localidades.py # arma localidades_senamhi.json (se corre una vez, §5.6.4)
 │  ├─ prototipo/         # versión sin dependencias (SQLite + http.server), congelada
-│  ├─ tests/             # pruebas sin red (unittest)
+│  ├─ tests/             # pruebas sin red (unittest); muestras reales chicas en tests/muestras/
 │  ├─ app.py             # API FastAPI async (Docker)
-│  ├─ celery_app.py      # worker + beat (ingesta horaria, refresco del snapshot)
+│  ├─ celery_app.py      # worker + beat (tareas programadas, §7.1)
 │  ├─ config.py          # variables de entorno, en un solo lugar
 │  ├─ db.py              # conexión a Supabase para quien escribe (worker, cargadores)
 │  ├─ snapshot.py        # panorama cacheado en Redis que sirve la API
@@ -189,8 +198,8 @@ print(serie.ultimo, serie.precip_acumulada(24))
 ```
 GET https://www.senamhi.gob.pe/?p=aviso-meteorologico
 ```
-Columnas: `Aviso · Nro · Emisión · Inicio · Fin · Duración · Nivel`. Filtrar títulos de
-"SIERRA NORTE"/Cajamarca. (Conector pendiente — es scraping de tabla.)
+Columnas: `Aviso · Nro · Emisión · Inicio · Fin · Duración · Nivel`. Conector y tarea en §5.6.1
+(en todo el país, no solo Cajamarca).
 
 ### 5.2. ANA — caudales de ríos (inundaciones)
 
@@ -331,7 +340,7 @@ Técnico (Tabla 3), no del comunicado ni del IGP (que se atrasa).
 `connectors/senamhi_avisos.py` + `ingesta/avisos.py`, cada hora y al arrancar el worker.
 ```
 GET https://www.senamhi.gob.pe/?p=aviso-meteorologico          # tabla HTML: qué avisos están emitidos o vigentes
-GET https://www.senamhi.gob.pe/?p=aviso-meteorologico-vigente&a=..&b=..   # párrafo oficial (opcional)
+GET https://www.senamhi.gob.pe/?p=aviso-meteorologico-vigente&a=..&b=..   # párrafos oficiales: general y por día (opcional)
 GET https://idesep.senamhi.gob.pe/geoserver/g_aviso/ows?service=WFS&request=GetFeature
     &typeName=g_aviso:view_aviso&viewparams=qry:{nro}_{mapa}_{año}&cql_filter=nivel<>'Nivel 1'
     &outputFormat=application/json                             # polígonos: un mapa por día de vigencia
@@ -354,7 +363,62 @@ GET https://idesep.senamhi.gob.pe/geoserver/g_prono_pp_24h/ows?...typeName=g_pro
   - Si el aviso de 24 h viene vacío, se confirma con una consulta liviana antes de borrarlo.
   - Las "ACTUALIZACIÓN DEL AVISO N" reemplazan al original.
   - Candado (`pg_advisory_xact_lock`) contra corridas simultáneas.
-- Un aviso guardado hace menos de 6 h no se vuelve a bajar (sus polígonos no cambian).
+- Un aviso guardado hace menos de 6 h no se vuelve a bajar (sus polígonos no cambian), salvo que
+  sea de lluvia y no tenga ícono: así, tras la migración de íconos, los avisos de lluvia se vuelven
+  a bajar solos y quedan con ícono. Un texto que falta (el párrafo general o el de un día) se
+  reintenta cada 6 h, con los polígonos, no en cada corrida: no se le pide a la GeoServer cada hora
+  un aviso cuyo párrafo no está en la página.
+
+**Íconos y lectura del texto** (migración `avisos_iconos`; `ingesta/lectura_aviso.py`, puro). Todo
+es derivado y el frontend lo rotula "basado en el aviso de SENAMHI" junto a la cita literal. Cada
+fila de `aviso_senamhi` suma cuatro columnas:
+- **`texto_dia`**: el párrafo oficial de ese día (mapa), literal. La página de vigentes trae una
+  pestaña por día; cada párrafo se empareja con su mapa por el iframe que lo sigue (`av`, `mp`,
+  `fc`; los ids de las pestañas son internos y no sirven) **y además** su fecha ("El miércoles 23
+  de setiembre...") tiene que coincidir con la del mapa: el número del día y, además, el mes o el
+  nombre del día (SENAMHI a veces yerra el mes: el 377 de 2024 dice "sábado 14 de noviembre" en el
+  mapa del sábado 14 de diciembre; sin mes, basta el número). Si no coincide (el 375 mapa 2 decía
+  "martes 22" en el mapa del 24), queda `null` y el latido lo anota en `fecha_no_coincide`.
+- **`icono`**: `gota`, `gota_rayo` o `copo` (`null` si no es de lluvia, llovizna ni nevada). Ningún
+  campo del WFS dice tormenta: las descargas eléctricas salen solo del párrafo general.
+  **Regla del rayo:** `gota_rayo` solo si el título nombra UNA región (costa, sierra o selva), el
+  párrafo no nombra otra y afirma las descargas (no "no se descarta", "podría", "posible"... hasta
+  el fin de la cláusula de las descargas: en "acompañadas de descargas eléctricas y ráfagas de
+  viento, con velocidades que podrían alcanzar hasta los 50 km/h" se afirman). En
+  un aviso de varias regiones la frase puede valer para una sola (el 376, "sierra norte y costa
+  norte", las dice solo para la sierra), y sin una capa de regiones no se sabe a qué parte va: lleva
+  gota y el popup cita la frase. Sin párrafo general también es gota: el rayo nunca se inventa. El
+  aviso de 24 h siempre es gota. Sobre 439 avisos de 2024 a 2026: 245 gota con rayo, 182 gota, 12
+  copo.
+- **`lectura`** (jsonb, `v = 1`): fenómeno, dónde, intensidad, regiones, `descargas`
+  (`si`/`condicional`/`no`) con su frase literal, granizo y nieve (con la altura, "2 800" = 2800),
+  ráfagas y `montos`. `null` en un aviso de lluvia = aún no se leyó su párrafo general: se
+  reintenta cada 6 h.
+  **Montos por día, "todo o nada":** "hasta los 12 mm/día en Tumbes, cercanos a los 6 mm/día en la
+  costa de Piura y valores entre los 7 mm/día y 15 mm/día en la sierra norte" da Tumbes hasta 12,
+  Costa de Piura cerca de 6 y Sierra norte de 7 a 15. Si un solo monto no se entiende, no tiene
+  lugar claro, el lugar tiene cifras, un día de la semana o una frase que no es lugar ("en
+  promedio", "en horas de la tarde"), un rango va al revés, o sobra un número (salvo los de la
+  fecha: en "20, 30 y 40 mm/día en la selva norte, centro y sur" el 20 queda suelto), el párrafo
+  entero queda en `null` y el frontend muestra la cita literal (nunca un monto en otro lugar).
+  Sobre 1027 párrafos se lee el 92% (945), sin ningún lugar mal atribuido.
+- **`anclas`**: dónde va la insignia: una por parte del MultiPolygon de 300 km² o más (y siempre la
+  más grande), en el centro del mayor círculo inscrito (`st_maximuminscribedcircle`; el centroide
+  de una parte en forma de C cae afuera), con `radio_km` para que el frontend oculte la de una parte
+  que en pantalla se ve chica. Se calculan en el mismo `insert` (y la migración llena las de las
+  filas ya guardadas). Van también en los avisos de calor, frío y viento.
+
+Si la tabla no tiene aún esas columnas, la tarea guarda los avisos igual, sin íconos
+(`SQL_PREVIOS_V1`, `SQL_AREA_V1`), y el latido avisa "falta la migración de íconos": los avisos
+oficiales nunca dejan de actualizarse. Si la página de vigentes cae, se conservan los textos ya
+guardados. El latido `avisos` suma la clave `lectura` (`null` sin la migración):
+
+| Clave | Qué es |
+|---|---|
+| `iconos` | ícono de cada aviso escrito: `{"376": "gota", "24h": "gota"}` |
+| `fecha_no_coincide` | `"aviso 375 mapa 2"`: párrafo de otro día, no se guardó |
+| `mm_literal` | con párrafo del día pero sin montos leídos: el popup lo muestra literal |
+| `sin_general` | avisos de lluvia sin párrafo general (van con gota; se reintentan cada 6 h) |
 
 ### 5.6.2. SENAMHI — lluvia de la última hora en todo el país y alertas de lluvia (tarea `lluvia_nacional`)
 
@@ -458,7 +522,164 @@ confirma y retrocede de a 30 min.
 > comercializar, con la leyenda literal "Información recopilada y trabajada por el Servicio
 > Nacional de Meteorología e Hidrología del Perú. El uso que se le da a esta información es de mi
 > (nuestra) entera responsabilidad" en todo soporte. Los polígonos simplificados se rotulan
-> "basado en el aviso de SENAMHI" y enlazan al original.
+> "basado en el aviso de SENAMHI" y enlazan al original. Los términos dicen también que la página
+> es "para el uso personal y del usuario": conviene mencionarlo al presentar el proyecto.
+
+### 5.6.4. SENAMHI — pronóstico oficial por localidad (tarea `pronostico`)
+
+`connectors/senamhi_pronostico.py` + `ingesta/lectura_pronostico.py` + `ingesta/pronostico.py`,
+cada hora y al arrancar el worker (migración `pronostico_localidad`).
+```
+GET https://www.senamhi.gob.pe/?p=pronostico-meteorologico      # una página de ~770 KB con todo el país
+```
+- **Qué trae:** ~277 localidades (17 en Cajamarca), cada una con 3 a 5 días: el ícono que eligió
+  el pronosticador, máxima, mínima y un texto ("Cielo nublado parcial variando a cielo nublado...
+  con lluvia."). La emisión ("Emisión: martes, 22 de septiembre del 2026") no tiene hora: sale una
+  por día hábil, de noche; en fines de semana y feriados sigue la del último día hábil.
+- **Una página cambiada falla, no se lee como "sin pronóstico"** (`ValueError`, no se escribe
+  nada): sin emisión o con una posterior a hoy, con menos de 200 o más de 400 localidades
+  legibles, o con más del 10% de los bloques sin entender. Un bloque cuyo número de fechas no
+  coincide con los días leídos va a `problemas` entero. Temperaturas fuera de −30 a 50 °C, o una
+  mínima mayor que la máxima, van como `null`. La página viene en UTF-8: un byte dañado se
+  reemplaza (y se anota en `problemas`) sin pasar la página entera a Windows-1252, que solo se usa
+  si casi nada se lee como UTF-8.
+- **Tabla `pronostico_localidad`:** una fila por localidad y día, upsert por `(codigo, fecha)`. Una
+  emisión más vieja no pisa una más nueva (`where excluded.emision >= pronostico_localidad.emision`);
+  la misma sí se reescribe. Solo se borran las fechas pasadas (hoy se conserva todo el día). Con la
+  página caída, o con el catálogo ilegible (las filas irían sin punto y pisarían los guardados), no
+  se escribe ni se borra nada. La vista **`pronostico_vigente`** da hoy, mañana y
+  pasado (hora de Perú), solo las localidades ubicadas y de una emisión de 5 días o menos, con el
+  enlace a la página de la localidad.
+- **Es un punto por localidad**, no un área: el frontend nunca sombrea el distrito, y donde no hay
+  localidad no dice nada (no quiere decir que no llueva).
+
+**Qué dice cada día** (`clasificar(icono, texto)`, el texto manda y el ícono solo suma o pone en
+duda: SENAMHI usa sus íconos con libertad), en orden:
+1. Negación ("sin lluvias", "no se prevén lluvias") → `sin_lluvia`.
+2. Texto con tormenta, descargas, truenos o relámpagos → `tormenta`.
+3. Texto con nieve, o granizo sin lluvia → `nieve`.
+4. Texto con lluvia: con el ícono de tormenta (010, 011, 037) → `tormenta` posible (`por = 'icono'`;
+   `lluvia_segura` si la lluvia no va bajo "tendencia a"); si no → `lluvia`.
+5. Solo el ícono de lluvia, tormenta o nieve (006–017, 035–037) → `lluvia` posible (`por = 'icono'`).
+6. Si no → `sin_lluvia` con el `cielo` (despejado, parcial, nublado, neblina).
+
+`posible` también es verdadero si la palabra queda bajo "tendencia a" (sin CON, `;`, `.` ni
+VARIANDO en medio): el frontend lo dibuja punteado y dice "puede llover". `momento` es la frase de
+hora pegada a la palabra ("en la tarde"); "durante el día" no cuenta, porque describe el cielo.
+Verificado con la emisión del 22-09 para el 23-09: Cajamarca 7 lluvia, 6 "puede llover", 4 sin
+lluvia; el país 57 / 42 / 4 tormenta posible / 174.
+
+**Catálogo de coordenadas** (`backend/data/localidades_senamhi.json`, revisado a mano; es `.json`
+porque el `.dockerignore` excluye los `*.geojson`). La página no trae coordenadas: cada localidad
+casi siempre coincide con una estación meteorológica de SENAMHI del mismo nombre y departamento.
+Hoy tiene 236 de 277 localidades con punto (213 por estación, 23 por el centro de la ciudad),
+entre ellas las 17 de Cajamarca y las 25 ciudades del selector (24 códigos: Lima y Callao comparten
+`15-0001`). Las 41 que no se ubicaron están en la clave `sin_ubicar`: se guardan con `lat` nula, la
+vista no las muestra y el latido las lista. La tarea descarta un punto fuera del Perú con un aviso
+y avisa si SENAMHI cambió el nombre de un código (el punto se usa igual).
+
+Se arma **una vez** (o cuando SENAMHI sume localidades) con `backend/mapas/semilla_localidades.py`,
+con red y BD (solo lee `estacion`): empareja por nombre normalizado en el mismo departamento,
+prefiere las convencionales (CO, CP, MAP), usa `ALIAS` (Cajamarca = AUGUSTO WEBERBAUER, San Miguel
+de Pallaques = la CO San Miguel) y `MANUAL` (ciudades sin estación homónima, con
+`ubicacion: "ciudad (centro aproximado)"`), e imprime las no resueltas y las que tenían varias
+estaciones posibles. Su salida se revisa y se sube al repo: la tarea nunca inventa un punto.
+Montando el repo para que el archivo quede en el host (PowerShell; en Git Bash, `$PWD` y
+`MSYS_NO_PATHCONV=1` como en §5.7):
+```powershell
+docker compose run --rm -v "${PWD}:/app" worker python -m backend.mapas.semilla_localidades
+# --html ARCHIVO: lee una página guardada en vez de bajarla · --salida RUTA: otro destino
+```
+
+Claves del latido `pronostico`:
+
+| Clave | Qué es |
+|---|---|
+| `emision` | fecha de la emisión leída (`null` si la página falló) |
+| `localidades` | localidades legibles de la página |
+| `filas` / `escritas` | días enviados al upsert (desde hoy) / filas de verdad escritas (menos si la BD ya tenía una emisión más nueva) |
+| `purgadas` | filas de fechas pasadas borradas |
+| `sin_ubicacion` | localidades sin punto en el catálogo (máx. 30) |
+| `problemas` | bloques o días de la página que no se entendieron (máx. 20) |
+| `cajamarca`, `pais` | `{fecha: {lluvia, posible, tormenta, nieve, sin_lluvia}}` (`posible` = "puede llover") |
+| `fallas` | `pagina` (caída o ilegible) o `catalogo` (no se pudo leer): no se escribe nada y la tarea termina en error después de escribir el latido; `migracion` (falta la tabla) |
+| `avisos` | detalle; si la emisión tiene más de 3 días: "SENAMHI no publica un pronóstico nuevo desde el ..." |
+
+Corrida suelta: `docker compose run --rm worker python -m backend.ingesta.pronostico`.
+
+### 5.6.5. SENAMHI — nowcasting de lluvia, experimental (tarea `nowcast`)
+
+`connectors/senamhi_nowcast.py` + `ingesta/nowcast.py`, cada 10 min y al arrancar el worker
+(migración `nowcast_senamhi`). SENAMHI no lo documenta; todo se verificó en vivo el 22-09-2026.
+```
+GET https://www.senamhi.gob.pe/mapas/mapa-nowcasting/nowcasting-pronostico-1h.php   # visor: última emisión
+GET https://idesep.senamhi.gob.pe/geoserver/ows?service=WFS&version=2.0.0&request=GetFeature
+    &typeNames=g_nowcasting:view_nowcasting&outputFormat=application/json
+    &viewparams=fichero:{fichero}&CQL_FILTER=nivel>0&propertyName=nivel,fecha1,fecha2,fichero,geom
+```
+- **Qué es:** manchas de celdas de ~2 km con lluvia de nivel 1, 2 y 3 (moderada, fuerte y extrema
+  según la leyenda del visor) para ahora (análisis), +1 h y +2 h. SENAMHI lo llama "producto
+  referencial y aún en etapa de calibración": el frontend lo rotula **Experimental**, en azules y
+  violeta (nunca los colores de los avisos) y sin rayos (el texto por nivel del visor es la
+  plantilla del aviso de 24 h, no un dato de rayos).
+- **Ficheros:** el visor trae el último en `var fichero = "nowcasting_20260922-2040_forecast_..."`
+  (hora de Lima). De la emisión T salen tres: `nowcasting_{T}_analysis_{T}_web` (ahora) y
+  `nowcasting_{T}_forecast_{T+1h}_web` / `_{T+2h}_web` (cruzan la medianoche). La validez sale de
+  `fecha1`/`fecha2` (UTC): [T, T] el análisis, [T, T+1 h] el +1 h y [T, T+2 h] el +2 h, así que
+  "en 2 horas" es "entre T y T+2 h".
+- **Trampas:** sin `viewparams` la capa da 0 elementos. En WFS 2.0 el BBOX del CQL va en orden
+  lat,lon y al revés devuelve 0 elementos sin error: no se usa BBOX; se recorta al Perú en SQL
+  (`st_intersects` con el recuadro, la mancha que cruza la frontera se guarda entera) y se
+  controla el orden de ejes del primer vértice. Un XML de excepción con HTTP 200 es falla, no "sin
+  manchas". Una respuesta filtrada vacía se confirma con una consulta sin filtro de un elemento: si
+  también viene vacía, el fichero aún no existe (`ProductoNoPublicado`, falla de ese horizonte).
+  Con peticiones en paralelo la GeoServer corta: todo va en serie, con 1,5 s de pausa.
+- **Tablas:** `nowcast_producto` (una fila por horizonte, upsert: una emisión más vieja no pisa) y
+  `nowcast_mancha` (una fila por horizonte y nivel, con la unión de las manchas simplificada a
+  ~330 m). Una emisión ya guardada no se vuelve a pedir: si SENAMHI no publicó nada nuevo, la
+  corrida solo lee el visor.
+- **Umbral de 30 min:** vive **solo** en las vistas. `nowcast_estado` da cada producto con
+  `vigente` y `vence_en`; `nowcast_vigente` da las manchas solo si la emisión tiene 30 min o menos.
+  Nada se borra por una falla ni por antigüedad: cuando SENAMHI se detiene (el 22-09 no publicó
+  nada desde las 20:40 hasta pasadas las 23:25), el mapa se vacía solo y el chip dice desde cuándo.
+  El frontend no recalcula el umbral.
+- **Tiempos:** la tarea tiene 240 s (`soft_time_limit`); cada pedido al WFS se intenta 2 veces y,
+  pasados 90 s desde el inicio, no se pide otro horizonte (queda como falla `hNN`), así que el
+  latido se escribe siempre. En el beat va con `expires` de 540 s: si la cola se atrasa, una
+  corrida vieja se descarta en vez de juntarse con la siguiente.
+
+Claves del latido `nowcast`:
+
+| Clave | Qué es |
+|---|---|
+| `emision`, `edad_min` | T según el visor (hora de Perú) y sus minutos de antigüedad (`null` si el visor falló) |
+| `bajados`, `reusados` | horizontes bajados y escritos / que ya tenían T (o una más nueva) guardada |
+| `manchas` | `{"60": 62}`: elementos de nivel 1 a 3 que tocan el Perú, de los bajados |
+| `retraso_min` | edad de T cuando se bajó algo: cuánto tarda SENAMHI en publicar (para calibrar los 30 min) |
+| `detenido` | la emisión tiene más de 30 min; si el visor respondió no es falla, va a `avisos` ("SENAMHI no publica el nowcasting desde las 20:40") |
+| `fallas` | `visor` (caído, sin fichero o con hora futura; la tarea termina en error después del latido), `h0` / `h60` / `h120` (ese horizonte no se bajó y su fila no se toca), `migracion` |
+
+Corrida suelta: `docker compose run --rm worker python -m backend.ingesta.nowcast`.
+
+### 5.6.6. Diagnóstico de avisos, pronóstico y nowcasting (solo lectura)
+
+```sql
+-- íconos y anclas de los avisos de lluvia (hoy: 376 mapa 1 -> gota, 2 anclas)
+select numero, mapa, nivel, icono, jsonb_array_length(anclas), lectura->'montos'
+from aviso_vigente where tema = 'lluvia';
+-- pronóstico de hoy: filas y cuántas sin ubicar
+select count(*), count(*) filter (where lat is null) from pronostico_localidad
+where fecha = (now() at time zone 'America/Lima')::date;
+select tipo, posible, count(*) from pronostico_vigente
+where fecha = (now() at time zone 'America/Lima')::date group by 1, 2;
+-- nowcasting: emisión, validez y si sigue vigente
+select * from nowcast_estado;
+-- latidos de las tres tareas
+select servicio, ts, resumen->'fallas', resumen->'avisos' from latido
+where servicio in ('avisos', 'pronostico', 'nowcast');
+```
+Además, en el *advisor* de Supabase: RLS activo en las tablas nuevas y las vistas con
+`security_invoker`.
 
 ### 5.7. IDESEP (SENAMHI) — mapas históricos de eventos El Niño
 
@@ -584,23 +805,41 @@ acumulación propia en la BD) se puede:
 3. El resultado de la tarea Celery es el resumen: `estaciones`, `lluvia`, `caudal`, `alertas` (de
    ríos), `icen_serie`, `fallas`, `avisos`. Corrida suelta: `docker compose run --rm worker python -m backend.ingesta`.
 
-**Tareas del worker** (`backend/celery_app.py`; las cuatro primeras también corren al arrancar,
-porque el beat pierde su programación al recrear el contenedor). Cada una deja su latido en la
-tabla `latido` (servicio = nombre de la tarea) con lo que escribió, `fallas` y `avisos`:
+**Tareas del worker** (`backend/celery_app.py`; todas menos `refresh_cache` también corren al
+arrancar, porque el beat pierde su programación al recrear el contenedor). Cada una deja su latido
+en la tabla `latido` (servicio = nombre de la tarea) con lo que escribió, `fallas` y `avisos`:
 
 | Tarea | Cada | Qué hace |
 |---|---|---|
 | `ingesta` | 1 h | estaciones, lluvia de Cajamarca (24 h), caudales, índices, serie ICEN del IGP, alertas de ríos |
 | `enfen` | 6 h | comunicado ENFEN + ICEN del Informe Técnico (§5.3.1) |
-| `avisos` | 1 h | avisos oficiales de SENAMHI como áreas + alertas tipo `aviso` (§5.6.1) |
+| `avisos` | 1 h | avisos oficiales de SENAMHI como áreas, con ícono y lectura del texto + alertas tipo `aviso` (§5.6.1) |
 | `lluvia_nacional` | 30 min | lluvia de la última hora en ~216 estaciones del país + alertas de lluvia con la referencia de SENAMHI (§5.6.2) |
+| `pronostico` | 1 h | pronóstico oficial de SENAMHI en ~277 localidades, 3 a 5 días (§5.6.4); límite de 300 s |
+| `nowcast` | 10 min | nowcasting de SENAMHI para ahora, +1 h y +2 h (§5.6.5); límite de 240 s y `expires` de 540 s |
 | `refresh_cache` | 5 min | snapshot en Redis para la API |
+
+**Despliegue de avisos con ícono, pronóstico y nowcasting**, en este orden (todo es aditivo: si
+algo sale mal, el worker y el frontend anteriores siguen funcionando):
+1. Las migraciones `avisos_iconos`, `pronostico_localidad` y `nowcast_senamhi`, en ese orden, y
+   `schema.sql`. La primera llena las anclas de los avisos ya guardados.
+2. El catálogo `localidades_senamhi.json` revisado (17 de Cajamarca y las ciudades del selector
+   con punto; §5.6.4). Ya está en el repo: solo se vuelve a correr la semilla si SENAMHI suma
+   localidades.
+3. El worker: `docker compose up -d --build worker` (y `backend`, §8). El arranque encola
+   `avisos`, `pronostico` y `nowcast`; revisar con las consultas de §5.6.6. Si el worker se
+   adelanta a las migraciones no rompe: los avisos se guardan sin íconos y las otras dos tareas
+   solo escriben su latido con la falla `migracion`.
+4. El frontend, **solo después** del paso 1: pide las columnas nuevas de `aviso_vigente` (si no
+   existen, vuelve a las de antes una vez por sesión y el mapa va sin insignias) y las vistas nuevas.
 
 **BD:** la estructura está en `supabase/migrations/` (historia) y `supabase/schema.sql` (foto).
 `lectura_caudal` es el historial; la vista **`caudal_actual`** da la última lectura de ayer u
 hoy de cada estación (es la que usan el mapa y el snapshot). La vista **`alerta_actual`** da las
 alertas que se muestran: las vigentes, y la lluvia medida solo con 3 h o menos (§5.6.2); la leen el
-frontend y el snapshot, no la tabla `alerta`. Todo cambio de BD va como migración nueva.
+frontend y el snapshot, no la tabla `alerta`. El frontend lee también `aviso_vigente` (con ícono y
+anclas), `pronostico_vigente` (hoy, mañana y pasado) y `nowcast_estado` / `nowcast_vigente` (el
+umbral de 30 min está en la vista). Todo cambio de BD va como migración nueva.
 
 ### 7.2. Prototipo (sin dependencias, congelado)
 
@@ -651,23 +890,25 @@ Stack completo en `docker-compose.yml` (4 servicios):
 |---|---|---|
 | `frontend` | React build servido por **nginx** | 8080 |
 | `backend` | API **FastAPI async** (`backend/app.py`) | 8000 |
-| `worker` | **Celery + beat**: ingesta horaria, ENFEN cada 6 h, avisos SENAMHI, lluvia nacional, refresco de caché | — |
+| `worker` | **Celery + beat**: ingesta horaria, ENFEN cada 6 h, avisos SENAMHI, lluvia nacional, pronóstico por localidad, nowcasting, refresco de caché | — |
 | `redis` | caché (snapshot) + cola/broker de Celery | 6379 |
 
 ### ¿Por qué esta arquitectura? (van a entrar varias personas a la vez)
-- **Nadie consulta las fuentes por visita:** SENAMHI/ANA solo los consulta el worker, una vez por
-  hora, así no nos rate-limitean en picos de tráfico. La **web lee Supabase directo** (RLS, con la
-  llave pública, y un caché en memoria de 60 s por pestaña): cada visita hace unas 5 consultas a
-  Supabase, que es donde está el límite a vigilar si el tráfico crece.
+- **Nadie consulta las fuentes por visita:** SENAMHI/ANA solo los consulta el worker (de cada
+  10 min en el nowcasting a cada 6 h en el ENFEN), así no nos rate-limitean en picos de tráfico.
+  La **web lee Supabase directo** (RLS, con la llave pública, y un caché en memoria por pestaña: 60 s,
+  10 min el pronóstico): cada visita hace unas pocas consultas a Supabase, más una por capa que se
+  enciende, y ahí está el límite a vigilar si el tráfico crece.
 - **Redis (caché de la API):** el worker deja un *snapshot* (índices, último caudal por estación,
   alertas vigentes) y la API lo sirve en milisegundos a consumidores que no son la web (app
   móvil, terceros). Si algún día la web necesita aguantar más, puede leer ese snapshot con un
   proxy `/api` en nginx en vez de consultar Supabase.
 - **Worker (Celery + beat):** bajar datos de las fuentes es lento y a veces falla (ANA es
-  intermitente). Eso corre **en segundo plano**, aparte de la web: la ingesta cada hora y la tarea
-  `enfen` cada 6 h. `beat` es el "reloj" que dispara las tareas; como su programación se pierde al
-  recrear el contenedor, al arrancar encola una vez `ingesta` y `enfen` (señal `beat_init`). Cada
-  corrida deja su **latido** (tabla `latido`) con lo que falló, y el frontend lo muestra.
+  intermitente). Eso corre **en segundo plano**, aparte de la web: la ingesta cada hora, la tarea
+  `enfen` cada 6 h y las demás según §7.1. `beat` es el "reloj" que dispara las tareas; como su
+  programación se pierde al recrear el contenedor, al arrancar encola una vez todas menos
+  `refresh_cache` (señal `beat_init`). Cada corrida deja su **latido** (tabla `latido`) con lo que
+  falló, y el frontend lo muestra.
 - **Backend async (FastAPI):** atiende muchas peticiones a la vez sin bloquearse esperando I/O
   (`async`/`await` + consultas en paralelo). Un backend síncrono se traba bajo concurrencia.
 - **Redis también como cola/broker:** deja listo repartir tareas pesadas entre **varios workers**
@@ -757,7 +998,9 @@ scraping HTML/PDF.**
 | IGP ICEN | archivo abierto (**HTTP**) | proxyear desde backend |
 | ANA caudal | API interna `.asmx` (POST JSON) | payload exacto, ver 5.2 |
 | SENAMHI estaciones/serie | HTML con JSON/Highcharts embebido | scraping estructurado |
-| SENAMHI avisos | scraping de tabla | pendiente |
+| SENAMHI avisos | scraping de tabla + WFS de la GeoServer | polígonos por WFS; párrafos de la página de vigentes (§5.6.1) |
+| SENAMHI pronóstico por localidad | scraping de una página HTML | una petición por hora; coordenadas de un catálogo propio (§5.6.4) |
+| SENAMHI nowcasting | visor HTML + WFS de la GeoServer | en serie y con pausas; experimental (§5.6.5) |
 | CENEPRED | ArcGIS REST | referencia |
 
 Reglas:
@@ -786,6 +1029,12 @@ Reglas:
 - [x] **Serie del ICEN** (`icen_serie`) y panel gráfico de El Niño en el frontend.
 - [x] **Alertas de lluvia con la referencia de SENAMHI** por estación, en todo el país (§5.6.2); se
       retiraron los umbrales provisionales de SIMPAC.
+- [x] **Avisos con ícono** (gota, gota con rayo, copo; §5.6.1), **pronóstico oficial por localidad**
+      (§5.6.4) y **nowcasting experimental** (§5.6.5), con sus capas en el frontend.
+- [ ] Ubicar las **41 localidades del pronóstico sin punto** (`sin_ubicar` en
+      `localidades_senamhi.json`): hoy se guardan pero no se muestran.
+- [ ] **Nowcasting:** calibrar el umbral de 30 min con `retraso_min` del latido (cuánto tarda
+      SENAMHI en publicar) y revisar cada cuánto se detiene.
 - [ ] Conector de **push** (Firebase) que dispare la notificación cuando `alerta` cambie de nivel,
       solo con lo oficial (`oficial: true`): la lluvia medida no se notifica como alerta.
 - [ ] Reejecutar la verificación en **temporada de lluvias (oct–abr)** y revisar las alertas de lluvia:

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ChevronDown, ChevronRight, ChevronUp, Droplets, Megaphone, Plus, ShieldAlert, TriangleAlert, Waves } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -7,6 +7,7 @@ import { NIVEL } from "@/lib/nivel";
 import { ENFEN_HEX, NIVEL_HEX } from "@/map/palette";
 import { horaPeru } from "@/lib/tiempo";
 import { ATRIBUCION_SENAMHI } from "@/map/senamhi";
+import FranjaPronostico, { FranjaMini } from "@/components/FranjaPronostico";
 
 const COLOR_AVISO = { aviso: "amarillo", alerta: "naranja", emergencia: "rojo" };
 const URL_AVISO = (referencia) =>
@@ -67,10 +68,28 @@ export default function StatusPanel({
   desactualizado,
   lluviaActualizada,
   lluviaDesactualizada,
+  pron,
+  fechaMapa,
+  tope, // clase de alto máximo en pantallas bajas (App: no tapar el día ni el chip del nowcasting)
 }) {
   const [abierto, setAbierto] = useState(false);
-  // plegado deja solo el titular: en pantallas chicas el panel tapa el mapa y sus capas
+  // plegado deja el titular y el pronóstico en una línea. En el celular va plegado (abierto tapa
+  // casi todo el mapa y sus íconos) y sigue al ancho de la pantalla (girar el celular, achicar la
+  // ventana) hasta que la persona lo abre o lo pliega a mano.
   const [plegado, setPlegado] = useState(false);
+  const aMano = useRef(false);
+  useEffect(() => {
+    let mq;
+    try {
+      mq = window.matchMedia("(max-width: 639px)");
+    } catch {
+      return undefined;
+    }
+    const seguir = () => !aMano.current && setPlegado(mq.matches);
+    seguir();
+    mq.addEventListener?.("change", seguir);
+    return () => mq.removeEventListener?.("change", seguir);
+  }, []);
   const nv = NIVEL[nivelLocal];
   const total = cuantasTotal;
   // estaciones de la zona que pasaron la referencia de SENAMHI: las 3 primeras con su detalle
@@ -78,11 +97,19 @@ export default function StatusPanel({
 
   return (
     <div className="pointer-events-none absolute inset-x-0 bottom-0 z-[600] p-3 md:p-4">
-      <div className="pointer-events-auto mx-auto max-h-[70vh] max-w-3xl overflow-y-auto rounded-2xl border border-border bg-card/95 shadow-2xl backdrop-blur">
+      <div
+        data-tapa-mapa
+        className={cn(
+          "pointer-events-auto mx-auto max-h-[70vh] max-w-3xl overflow-y-auto rounded-2xl border border-border bg-card/95 shadow-2xl backdrop-blur",
+          tope
+        )}
+      >
         <div className={cn("h-1 w-full", nv.strip)} />
-        <div className="flex items-start gap-3 px-4 pt-3.5">
-          <div className="min-w-0">
-            <div className="text-[0.68rem] uppercase tracking-wider text-muted-foreground">
+        {/* la insignia va en la línea de "Estado" y el titular debajo, a todo el ancho (si comparten
+            fila, en el celular el titular queda en una columna angosta) */}
+        <div className="px-4 pt-3.5">
+          <div className="flex items-start gap-3">
+            <div className="min-w-0 pt-1 text-[0.68rem] uppercase tracking-wider text-muted-foreground">
               Estado · {depto}
               {porGps && <span className="normal-case tracking-normal"> (tu ubicación)</span>}
               {actualizado && (
@@ -96,28 +123,34 @@ export default function StatusPanel({
                 </span>
               )}
             </div>
-            <h3 className="text-base font-semibold leading-snug md:text-lg">{local}</h3>
+            <div className="ml-auto flex shrink-0 items-center gap-1">
+              <Badge variant="outline" className={cn("gap-1.5", nv.border, nv.text)}>
+                <TriangleAlert className="h-3.5 w-3.5" />
+                {etiqueta ?? nv.label}
+              </Badge>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-7 w-7"
+                onClick={() => {
+                  aMano.current = true;
+                  setPlegado((p) => !p);
+                }}
+                aria-expanded={!plegado}
+                aria-label={plegado ? "Mostrar el detalle" : "Plegar el panel"}
+              >
+                {plegado ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+              </Button>
+            </div>
           </div>
-          <div className="ml-auto flex shrink-0 items-center gap-1">
-            <Badge variant="outline" className={cn("gap-1.5", nv.border, nv.text)}>
-              <TriangleAlert className="h-3.5 w-3.5" />
-              {etiqueta ?? nv.label}
-            </Badge>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-7 w-7"
-              onClick={() => setPlegado((p) => !p)}
-              aria-expanded={!plegado}
-              aria-label={plegado ? "Mostrar el detalle" : "Plegar el panel"}
-            >
-              {plegado ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-            </Button>
-          </div>
+          <h3 className="mt-1 text-base font-semibold leading-snug md:text-lg">{local}</h3>
         </div>
 
         {plegado ? (
-          <div className="pb-2" />
+          // plegado: bajo el título, el pronóstico de tu localidad en una línea
+          <div className="px-4 pb-2">
+            <FranjaMini pron={pron} />
+          </div>
         ) : (
           <>
             <div className="space-y-1 px-4 pt-1 text-sm text-muted-foreground">
@@ -166,6 +199,8 @@ export default function StatusPanel({
                 </p>
               )}
             </div>
+
+            <FranjaPronostico pron={pron} fechaMapa={fechaMapa} />
 
             <div className="grid grid-cols-3 gap-2 px-4 py-3 sm:flex">
               <Metric
@@ -226,6 +261,13 @@ export default function StatusPanel({
                   la costa) y alta en la selva (hasta 25 mm). No es un aviso oficial, es la lectura de una sola
                   estación (que puede fallar) y en temporada de lluvias puede pasar varias veces. Ante una
                   emergencia, sigue las indicaciones de SENAMHI, INDECI y Defensa Civil.
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  En el mapa, un círculo con borde amarillo, naranja o rojo marca una zona con aviso de SENAMHI: la gota
+                  quiere decir que puede llover en algún momento dentro de esa zona, no en toda ni todo el día. Los
+                  círculos blancos son el pronóstico de SENAMHI para cada localidad (hoy, mañana y pasado); con borde
+                  punteado, SENAMHI escribe «tendencia a»: es posible, no seguro. Las manchas azules con borde punteado
+                  son el nowcasting de SENAMHI: una estimación experimental de las próximas 2 horas, no un aviso.
                 </p>
               </div>
             )}

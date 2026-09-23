@@ -101,6 +101,15 @@
 .mk.diamond svg {
   transform: rotate(-45deg);
 }
+/* con el mapa alejado, ríos y estaciones se achican para no tapar avisos y pronóstico
+   (scale se compone con el rotate del rombo; el ancla es el centro, no se corre).
+   El mismo factor lo usa map/acomodo.js (ESCALA_MK) para calcular sus cajas. */
+[data-escala="region"] .mk {
+  scale: 0.62;
+}
+[data-escala="pais"] .mk {
+  scale: 0.45;
+}
 
 /* pin tipo Waze (gota) para reportes ciudadanos: la esquina en punta (abajo a la
    izquierda) girada -45 grados queda abajo al centro, justo sobre el punto GPS */
@@ -232,4 +241,518 @@
   font-weight: 600;
   font-family: inherit;
   cursor: pointer;
+}
+
+/* ============================================================
+   Insignias de los avisos y discos del pronostico (map/marcadores.js).
+   El icono de Leaflet mide 0x0: todo se dibuja alrededor del punto,
+   corrido por --dx/--dy (map/acomodo.js). El tamano depende de la
+   escala del mapa ([data-escala] en el contenedor, MapView).
+   ============================================================ */
+.glifo svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+.mkr {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 0;
+  height: 0;
+}
+.ins-cuerpo,
+.loc-cuerpo {
+  position: absolute;
+  left: 0;
+  top: 0;
+  display: grid;
+  place-items: center;
+  border-radius: 9999px;
+  background: #fff;
+  transform: translate(calc(-50% + var(--dx, 0px)), calc(-50% + var(--dy, 0px)));
+  transition: opacity 0.18s, transform 0.18s;
+}
+.mk-ins .ins-cuerpo {
+  width: 40px;
+  height: 40px;
+  border: 4px solid var(--aro);
+  box-shadow: 0 0 0 5px var(--halo), 0 3px 10px rgba(15, 23, 42, 0.3);
+}
+.mk-ins .ins-cuerpo svg {
+  width: 24px;
+  height: 24px;
+}
+.ins-chip {
+  position: absolute;
+  left: 0;
+  top: 0;
+  transform: translate(calc(-50% + var(--dx, 0px)), calc(20px + var(--dy, 0px)));
+  background: #0f172a;
+  color: #fff;
+  font: 700 10px/16px Geist, Inter, sans-serif;
+  padding: 0 6px;
+  border-radius: 9999px;
+  border: 1.5px solid #fff;
+  white-space: nowrap;
+  transition: opacity 0.18s, transform 0.18s;
+}
+.ins-chip:empty {
+  display: none;
+}
+[data-escala="pais"] .mk-ins .ins-cuerpo {
+  width: 30px;
+  height: 30px;
+  border-width: 3px;
+}
+[data-escala="pais"] .mk-ins .ins-cuerpo svg {
+  width: 18px;
+  height: 18px;
+}
+[data-escala="local"] .mk-ins .ins-cuerpo {
+  width: 44px;
+  height: 44px;
+}
+[data-escala="local"] .mk-ins .ins-cuerpo svg {
+  width: 26px;
+  height: 26px;
+}
+.mk-loc .loc-cuerpo {
+  width: 28px;
+  height: 28px;
+  box-shadow: 0 2px 6px rgba(15, 23, 42, 0.25);
+}
+.mk-loc .loc-cuerpo svg {
+  width: 20px;
+  height: 20px;
+}
+.mk-loc.loc-seco .loc-cuerpo {
+  width: 24px;
+  height: 24px;
+}
+.mk-loc.posible .loc-cuerpo {
+  border: 2px dashed #475569;
+}
+[data-escala="local"] .mk-loc .loc-cuerpo {
+  width: 32px;
+  height: 32px;
+}
+[data-escala="local"] .mk-loc .loc-cuerpo svg {
+  width: 22px;
+  height: 22px;
+}
+[data-escala="local"] .mk-loc.loc-seco .loc-cuerpo {
+  width: 28px;
+  height: 28px;
+}
+/* el punto lleva [data-escala] para ganarle al tamaño del disco seco a escala local */
+[data-escala="pais"] .mk-loc .loc-cuerpo,
+[data-escala] .mk-loc.es-punto .loc-cuerpo {
+  width: 10px;
+  height: 10px;
+  background: var(--c);
+  border: 1.5px solid #fff;
+}
+[data-escala="pais"] .mk-loc.loc-seco .loc-cuerpo {
+  width: 7px;
+  height: 7px;
+}
+[data-escala="pais"] .mk-loc .loc-cuerpo svg,
+.mk-loc.es-punto .loc-cuerpo svg {
+  display: none;
+}
+[data-escala="pais"] .mk-loc .loc-cuerpo::before,
+.mk-loc.es-punto .loc-cuerpo::before {
+  content: "";
+  position: absolute;
+  inset: -9px;
+}
+
+/* tu localidad: aro negro (tambien cuando es un punto) */
+.mk-loc.tuya .loc-cuerpo {
+  border: 3px solid #0f172a;
+}
+.mk-loc.tuya.posible .loc-cuerpo {
+  border: 3px dashed #0f172a;
+}
+[data-escala="pais"] .mk-loc.tuya .loc-cuerpo,
+.mk-loc.tuya.es-punto .loc-cuerpo {
+  width: 12px;
+  height: 12px;
+  border: 2.5px solid #0f172a;
+}
+.loc-rot {
+  display: none;
+  position: absolute;
+  left: 0;
+  top: 0;
+  transform: translate(calc(18px + var(--dx, 0px)), calc(-50% + var(--dy, 0px)));
+  white-space: nowrap;
+  background: rgba(255, 255, 255, 0.94);
+  border-radius: 9999px;
+  padding: 0 8px;
+  font: 600 11px/20px Geist, Inter, sans-serif;
+  color: #1e293b;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.14);
+}
+.loc-rot .t {
+  color: #64748b;
+  font-weight: 500;
+  margin-left: 4px;
+  font-variant-numeric: tabular-nums;
+}
+.mk-loc.con-rot .loc-rot {
+  display: block;
+}
+.mk-loc.rot-izq .loc-rot {
+  transform: translate(calc(-100% - 18px + var(--dx, 0px)), calc(-50% + var(--dy, 0px)));
+}
+.mk-loc.tuya .loc-rot {
+  font-weight: 700;
+  color: #0f172a;
+}
+.mk-ins:hover .ins-cuerpo,
+.mk-loc:hover .loc-cuerpo {
+  transform: translate(calc(-50% + var(--dx, 0px)), calc(-50% + var(--dy, 0px))) scale(1.08);
+}
+/* el ícono mide 0x0: el foco del teclado se marca en el disco, no en el punto */
+.leaflet-marker-icon:has(> .mkr):focus {
+  outline: none;
+}
+.leaflet-marker-icon:focus-visible .ins-cuerpo,
+.leaflet-marker-icon:focus-visible .loc-cuerpo {
+  outline: 2px solid #0f172a;
+  outline-offset: 3px;
+}
+.es-oculto .ins-cuerpo,
+.es-oculto .loc-cuerpo,
+.es-oculto .ins-chip,
+.es-oculto .loc-rot {
+  opacity: 0;
+  pointer-events: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  .mkr * {
+    transition: none !important;
+  }
+}
+.leaflet-tooltip.tip {
+  border-radius: 10px;
+  border: 1px solid hsl(var(--border));
+  box-shadow: 0 6px 16px -6px rgba(15, 23, 42, 0.3);
+  font-size: 0.8rem;
+  padding: 4px 8px;
+  max-width: 260px;
+  white-space: normal;
+  width: max-content;
+}
+
+/* ============================================================
+   Popups de avisos, pronostico y nowcasting (map/popups.js)
+   ============================================================ */
+
+/* en pantallas angostas, con un popup abierto los chips de arriba se apartan (MapView) */
+[data-tapa-mapa="arriba"] {
+  transition: opacity 0.15s;
+}
+@media (max-width: 1023px) {
+  html[data-popup] [data-tapa-mapa="arriba"] {
+    opacity: 0;
+    pointer-events: none;
+  }
+}
+.pop-ancho .leaflet-popup-content {
+  width: 300px !important;
+}
+@media (max-width: 400px) {
+  .pop-ancho .leaflet-popup-content {
+    width: calc(100vw - 72px) !important;
+  }
+}
+
+/* franja de 4 px del color del aviso, en el borde del popup (sigue a la vista al desplazar) */
+.pop-ancho.acento-2 .leaflet-popup-content-wrapper {
+  box-shadow: inset 0 4px 0 #EAB308, 0 12px 32px -8px rgba(15, 23, 42, 0.25);
+}
+.pop-ancho.acento-3 .leaflet-popup-content-wrapper {
+  box-shadow: inset 0 4px 0 #F58E27, 0 12px 32px -8px rgba(15, 23, 42, 0.25);
+}
+.pop-ancho.acento-4 .leaflet-popup-content-wrapper {
+  box-shadow: inset 0 4px 0 #DB0404, 0 12px 32px -8px rgba(15, 23, 42, 0.25);
+}
+.pop .cab {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+.pop .cab-txt {
+  min-width: 0;
+}
+.pop .cab h4 {
+  margin: 0;
+  font-size: 0.95rem;
+  line-height: 1.25;
+  letter-spacing: -0.01em;
+}
+.pop .cab .meta {
+  margin: 2px 0 0;
+  font-size: 0.74rem;
+  line-height: 1.3;
+}
+.pop .pop-ins {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 34px;
+  height: 34px;
+  border-radius: 9999px;
+  background: #fff;
+  border: 3px solid var(--aro);
+  box-shadow: 0 0 0 3px var(--halo);
+}
+.pop .pop-ins svg {
+  width: 20px;
+  height: 20px;
+}
+.pop .tit {
+  margin: 10px 0 0;
+  font-size: 0.9rem;
+  font-weight: 600;
+  line-height: 1.3;
+}
+.pop .donde {
+  margin: 2px 0 0;
+  font-size: 0.78rem;
+  line-height: 1.35;
+  color: hsl(var(--muted-foreground));
+}
+.pop .caja {
+  background: #F0F9FF;
+  border-radius: 10px;
+  padding: 8px 10px;
+  margin: 8px 0;
+  font-size: 0.86rem;
+  font-weight: 500;
+  line-height: 1.4;
+}
+.pop .caja .aclara {
+  display: block;
+  margin-top: 2px;
+  color: hsl(var(--muted-foreground));
+  font-size: 0.8rem;
+  font-weight: 400;
+}
+.pop .sub {
+  margin: 10px 0 5px;
+  font-size: 0.76rem;
+  font-weight: 600;
+}
+.pop .mm {
+  display: grid;
+  grid-template-columns: auto auto 1fr;
+  gap: 4px 8px;
+  font-size: 0.82rem;
+  align-items: center;
+}
+.pop .mm .v {
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+  color: hsl(var(--muted-foreground));
+}
+.pop .mm .barra {
+  position: relative;
+  height: 6px;
+  background: #E0F2FE;
+  border-radius: 3px;
+}
+.pop .mm .barra span {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  border-radius: 3px;
+  background: #1C7ED6;
+}
+.pop .mm .barra span.mas {
+  background: linear-gradient(90deg, #1C7ED6, rgba(28, 126, 214, 0.12));
+}
+.pop .mm .barra span.punto {
+  top: -1px;
+  bottom: auto;
+  width: 8px;
+  height: 8px;
+  margin-left: -4px;
+  border-radius: 9999px;
+  box-shadow: 0 0 0 2px #fff;
+}
+.pop .mm .esc {
+  display: flex;
+  justify-content: space-between;
+  margin-top: -2px;
+  font-size: 0.62rem;
+  color: hsl(var(--muted-foreground));
+}
+.pop .mm-nota {
+  margin: 4px 0 0;
+  font-size: 0.72rem;
+  line-height: 1.35;
+  color: hsl(var(--muted-foreground));
+}
+.pop .filas-suave {
+  margin-top: 10px;
+  grid-template-columns: 58px 1fr;
+  gap: 5px 10px;
+  font-size: 0.82rem;
+}
+.pop .filas-suave dd {
+  font-weight: 500;
+  line-height: 1.35;
+}
+.pop .filas-suave dd .cita {
+  display: block;
+}
+.pop .cita {
+  margin: 6px 0 0;
+  padding-left: 8px;
+  border-left: 3px solid hsl(var(--border));
+  font-style: italic;
+  font-size: 0.8rem;
+  color: hsl(var(--muted-foreground));
+}
+.pop details summary {
+  cursor: pointer;
+  font-size: 0.82rem;
+  color: hsl(var(--muted-foreground));
+  margin-top: 8px;
+}
+.pop details blockquote {
+  margin: 6px 0 0;
+  padding: 6px 8px;
+  border-radius: 8px;
+  background: hsl(var(--muted));
+  font-size: 0.78rem;
+  line-height: 1.45;
+}
+.pop .pie-det {
+  margin: 4px 0 0;
+  font-size: 0.7rem;
+  color: hsl(var(--muted-foreground));
+}
+.pop .enl {
+  margin: 10px 0 0;
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+.pop .enl a {
+  color: hsl(var(--foreground));
+}
+.pop .firma {
+  margin: 6px 0 0;
+  font-size: 0.68rem;
+  line-height: 1.35;
+  color: hsl(var(--muted-foreground));
+}
+.pop .aclara {
+  margin: 6px 0 0;
+  font-size: 0.78rem;
+  line-height: 1.4;
+  color: hsl(var(--muted-foreground));
+}
+.pop .sep {
+  margin: 10px 0 6px;
+  border-top: 1px solid hsl(var(--border));
+  padding-top: 6px;
+  font-size: 0.66rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: hsl(var(--muted-foreground));
+}
+.pop .insig {
+  display: inline-block;
+  border: 1px dashed #94a3b8;
+  border-radius: 4px;
+  padding: 0 4px;
+  font-size: 0.58rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #475569;
+}
+.pop .mini3 {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+  margin: 8px 0;
+  text-align: center;
+  font-size: 0.72rem;
+}
+.pop .mini3 .glifo {
+  display: block;
+  width: 28px;
+  height: 28px;
+  margin: 2px auto;
+}
+.pop .mini3 .d {
+  border-radius: 8px;
+  padding: 4px 0;
+}
+.pop .mini3 .d.sel {
+  background: hsl(var(--muted));
+}
+.pop .mini3 .l {
+  font-weight: 600;
+}
+.pop .mini3 .t {
+  font-variant-numeric: tabular-nums;
+}
+.pop .mini3 .sin {
+  display: grid;
+  place-items: center;
+  font-weight: 600;
+  color: hsl(var(--muted-foreground));
+}
+.pop-loc .resumen {
+  margin: 6px 0 2px;
+}
+.pop-loc .resumen .cuando {
+  font-weight: 600;
+}
+.pop-loc .resumen .extra {
+  display: block;
+  font-size: 0.76rem;
+  font-weight: 500;
+  color: #4338CA;
+}
+.pop-loc .temps {
+  margin: 0 0 6px;
+  font-size: 0.82rem;
+}
+.pop-loc .literal {
+  margin: 6px 0;
+  padding: 6px 8px 6px 10px;
+  border-left: 3px solid #93C5FD;
+  border-radius: 0 8px 8px 0;
+  background: #F8FAFC;
+  font-size: 0.8rem;
+  font-style: italic;
+  line-height: 1.45;
+}
+.pop-loc .literal .de {
+  display: block;
+  margin-top: 2px;
+  font-size: 0.7rem;
+  font-style: normal;
+  color: hsl(var(--muted-foreground));
+}
+.pop-nc .cab h4 {
+  display: inline;
+}
+.pop-nc .insig {
+  margin-left: 6px;
+  vertical-align: 2px;
+}
+.pop-nc .resumen {
+  margin: 8px 0 0;
+}
+.pop-nc .meta {
+  margin: 6px 0 0;
 }

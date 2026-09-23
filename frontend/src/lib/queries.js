@@ -91,18 +91,96 @@ export function getIcenSerie(meses = 24) {
   );
 }
 
+// Una vista o columna que aún no existe en la base (migración pendiente): la app sigue sin ella.
+const faltaVista = (e) => e?.code === "PGRST205" || e?.code === "42P01";
+const faltaColumna = (e) => e?.code === "42703";
+// null si la vista aún no existe (la capa lo dice y el panel no muestra esa parte)
+async function siExiste(fn) {
+  try {
+    return await fn();
+  } catch (e) {
+    if (faltaVista(e)) return null;
+    throw e;
+  }
+}
+
 // Avisos de SENAMHI que no han terminado (vista aviso_vigente), con el polígono en GeoJSON;
-// ya vienen ordenados por nivel (el rojo al final, para dibujarlo encima).
+// ya vienen ordenados por nivel (el rojo al final, para dibujarlo encima). texto_dia, icono,
+// lectura y anclas (íconos y lectura del texto oficial) son de la migración de íconos: si aún no
+// está, se piden las columnas de antes (una sola vez por sesión) y el mapa va sin insignias.
+const AVISO_V1 = "id,tipo,anio,numero,mapa,nivel,titulo,tema,descripcion,inicio,fin,en_curso,departamentos,url,geojson";
+let avisosSinIconos = false;
 export function getAvisosVigentes() {
   return cached(
     "avisos",
-    () =>
-      filas(
-        supabase
-          .from("aviso_vigente")
-          .select("id,tipo,numero,mapa,nivel,titulo,tema,descripcion,inicio,fin,en_curso,departamentos,url,geojson")
-      ),
+    async () => {
+      const pedir = (cols) => filas(supabase.from("aviso_vigente").select(cols));
+      if (avisosSinIconos) return pedir(AVISO_V1);
+      try {
+        return await pedir(`${AVISO_V1},texto_dia,icono,lectura,anclas`);
+      } catch (e) {
+        if (!faltaColumna(e)) throw e;
+        avisosSinIconos = true;
+        return pedir(AVISO_V1);
+      }
+    },
     5 * 60_000
+  );
+}
+
+// Pronóstico oficial de SENAMHI por localidad, de hoy a pasado mañana (vista pronostico_vigente:
+// solo localidades con punto y emisiones de los últimos 5 días). Lo leen el mapa, la franja de
+// 3 días y el "cerca de" del nowcasting. null si la vista aún no existe.
+export function getPronosticoVigente() {
+  return cached(
+    "pronostico",
+    () =>
+      siExiste(() =>
+        todas(() =>
+          supabase
+            .from("pronostico_vigente")
+            .select(
+              "codigo,nombre,departamento,lat,lon,fecha,emision,tmax,tmin,texto,tipo,posible,por,lluvia_segura,granizo,intensidad,momento,cielo,url"
+            )
+            .order("codigo")
+            .order("fecha")
+        )
+      ),
+    10 * 60_000
+  );
+}
+
+// Estado del nowcasting de SENAMHI por horizonte (0 = ahora, 60 y 120 min): emisión, validez y si
+// sigue vigente (el umbral de 30 min vive en la vista). null si la vista aún no existe.
+export function getNowcastEstado() {
+  return cached(
+    "nowcast_estado",
+    () =>
+      siExiste(() =>
+        filas(
+          supabase
+            .from("nowcast_estado")
+            .select("horizonte_min,fichero,emision,valido_desde,valido_hasta,manchas,ts_captura,vence_en,vigente")
+        )
+      ),
+    60_000
+  );
+}
+
+// Manchas del nowcasting de un horizonte, una por nivel (1 a 3), solo de una emisión vigente.
+export function getNowcast(h) {
+  return cached(
+    `nowcast:${h}`,
+    async () =>
+      (await siExiste(() =>
+        filas(
+          supabase
+            .from("nowcast_vigente")
+            .select("horizonte_min,nivel,emision,valido_desde,valido_hasta,geojson")
+            .eq("horizonte_min", h)
+        )
+      )) ?? [],
+    60_000
   );
 }
 

@@ -46,7 +46,7 @@ export function markerIcon(color, icono, { forma = "circulo" } = {}) {
 }
 
 // Solo enlaces https (los que vienen de una fuente, p. ej. la página de un aviso).
-function enlaceSeguro(href) {
+export function enlaceSeguro(href) {
   try {
     return new URL(href).protocol === "https:" ? href : null;
   } catch {

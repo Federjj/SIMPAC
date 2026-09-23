@@ -5,15 +5,25 @@ La tarea 'avisos' (cada hora) llama a actualizar(), que:
   1. Lee la tabla de avisos meteorológicos y se queda con los emitidos o vigentes (sin los
      cancelados, los terminados ni los originales de una actualización vigente: "(ACTUALIZACIÓN
      DEL AVISO 373)" reemplaza al 373, que puede seguir listado a la vez).
-  2. Baja por WFS los polígonos de cada aviso nuevo, o guardado hace más de REFRESCO_HORAS:
-     el polígono de un aviso no cambia una vez emitido (las correcciones salen con otro
-     número) y la GeoServer es lenta (un aviso de temperatura pesa 1,3 MB por día). Si hace
-     falta, lee también el párrafo oficial de cada aviso (página de detalle, opcional).
+  2. Baja por WFS los polígonos de cada aviso nuevo, guardado hace más de REFRESCO_HORAS o
+     de lluvia sin ícono (guardado antes de la migración de íconos): el polígono de un aviso
+     no cambia una vez emitido (las correcciones salen con otro número) y la GeoServer es
+     lenta (un aviso de temperatura pesa 1,3 MB por día). Si a alguno de esos le falta el
+     párrafo general o, si es de lluvia, el de algún día, lee la página de avisos vigentes
+     (una vez, opcional; si cae se usan los textos guardados). Un texto que falta se reintenta
+     así cada REFRESCO_HORAS, no en cada corrida.
   3. Baja el aviso de lluvia de 24 h (siempre, cambia cada día).
   4. En una transacción (con un candado para que dos corridas no se pisen): reemplaza en
      aviso_senamhi lo de las fuentes que respondieron (la geometría se une por nivel y se
-     simplifica en SQL, y los departamentos salen de las estaciones que caen dentro), y
-     genera las alertas.
+     simplifica en SQL, los departamentos salen de las estaciones que caen dentro y las
+     anclas del ícono, del mayor círculo inscrito de cada parte), y genera las alertas.
+
+Íconos y lectura del texto (backend/ingesta/lectura_aviso.py; derivados, el frontend los
+rotula "basado en el aviso de SENAMHI"): cada fila guarda el párrafo oficial de su día
+(texto_dia; None si su fecha no es la del mapa), el ícono (gota, gota con rayo o copo; None si
+no es de lluvia) y la lectura del párrafo general (descargas, granizo, ráfagas, mm/día...). Si
+la tabla aún no tiene esas columnas (migración de íconos pendiente), los avisos se guardan
+igual, sin íconos (SQL_PREVIOS_V1, SQL_AREA_V1), y el latido lo avisa.
 
 Regla de "no borrar lo que no se pudo consultar": si la tabla no responde (o trae una fila
 activa que no se entiende, o una sin etiqueta que aún no termina), los avisos meteorológicos
@@ -43,7 +53,12 @@ Resumen del latido 'avisos':
   fallas        'tabla', 'tabla incompleta', 'aviso N' (WFS caído o sin polígonos), 'lluvia24h',
                 'migracion' (falta la tabla)
   avisos        detalle: errores, polígonos descartados, actualizaciones, aviso de 24 h
-                desactualizado...
+                desactualizado, página de textos caída, migración de íconos pendiente...
+  lectura       de las filas escritas: iconos ({"376": "gota", "24h": "gota"}),
+                fecha_no_coincide (["aviso 375 mapa 2"]: párrafo de otro día, no se guarda),
+                mm_literal (con párrafo del día pero sin mm/día leídos: se muestra literal) y
+                sin_general (avisos de lluvia sin párrafo general: se reintentan cada
+                REFRESCO_HORAS). None sin la migración de íconos.
 
 Corrida suelta, dentro del contenedor worker:
     docker compose run --rm worker python -m backend.ingesta.avisos
@@ -54,12 +69,14 @@ import json
 import logging
 import re
 from datetime import datetime, time, timedelta, timezone
+from typing import NamedTuple
 
 from backend.connectors import senamhi_avisos as fuente
 from backend.connectors.senamhi import HORA_PERU
 from backend.db import conectar
-from backend.ingesta.departamentos import DEPARTAMENTOS
+from backend.ingesta import lectura_aviso
 from backend.ingesta.guardar import SIN_DATOS_HORAS, SQL_ALERTA, SQL_LATIDO
+from backend.ingesta.lectura_aviso import en_claro, intensidad
 
 log = logging.getLogger(__name__)
 
@@ -85,11 +102,29 @@ _TEXTO_24H = {
     4: "Lluvia de intensidad extrema, con posibles inundaciones",
 }
 
-# La migración de aviso_senamhi puede no estar aplicada todavía (el worker se despliega aparte).
-SQL_HAY_TABLA = "select to_regclass('public.aviso_senamhi') is not null"
+# Las migraciones de aviso_senamhi pueden no estar aplicadas todavía (el worker se despliega
+# aparte): sin la tabla no se hace nada; con la tabla pero sin las columnas de íconos (texto_dia,
+# icono, lectura, anclas) los avisos oficiales se siguen guardando, sin íconos.
+SQL_HAY_TABLA = (
+    "select to_regclass('public.aviso_senamhi') is not null, "
+    "exists (select 1 from information_schema.columns where table_schema = 'public' "
+    "and table_name = 'aviso_senamhi' and column_name = 'anclas')"
+)
 AVISO_SIN_TABLA = "aviso_senamhi: falta la tabla (migración pendiente); no se consultó ni se guardó nada"
-# Avisos guardados (para no volver a bajarlos): año, número, captura y párrafo oficial.
+AVISO_SIN_ICONOS = "aviso_senamhi: falta la migración de íconos; se guardan sin íconos"
+# Avisos guardados (para no volver a bajarlos): año, número, captura, párrafo general,
+# párrafos por día ({"1": "El miércoles 23..."}) y si es de lluvia y no tiene ícono (se guardó
+# antes de la migración de íconos): ese se vuelve a bajar aunque sea reciente. Uno guardado
+# después siempre tiene ícono (gota, si no se leyó su párrafo general): no se mira la lectura,
+# porque un aviso cuyo párrafo no está en la página se volvería a pedir al WFS cada hora durante
+# toda su vigencia; sus textos se reintentan cada REFRESCO_HORAS, con los polígonos.
 SQL_PREVIOS = (
+    "select anio, numero, min(ts_captura), max(descripcion), "
+    "coalesce(jsonb_object_agg(mapa, texto_dia) filter (where texto_dia is not null), '{}'::jsonb), "
+    "bool_or(tema = 'lluvia' and icono is null) "
+    "from aviso_senamhi where tipo = 'meteorologico' and fin > now() group by anio, numero"
+)
+SQL_PREVIOS_V1 = (   # sin la migración de íconos
     "select anio, numero, min(ts_captura), max(descripcion) from aviso_senamhi "
     "where tipo = 'meteorologico' and fin > now() group by anio, numero"
 )
@@ -112,9 +147,7 @@ SQL_BORRAR_24H = "delete from aviso_senamhi where tipo = 'lluvia24h'"
 # estación más cercana a un punto interior del área, siempre que esté a menos de 0,1° (~11
 # km) del área: un área mar adentro o en la frontera se queda sin departamento en vez de
 # asignarse al más cercano, aunque esté lejos (un polígono frente a Piura caía en Piura).
-SQL_AREA = """
-insert into aviso_senamhi (tipo, anio, numero, mapa, nivel, titulo, tema, descripcion, emision,
-                           inicio, fin, url, geom, departamentos)
+_SQL_AREA_VALORES = """
 select %(tipo)s::text, %(anio)s::int, %(numero)s::int, %(mapa)s::smallint, %(nivel)s::smallint,
        %(titulo)s::text, %(tema)s::text, %(descripcion)s::text, %(emision)s::date,
        %(inicio)s::timestamptz, %(fin)s::timestamptz, %(url)s::text, g.geom,
@@ -124,7 +157,8 @@ select %(tipo)s::text, %(anio)s::int, %(numero)s::int, %(mapa)s::smallint, %(niv
          (select array[e.departamento] from estacion e where e.departamento is not null
            and st_dwithin(e.geom, g.geom, 0.1)
            order by e.geom <-> st_pointonsurface(g.geom) limit 1),
-         '{}')
+         '{}')"""
+_SQL_AREA_GEOMETRIA = """
 from (
   select st_multi(st_collectionextract(st_union(p.geom), 3)) as geom
   from (
@@ -138,8 +172,43 @@ where not st_isempty(g.geom)
 on conflict on constraint aviso_senamhi_clave do update set
   titulo = excluded.titulo, tema = excluded.tema, descripcion = excluded.descripcion,
   emision = excluded.emision, inicio = excluded.inicio, fin = excluded.fin, url = excluded.url,
-  geom = excluded.geom, departamentos = excluded.departamentos, ts_captura = now()
-"""
+  geom = excluded.geom, departamentos = excluded.departamentos,"""
+# Dónde va el ícono (anclas): una entrada por parte del MultiPolygon de 300 km² o más (y
+# siempre la más grande), en el centro del mayor círculo inscrito (el centroide de una parte
+# en forma de C cae afuera; si el centro quedara fuera por redondeo, un punto interior).
+# 'parte' es el índice (desde 1) en geojson.coordinates de aviso_vigente: st_dump y
+# st_asgeojson recorren las partes en el mismo orden. radio_km sirve al frontend para ocultar
+# el ícono de una parte que en pantalla se ve chica. La misma subconsulta, sobre a.geom, está
+# en la migración de íconos para las filas ya guardadas.
+_SQL_ANCLAS = """(
+         select coalesce(jsonb_agg(jsonb_build_object(
+                  'parte', x.parte, 'lon', round(st_x(x.p)::numeric, 4), 'lat', round(st_y(x.p)::numeric, 4),
+                  'radio_km', round(x.radio_km::numeric, 1), 'km2', round(x.km2::numeric)::int, 'mayor', x.orden = 1)
+                order by x.orden), '[]'::jsonb)
+         from (select (d.path)[1] as parte,
+                      case when st_intersects(d.geom, c.center) then c.center else st_pointonsurface(d.geom) end as p,
+                      st_distance(c.center::geography, c.nearest::geography) / 1000 as radio_km,
+                      st_area(d.geom::geography) / 1e6 as km2,
+                      row_number() over (order by st_area(d.geom::geography) desc) as orden
+                 from st_dump(g.geom) d
+                 cross join lateral st_maximuminscribedcircle(d.geom) c) x
+         where x.orden = 1 or x.km2 >= 300)"""
+# insert + _SQL_AREA_VALORES + columnas de íconos + _SQL_AREA_GEOMETRIA (from, on conflict).
+SQL_AREA = (
+    "\ninsert into aviso_senamhi (tipo, anio, numero, mapa, nivel, titulo, tema, descripcion, emision,\n"
+    "                           inicio, fin, url, geom, departamentos, texto_dia, icono, lectura, anclas)"
+    + _SQL_AREA_VALORES + ",\n"
+    "       %(texto_dia)s::text, %(icono)s::text, %(lectura)s::jsonb,\n"
+    "       " + _SQL_ANCLAS
+    + _SQL_AREA_GEOMETRIA
+    + "\n  texto_dia = excluded.texto_dia, icono = excluded.icono, lectura = excluded.lectura,"
+    "\n  anclas = excluded.anclas, ts_captura = now()\n"
+)
+SQL_AREA_V1 = (   # sin la migración de íconos: las mismas filas, sin sus columnas
+    "\ninsert into aviso_senamhi (tipo, anio, numero, mapa, nivel, titulo, tema, descripcion, emision,\n"
+    "                           inicio, fin, url, geom, departamentos)"
+    + _SQL_AREA_VALORES + _SQL_AREA_GEOMETRIA + " ts_captura = now()\n"
+)
 # Todas las áreas de lluvia sin terminar, ya con los borrados e inserciones de esta
 # transacción. De aquí salen las alertas (la ventana de 48 h se aplica por aviso en
 # en_ventana) y la lista de avisos que aún tienen áreas (sus alertas pueden quedarse).
@@ -172,10 +241,8 @@ def referencia(tipo: str, numero: int | None) -> str:
 # Lenguaje claro
 # ---------------------------------------------------------------------------------------
 MESES = ("ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "set", "oct", "nov", "dic")
-_INTENSIDAD = r"(?:ligera|moderada|fuerte|muy fuerte|extrema)"
 _FENOMENO = (("PRECIPITAC", "Lluvias"), ("LLUVIA", "Lluvias"), ("LLOVIZNA", "Llovizna"),
              ("NEVADA", "Nevadas"), ("NIEVE", "Nevadas"), ("GRANIZ", "Granizo"))
-_NOMBRES_PROPIOS = sorted([*DEPARTAMENTOS.values(), "Callao"], key=len, reverse=True)
 
 
 def _dia(d) -> str:
@@ -204,23 +271,6 @@ def rango_peru(inicio: datetime, fin: datetime) -> str:
     return f"{desde} {hasta}"
 
 
-def intensidad(descripcion: str | None) -> str | None:
-    """'de ligera a moderada intensidad', de la primera oración del párrafo oficial."""
-    if not descripcion:
-        return None
-    primera = re.split(r"\.\s", descripcion, maxsplit=1)[0]
-    m = re.search(rf"\bde\s+{_INTENSIDAD}(?:\s+a\s+{_INTENSIDAD})?\s+intensidad\b", primera, re.I)
-    return re.sub(r"\s+", " ", m.group(0)).lower() if m else None
-
-
-def _donde(texto: str) -> str:
-    """'LA SIERRA DE MOQUEGUA Y TACNA' -> 'la sierra de Moquegua y Tacna'."""
-    t = texto.lower().replace("-", ", ")
-    for nombre in _NOMBRES_PROPIOS:
-        t = re.sub(rf"\b{re.escape(nombre.lower())}\b", nombre, t)
-    return t
-
-
 def detalle_meteorologico(titulo: str, descripcion: str | None, inicio: datetime, fin: datetime) -> str:
     """'Lluvias de ligera a moderada intensidad en la sierra norte y costa norte, del 23 al 24 set'."""
     t = re.sub(r"\s*\([^)]*\)", "", titulo).strip()   # sin "(ACTUALIZACIÓN DEL AVISO 373)"
@@ -232,7 +282,7 @@ def detalle_meteorologico(titulo: str, descripcion: str | None, inicio: datetime
     if fuerza:
         partes.append(fuerza)
     if donde:
-        partes.append(f"en {_donde(donde)}")
+        partes.append(f"en {en_claro(donde)}")
     return f"{' '.join(partes)}, {rango_peru(inicio, fin)}"
 
 
@@ -287,32 +337,86 @@ def alertas_de_avisos(filas: list[tuple]) -> list[dict]:
 # ---------------------------------------------------------------------------------------
 # Tarea
 # ---------------------------------------------------------------------------------------
-def _previos() -> dict[tuple[int, int], tuple[datetime, str | None]] | None:
-    """Avisos meteorológicos guardados; None si la tabla aún no existe."""
+class Guardado(NamedTuple):
+    """Lo que ya está en aviso_senamhi de un aviso meteorológico."""
+    ts: datetime                 # primera captura
+    general: str | None          # párrafo general
+    dias: dict[int, str]         # mapa -> párrafo de ese día
+    incompleto: bool             # de lluvia y sin ícono (anterior a la migración): se vuelve a bajar
+
+
+def _previos() -> tuple[dict[tuple[int, int], Guardado], bool] | None:
+    """Avisos meteorológicos guardados y si la tabla ya tiene las columnas de íconos; None
+    si la tabla aún no existe."""
     with conectar() as conn, conn.cursor() as cur:
         cur.execute(SQL_HAY_TABLA)
         fila = cur.fetchone()
         if not (fila and fila[0]):
             return None
-        cur.execute(SQL_PREVIOS)
-        return {(anio, numero): (ts, desc) for anio, numero, ts, desc in cur.fetchall()}
+        con_iconos = bool(fila[1])
+        cur.execute(SQL_PREVIOS if con_iconos else SQL_PREVIOS_V1)
+        previos = {}
+        for anio, numero, ts, general, *resto in cur.fetchall():
+            dias, incompleto = resto or ({}, False)
+            previos[(anio, numero)] = Guardado(ts, general, {int(m): t for m, t in (dias or {}).items()},
+                                               bool(incompleto))
+        return previos, con_iconos
 
 
 def _resumen(fallas: list[str], avisos: list[str], **datos) -> dict:
-    base = {"vigentes": None, "bajados": [], "reusados": [], "areas": 0, "lluvia24h": None, "alertas": 0}
+    base = {"vigentes": None, "bajados": [], "reusados": [], "areas": 0, "lluvia24h": None, "alertas": 0,
+            "lectura": None}
     return {**base, **datos, "fallas": fallas, "avisos": avisos}
 
 
-def _fila_area(area: fuente.Area, aviso: fuente.Aviso | None, descripcion: str | None) -> dict:
+def notas_lectura() -> dict:
+    """Bloque 'lectura' del latido (ver el docstring del módulo), vacío."""
+    return {"iconos": {}, "fecha_no_coincide": [], "mm_literal": [], "sin_general": []}
+
+
+def _anotar(lista: list, valor) -> None:
+    if valor not in lista:   # un mapa tiene una fila por nivel: se anota una vez
+        lista.append(valor)
+
+
+def _fila_area(area: fuente.Area, aviso: fuente.Aviso | None, texto: fuente.TextoAviso | None,
+               notas: dict | None = None) -> dict:
+    """
+    Parámetros de SQL_AREA para un área. `texto`: los textos oficiales del aviso (None si no
+    se leyeron). `notas`: el bloque 'lectura' del latido, donde se anota lo que no se leyó.
+    El párrafo de un día se guarda solo si su fecha es la del mapa (lectura_aviso.es_del_dia; o
+    si no trae fecha): la página a veces repite el de otro día ("El martes 22..." en el mapa del
+    jueves 24).
+    """
+    notas = notas_lectura() if notas is None else notas
+    general = texto_dia = None
     if aviso is None:   # lluvia de 24 h
         titulo, tema, emision, url = TITULO_24H, "lluvia", area.inicio.astimezone(HORA_PERU).date(), fuente.URL_AVISO_24H
         descripcion = DESCRIPCION_24H[area.nivel]
     else:
         titulo, tema, emision, url = aviso.titulo, aviso.tema, aviso.emision, aviso.url
+        general = descripcion = texto.general if texto else None
+        texto_dia = texto.dias.get(area.mapa) if texto else None
+        fecha_mapa = area.inicio.astimezone(HORA_PERU).date()
+        if texto_dia and not lectura_aviso.es_del_dia(texto_dia, fecha_mapa):
+            _anotar(notas["fecha_no_coincide"], f"aviso {area.numero} mapa {area.mapa}")
+            texto_dia = None
+    leido = icono = None
+    if tema == "lluvia":
+        leido = lectura_aviso.lectura(area.tipo, titulo, general, texto_dia)
+        icono = lectura_aviso.icono_aviso(area.tipo, titulo, leido)
+        if icono:
+            notas["iconos"]["24h" if area.numero is None else str(area.numero)] = icono
+        if aviso is not None and not general:
+            _anotar(notas["sin_general"], area.numero)
+        if texto_dia and not (leido or {}).get("montos"):
+            _anotar(notas["mm_literal"], f"aviso {area.numero} mapa {area.mapa}")
     return {"tipo": area.tipo, "anio": area.anio, "numero": area.numero, "mapa": area.mapa,
             "nivel": area.nivel, "titulo": titulo, "tema": tema, "descripcion": descripcion,
             "emision": emision, "inicio": area.inicio, "fin": area.fin, "url": url,
-            "geometrias": json.dumps(area.geometrias), "tolerancia": TOLERANCIA_GRADOS}
+            "geometrias": json.dumps(area.geometrias), "tolerancia": TOLERANCIA_GRADOS,
+            "texto_dia": texto_dia, "icono": icono,
+            "lectura": json.dumps(leido, ensure_ascii=False) if leido else None}
 
 
 def actualizar(ahora: datetime | None = None) -> dict:
@@ -321,13 +425,17 @@ def actualizar(ahora: datetime | None = None) -> dict:
     hoy = ahora.astimezone(HORA_PERU).date()
     fallas: list[str] = []
     avisos: list[str] = []
-    previos = _previos()
-    if previos is None:
+    guardados = _previos()
+    if guardados is None:
         resumen = _resumen(["migracion"], [AVISO_SIN_TABLA])
         with conectar() as conn, conn.cursor() as cur:
             cur.execute(SQL_LATIDO, ("avisos", json.dumps(resumen)))
         log.warning("Avisos SENAMHI: %s", AVISO_SIN_TABLA)
         return resumen
+    previos, con_iconos = guardados
+    if not con_iconos:   # los avisos oficiales se guardan igual, sin íconos
+        avisos.append(AVISO_SIN_ICONOS)
+        log.warning("Avisos SENAMHI: %s", AVISO_SIN_ICONOS)
 
     # 1) Qué avisos meteorológicos están emitidos o vigentes.
     tabla = None
@@ -345,24 +453,40 @@ def actualizar(ahora: datetime | None = None) -> dict:
     # quedara, habría polígonos y alertas duplicados, y los del original con el nivel viejo.
     reemplazos = {a.actualiza: a for a in listados if a.actualiza}
     activos = [a for a in listados if (a.anio, a.numero) not in reemplazos]
+    # Un aviso de lluvia guardado sin ícono se vuelve a bajar aunque sea reciente: así los
+    # guardados antes de la migración de íconos se completan solos.
     reusar = [a for a in activos if (a.anio, a.numero) in previos
-              and ahora - previos[(a.anio, a.numero)][0] < timedelta(hours=REFRESCO_HORAS)]
+              and ahora - previos[(a.anio, a.numero)].ts < timedelta(hours=REFRESCO_HORAS)
+              and not previos[(a.anio, a.numero)].incompleto]
     bajar = [a for a in activos if a not in reusar]
 
-    # 2) Párrafo oficial (opcional): solo si falta el de algún aviso que se va a bajar.
-    descripciones = {k: d for k, (_, d) in previos.items() if d}
-    faltan = [a for a in bajar if (a.anio, a.numero) not in descripciones and a.url]
+    # 2) Textos oficiales (opcionales): la página de vigentes trae los de todos los avisos y se
+    # baja una sola vez, si a algún aviso que se va a bajar le falta el párrafo general o, si es
+    # de lluvia, el de alguno de sus días. Lo nuevo se suma a lo guardado; si la página cae,
+    # queda lo guardado.
+    textos = {k: fuente.TextoAviso(g.general, dict(g.dias)) for k, g in previos.items()}
+
+    def falta_texto(a: fuente.Aviso) -> bool:
+        t = textos.get((a.anio, a.numero))
+        if t is None or not t.general:
+            return True
+        return con_iconos and a.tema == "lluvia" and any(m not in t.dias for m in range(1, a.mapas + 1))
+
+    faltan = [a for a in bajar if a.url and falta_texto(a)]
     if faltan:
         try:
-            descripciones.update(fuente.descripciones(faltan[0].url))
+            for clave, nuevo in fuente.textos(faltan[0].url).items():
+                previo = textos.get(clave) or fuente.TextoAviso(None)
+                textos[clave] = fuente.TextoAviso(nuevo.general or previo.general, {**previo.dias, **nuevo.dias})
         except Exception as e:
-            log.warning("Avisos SENAMHI: sin párrafos oficiales: %s", _error(e))
-            avisos.append(f"descripciones: {_error(e)}")
+            log.warning("Avisos SENAMHI: sin textos oficiales: %s", _error(e))
+            avisos.append(f"textos oficiales: {_error(e)}")
 
     # 3) Polígonos de cada aviso. Si falla uno (o no trae polígonos: el aviso sigue en la
     # tabla), lo guardado de ese aviso se conserva.
     filas: list[dict] = []
     fallidos: list[fuente.Aviso] = []
+    notas = notas_lectura()
     for a in bajar:
         try:
             areas, descartados = fuente.areas_aviso(a)
@@ -377,8 +501,8 @@ def actualizar(ahora: datetime | None = None) -> dict:
         if descartados:
             avisos.append(f"aviso {a.numero}: {descartados} polígonos descartados "
                           "(fechas fuera de la vigencia de la tabla o datos incompletos)")
-        desc = descripciones.get((a.anio, a.numero))
-        filas += [_fila_area(x, a, desc) for x in areas if x.fin > ahora]
+        texto = textos.get((a.anio, a.numero))
+        filas += [_fila_area(x, a, texto, notas) for x in areas if x.fin > ahora]
 
     # Originales de una actualización: se borran (filas y alertas) aunque la tabla no se haya
     # leído entera, salvo que la actualización haya fallado y no esté guardada: sin ella en el
@@ -409,7 +533,7 @@ def actualizar(ahora: datetime | None = None) -> dict:
     if areas_24 and not vigentes_24:
         fecha = areas_24[0].inicio.astimezone(HORA_PERU).date().isoformat()
         avisos.append(f"lluvia 24 h: el último aviso publicado (del {fecha}) ya terminó")
-    filas += [_fila_area(x, None, None) for x in vigentes_24]
+    filas += [_fila_area(x, None, None, notas) for x in vigentes_24]
 
     # 5) Escritura, en una sola transacción. Con la tabla entera se sabe qué avisos ya no
     # siguen; si no respondió (o una fila activa no se entendió), solo se reemplaza lo re-bajado.
@@ -432,7 +556,7 @@ def actualizar(ahora: datetime | None = None) -> dict:
         if areas_24 is not None:
             cur.execute(SQL_BORRAR_24H)
         if filas:
-            cur.executemany(SQL_AREA, filas)
+            cur.executemany(SQL_AREA if con_iconos else SQL_AREA_V1, filas)
         # Después de los borrados e inserciones: lo que queda es lo que se muestra.
         cur.execute(SQL_LLUVIA_VIGENTE)
         sin_terminar = cur.fetchall()
@@ -454,6 +578,7 @@ def actualizar(ahora: datetime | None = None) -> dict:
             areas=len(filas),
             lluvia24h=vigentes_24[0].inicio.astimezone(HORA_PERU).date().isoformat() if vigentes_24 else None,
             alertas=len(alertas),
+            lectura=notas if con_iconos else None,
         )
         cur.execute(SQL_LATIDO, ("avisos", json.dumps(resumen)))
 

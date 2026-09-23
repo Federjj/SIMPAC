@@ -1,7 +1,9 @@
 """
-Avisos oficiales de SENAMHI: tabla de avisos, polígonos del WFS, lenguaje claro de las alertas
-y la regla de no borrar lo que no se pudo consultar. Sin red ni psycopg: los fragmentos de
-HTML y GeoJSON son recortes de las respuestas reales del 22-09-2026.
+Avisos oficiales de SENAMHI: tabla de avisos, polígonos del WFS, textos oficiales, íconos,
+lenguaje claro de las alertas y la regla de no borrar lo que no se pudo consultar. Sin red ni
+psycopg: los fragmentos de HTML y GeoJSON son recortes de las respuestas reales del
+22-09-2026 (muestras/aviso_vigente_20260922.html: la página de avisos vigentes, con los
+avisos 375 y 376 y el 376 repetido al final, como en la página).
 """
 import json
 import logging
@@ -10,6 +12,7 @@ import unittest
 import urllib.parse
 from contextlib import contextmanager
 from datetime import date, datetime, timedelta, timezone
+from pathlib import Path
 from unittest import mock
 
 from backend.connectors import _http
@@ -21,6 +24,8 @@ UTC = timezone.utc
 # 22-09-2026 a las 19:48 de Lima
 AHORA = datetime(2026, 9, 23, 0, 48, tzinfo=UTC)
 HOY = date(2026, 9, 22)   # fecha de Perú de AHORA
+RAIZ = Path(__file__).resolve().parents[2]
+VIGENTES = (Path(__file__).parent / "muestras" / "aviso_vigente_20260922.html").read_text(encoding="utf-8")
 
 
 def _fila(titulo, nro, emision, inicio, fin, horas, color, clase="", b="28968"):
@@ -268,6 +273,63 @@ class TestTabla(unittest.TestCase):
     def test_descripciones_solo_de_senamhi(self):
         with self.assertRaises(ValueError):
             fuente.descripciones("https://otro.example/?p=aviso-meteorologico-vigente")
+        with self.assertRaises(ValueError):
+            fuente.textos("https://otro.example/?p=aviso-meteorologico-vigente")
+
+
+class TestTextos(unittest.TestCase):
+    def test_general_y_dias_de_la_pagina_real(self):
+        t = fuente.parse_textos(VIGENTES)
+        self.assertEqual(sorted(t), [(2026, 375), (2026, 376)])
+        self.assertEqual(sorted(t[(2026, 375)].dias), [1, 2, 3])
+        self.assertEqual(sorted(t[(2026, 376)].dias), [1, 2])
+        for clave in t:
+            self.assertTrue(t[clave].general.startswith("El SENAMHI informa que"), clave)
+        self.assertEqual(t[(2026, 376)].dias[1],
+                         "El miércoles 23 de setiembre se esperan acumulados de lluvia hasta los 12 mm/día en Tumbes, "
+                         "cercanos a los 6 mm/día en la costa de Piura y valores entre los 7 mm/día y 15 mm/día en la "
+                         "sierra norte.")
+        self.assertTrue(t[(2026, 375)].dias[2].startswith("El martes 22 de setiembre"))   # así viene
+        # parse_descripciones sigue dando solo el general
+        self.assertEqual(fuente.parse_descripciones(VIGENTES), {k: v.general for k, v in t.items()})
+
+    def test_gana_el_primer_bloque(self):
+        # la página repite tabs-3762026 al final; si el repetido cambiara, manda el primero
+        ini = VIGENTES.rindex('id="tabs-3762026"')
+        pagina = VIGENTES[:ini] + VIGENTES[ini:].replace("hasta los 12 mm/día", "hasta los 99 mm/día") \
+                                                 .replace("El SENAMHI informa", "El SENAMHI informa (repetido)")
+        t = fuente.parse_textos(pagina)[(2026, 376)]
+        self.assertIn("hasta los 12 mm/día", t.dias[1])
+        self.assertNotIn("(repetido)", t.general)
+        # pero lo que falta en el primero se toma del repetido
+        ini = VIGENTES.index('id="tabs-3762026"')
+        fin = VIGENTES.index('id="tabs-3762026"', ini + 1)
+        sin_general = VIGENTES[:ini] + VIGENTES[ini:fin].replace("El SENAMHI informa", "SENAMHI dice") + VIGENTES[fin:]
+        self.assertTrue(fuente.parse_textos(sin_general)[(2026, 376)].general.startswith("El SENAMHI informa que"))
+
+    def test_iframe_de_otro_aviso_o_anio_se_ignora(self):
+        pagina = VIGENTES.replace("av=376&nl=2&mp=2&fc=2026", "av=999&nl=2&mp=2&fc=2026") \
+                         .replace("av=375&nl=4&mp=3&fc=2026", "av=375&nl=4&mp=3&fc=2025")
+        t = fuente.parse_textos(pagina)
+        self.assertEqual(sorted(t[(2026, 376)].dias), [1])
+        self.assertEqual(sorted(t[(2026, 375)].dias), [1, 2])
+
+    def test_el_senamhi_sin_distinguir_mayusculas_y_largo_maximo(self):
+        pagina = ('<div class="tab-pane" id="tabs-1802026"><div class="col-lg-12">El Senamhi informa que, del '
+                  'domingo 10 al lunes 11 de mayo, se presentará precipitaciones' + " en la sierra" * 200 + '.</div>'
+                  '<div class="tab-pane" id="v-pills-tab-1-281002026"><p align="justify">' + "x " * 1000 + '</p>'
+                  '<br><iframe src="mapas/mapa-avisos-meteorologicos/index.php?av=180&amp;nl=3&amp;mp=1&amp;fc=2026">'
+                  '</iframe></div></div>')
+        t = fuente.parse_textos(pagina)[(2026, 180)]
+        self.assertTrue(t.general.startswith("El Senamhi informa que, del domingo 10"))
+        self.assertEqual(len(t.general), fuente.MAX_GENERAL)
+        self.assertEqual(len(t.dias[1]), fuente.MAX_TEXTO_DIA)   # con &amp; en el iframe también se lee
+
+    def test_textos_baja_la_pagina_una_vez(self):
+        with mock.patch.object(_http, "get_bytes", return_value=VIGENTES.encode()) as m:
+            t = fuente.textos("https://www.senamhi.gob.pe/?p=aviso-meteorologico-vigente&a=2026&b=28968&c=00&d=SENA")
+        m.assert_called_once()
+        self.assertEqual(sorted(t), [(2026, 375), (2026, 376)])
 
     def test_atribucion_literal(self):
         self.assertTrue(fuente.ATRIBUCION.startswith("Información recopilada y trabajada por el Servicio "
@@ -485,22 +547,25 @@ class _Cursor:
 
     def fetchone(self):
         assert self.ultima == tarea.SQL_HAY_TABLA, self.ultima
-        return (self.conn.hay_tabla,)
+        return (self.conn.hay_tabla, self.conn.hay_tabla and self.conn.hay_columnas)
 
     def fetchall(self):
         if self.ultima == tarea.SQL_PREVIOS:
             return self.conn.previos
+        if self.ultima == tarea.SQL_PREVIOS_V1:   # sin las columnas de íconos
+            return [p[:4] for p in self.conn.previos]
         assert self.ultima == tarea.SQL_LLUVIA_VIGENTE, self.ultima
         return self.conn.lluvia
 
 
 class _Conexion:
     """Anota cada sentencia. SQL_PREVIOS devuelve `previos`; SQL_LLUVIA_VIGENTE, `lluvia`
-    (las filas que la BD tendría después de insertar); SQL_HAY_TABLA, `hay_tabla`."""
+    (las filas que la BD tendría después de insertar); SQL_HAY_TABLA, `hay_tabla` y
+    `hay_columnas` (la migración de íconos)."""
 
-    def __init__(self, previos=(), lluvia=(), hay_tabla=True):
+    def __init__(self, previos=(), lluvia=(), hay_tabla=True, hay_columnas=True):
         self.previos, self.lluvia, self.registro = list(previos), list(lluvia), []
-        self.hay_tabla = hay_tabla
+        self.hay_tabla, self.hay_columnas = hay_tabla, hay_columnas
 
     def cursor(self):
         return _Cursor(self)
@@ -512,6 +577,12 @@ class _Conexion:
 def _area(numero=376, mapa=1, nivel=2, inicio=D23, fin=D24, tipo="meteorologico"):
     return fuente.Area(tipo=tipo, anio=2026, numero=numero, mapa=mapa, nivel=nivel, inicio=inicio,
                        fin=fin, geometrias=[{"type": "MultiPolygon", "coordinates": [_anillo(-78.6, -7.2)]}])
+
+
+def _previo(numero, horas, general=None, dias=None, incompleto=False):
+    """Fila de SQL_PREVIOS: guardado hace `horas`; dias como los da jsonb_object_agg."""
+    return (2026, numero, AHORA - timedelta(hours=horas), general,
+            {str(m): t for m, t in (dias or {}).items()}, incompleto)
 
 
 A376 = _aviso()
@@ -526,6 +597,20 @@ AREAS_24H = [_area(None, nivel=2, tipo="lluvia24h", inicio=datetime(2026, 9, 22,
                    fin=datetime(2026, 9, 23, 18, tzinfo=UTC))]
 
 
+A375 = _aviso(375, date(2026, 9, 23), date(2026, 9, 25), "INCREMENTO DE TEMPERATURA DIURNA EN LA COSTA Y SIERRA")
+TEXTOS = fuente.parse_textos(VIGENTES)
+GENERAL_376, DIAS_376 = TEXTOS[(2026, 376)].general, TEXTOS[(2026, 376)].dias
+
+
+def _por_mapa(**mapas):
+    """areas_aviso simulado: un área de nivel 2 por mapa (el 1 es del 23); mapas={'375': 3}."""
+    def areas(a):
+        n = mapas.get(str(a.numero), 1)
+        return [_area(a.numero, m, inicio=D23 + timedelta(days=m - 1), fin=D24 + timedelta(days=m - 1))
+                for m in range(1, n + 1)], 0
+    return areas
+
+
 def _por_aviso(**errores):
     """areas_aviso simulado: el 376 con dos días, el 377 con uno; errores={'376': excepción}."""
     def areas(a):
@@ -537,14 +622,84 @@ def _por_aviso(**errores):
     return areas
 
 
+class TestFilaArea(unittest.TestCase):
+    def test_parrafo_de_otro_dia_no_se_guarda(self):
+        # el mapa 2 del 375 es del jueves 24, pero su párrafo dice "El martes 22"
+        notas = tarea.notas_lectura()
+        texto = TEXTOS[(2026, 375)]
+        filas = [tarea._fila_area(_area(375, m, nivel, inicio=D23 + timedelta(days=m - 1), fin=D24 + timedelta(days=m - 1)),
+                                  A375, texto, notas)
+                 for m in (1, 2, 3) for nivel in (2, 3)]
+        self.assertEqual([f["texto_dia"] is not None for f in filas], [True, True, False, False, True, True])
+        self.assertTrue(filas[0]["texto_dia"].startswith("El miércoles 23 de setiembre"))
+        self.assertEqual(notas["fecha_no_coincide"], ["aviso 375 mapa 2"])   # una vez, aunque tenga 2 niveles
+        # no es de lluvia: sin ícono ni lectura, pero con su párrafo general
+        self.assertEqual({(f["icono"], f["lectura"]) for f in filas}, {(None, None)})
+        self.assertTrue(filas[0]["descripcion"].startswith("El SENAMHI informa que, desde el miércoles 23"))
+        self.assertEqual((notas["iconos"], notas["mm_literal"], notas["sin_general"]), ({}, [], []))
+
+    def test_376_con_icono_lectura_y_texto_del_dia(self):
+        notas = tarea.notas_lectura()
+        fila = tarea._fila_area(_area(376, 1), A376, TEXTOS[(2026, 376)], notas)
+        self.assertEqual((fila["icono"], fila["texto_dia"], fila["descripcion"]), ("gota", DIAS_376[1], GENERAL_376))
+        leido = json.loads(fila["lectura"])
+        self.assertEqual((leido["v"], leido["fenomeno"], leido["descargas"], leido["una_region"]), (1, "lluvia", "si", False))
+        self.assertEqual([(m["lugar"], m["hasta"]) for m in leido["montos"]],
+                         [("Tumbes", 12), ("Costa de Piura", 6), ("Sierra norte", 15)])
+        self.assertIn("ráfagas de viento", leido["frase_descargas"])   # el jsonb guarda las tildes tal cual
+        self.assertEqual(notas, {"iconos": {"376": "gota"}, "fecha_no_coincide": [], "mm_literal": [], "sin_general": []})
+
+    def test_parrafo_del_dia_sin_mm_leidos_va_literal(self):
+        notas = tarea.notas_lectura()
+        texto = fuente.TextoAviso(GENERAL_376, {1: "El miércoles 23 de setiembre se esperan acumulados de lluvia "
+                                                    "entre los 5 y 14 mm/día."})
+        fila = tarea._fila_area(_area(376, 1), A376, texto, notas)
+        self.assertIsNotNone(fila["texto_dia"])
+        self.assertIsNone(json.loads(fila["lectura"])["montos"])
+        self.assertEqual(notas["mm_literal"], ["aviso 376 mapa 1"])
+
+    def test_lluvia_24h(self):
+        notas = tarea.notas_lectura()
+        fila = tarea._fila_area(AREAS_24H[0], None, None, notas)
+        self.assertEqual((fila["icono"], json.loads(fila["lectura"]), fila["texto_dia"]),
+                         ("gota", {"v": 1, "fenomeno": "lluvia"}, None))
+        self.assertEqual(notas["iconos"], {"24h": "gota"})
+
+    def test_sql_area_con_anclas_y_columnas_nuevas(self):
+        for texto in ("st_maximuminscribedcircle(d.geom)", "from st_dump(g.geom) d", "anclas = excluded.anclas",
+                      "texto_dia = excluded.texto_dia", "icono = excluded.icono", "lectura = excluded.lectura",
+                      "%(texto_dia)s::text, %(icono)s::text, %(lectura)s::jsonb"):
+            self.assertIn(texto, tarea.SQL_AREA)
+        self.assertNotIn("texto_dia", tarea.SQL_AREA_V1)
+        self.assertNotIn("anclas", tarea.SQL_AREA_V1)
+        # las columnas del insert y los valores del select van en el mismo orden
+        cols = re.search(r"insert into aviso_senamhi \((.*?)\)", tarea.SQL_AREA, re.S).group(1)
+        self.assertTrue(re.sub(r"\s+", " ", cols).endswith("departamentos, texto_dia, icono, lectura, anclas"))
+
+    def test_la_migracion_calcula_las_anclas_igual(self):
+        # la migración de íconos completa las filas ya guardadas con la misma subconsulta
+        [migracion] = (RAIZ / "supabase" / "migrations").glob("*avisos_iconos.sql")
+        sql = migracion.read_text(encoding="utf-8")
+
+        def anclas(texto):
+            m = re.search(r"select coalesce\(jsonb_agg.*?x\.km2 >= 300\)", texto, re.S)
+            return re.sub(r"\s+", " ", m.group(0))
+
+        self.assertEqual(anclas(sql), anclas(tarea.SQL_AREA).replace("st_dump(g.geom)", "st_dump(a.geom)"))
+        for columna in ("texto_dia text", "icono text", "lectura jsonb", "anclas jsonb"):
+            self.assertIn(f"add column {columna}", sql)
+        self.assertIn("texto_dia, icono, lectura, anclas", sql)   # en la vista aviso_vigente
+
+
 class TestTarea(unittest.TestCase):
     def setUp(self):
         logging.disable(logging.INFO)
         self.addCleanup(logging.disable, logging.NOTSET)
 
     def correr(self, conn=None, tabla=None, error_tabla=None, areas=None, a24=None, error_24h=None,
-               descripciones=None, pagina=None):
-        """pagina: HTML de la tabla, leído con el parse_tabla de verdad (en vez de `tabla`)."""
+               textos=None, pagina=None):
+        """pagina: HTML de la tabla, leído con el parse_tabla de verdad (en vez de `tabla`).
+        textos: lo que devuelve la página de vigentes (fuente.textos), o una excepción."""
         conn = conn or _Conexion(lluvia=[LLUVIA_376, LLUVIA_24H])
 
         @contextmanager
@@ -558,7 +713,8 @@ class TestTarea(unittest.TestCase):
             "tabla_avisos": mock.Mock(return_value=tabla, side_effect=error_tabla),
             "areas_aviso": mock.Mock(side_effect=areas or _por_aviso()),
             "aviso_24h": mock.Mock(return_value=AREAS_24H if a24 is None else a24, side_effect=error_24h),
-            "descripciones": mock.Mock(return_value=descripciones or {(2026, 376): "El SENAMHI informa que..."}),
+            "textos": mock.Mock(**({"side_effect": textos} if isinstance(textos, Exception) else
+                                   {"return_value": textos or {(2026, 376): fuente.TextoAviso("El SENAMHI informa que...")}})),
         }
         self.excepcion = None
         with mock.patch.object(tarea, "conectar", falso_conectar), \
@@ -613,8 +769,8 @@ class TestTarea(unittest.TestCase):
         self.assertEqual(alertas[0][4], "Lluvias de ligera a moderada intensidad en la sierra norte y costa norte, "
                                         "del 23 al 24 set")
         self.assertEqual((resumen["areas"], resumen["alertas"], resumen["lluvia24h"]), (5, 3, "2026-09-22"))
-        # el párrafo oficial se pidió una vez, con el enlace de un aviso
-        self.mocks["descripciones"].assert_called_once_with(A377.url)
+        # la página de textos oficiales se pidió una vez, con el enlace de un aviso
+        self.mocks["textos"].assert_called_once_with(A377.url)
         # la tabla y el de 24 h se leen con la fecha de Perú (en UTC ya es 23)
         self.mocks["tabla_avisos"].assert_called_once_with(HOY)
         self.mocks["aviso_24h"].assert_called_once_with(HOY)
@@ -674,7 +830,7 @@ class TestTarea(unittest.TestCase):
         a378 = _aviso(378, date(2026, 9, 23), date(2026, 9, 24),
                       "PRECIPITACIONES EN LA SIERRA NORTE (ACTUALIZACIÓN DEL AVISO 373)")
         lluvia_378 = ("meteorologico", 2026, 378, 3, a378.titulo, None, D23, D25, ["Cajamarca"])
-        conn = _Conexion(previos=[(2026, 373, AHORA - timedelta(hours=1), None)], lluvia=[lluvia_378])
+        conn = _Conexion(previos=[_previo(373, 1)], lluvia=[lluvia_378])
         conn, resumen = self.correr(conn=conn, tabla=fuente.TablaAvisos(avisos=[a378, A376, a373], filas=2054))
         # el original no se baja ni genera alertas, y sus filas y alertas se borran
         self.assertEqual([c.args[0].numero for c in self.mocks["areas_aviso"].call_args_list], [378, 376])
@@ -692,7 +848,7 @@ class TestTarea(unittest.TestCase):
         a373 = _aviso(373, date(2026, 9, 22), date(2026, 9, 24), "PRECIPITACIONES EN LA SIERRA NORTE")
         a378 = _aviso(378, date(2026, 9, 23), date(2026, 9, 24),
                       "PRECIPITACIONES EN LA SIERRA NORTE (ACTUALIZACIÓN DEL AVISO 373)")
-        conn = _Conexion(previos=[(2026, 373, AHORA - timedelta(hours=1), None)])
+        conn = _Conexion(previos=[_previo(373, 1)])
         with self.assertLogs(tarea.log, logging.WARNING):
             conn, resumen = self.correr(conn=conn, tabla=fuente.TablaAvisos(avisos=[a378, A376, a373], filas=2054),
                                         areas=_por_aviso(**{"378": TimeoutError("timed out")}))
@@ -775,8 +931,7 @@ class TestTarea(unittest.TestCase):
         self.assertIn("aviso 376: TimeoutError: timed out", resumen["avisos"])
 
     def test_aviso_guardado_hace_poco_no_se_vuelve_a_bajar(self):
-        previos = [(2026, 376, AHORA - timedelta(hours=2), "El SENAMHI informa que..."),
-                   (2026, 377, AHORA - timedelta(hours=7), None)]
+        previos = [_previo(376, 2, "El SENAMHI informa que..."), _previo(377, 7)]
         conn = _Conexion(previos=previos, lluvia=[LLUVIA_376])
         conn, resumen = self.correr(conn=conn)
         self.assertEqual([c.args[0].numero for c in self.mocks["areas_aviso"].call_args_list], [377, 374])
@@ -801,13 +956,16 @@ class TestTarea(unittest.TestCase):
              mock.patch.multiple(fuente, tabla_avisos=mock.Mock(return_value=tabla),
                                  areas_aviso=mock.Mock(side_effect=_por_aviso()),
                                  aviso_24h=mock.Mock(return_value=[]),
-                                 descripciones=mock.Mock(side_effect=OSError("red"))), \
+                                 textos=mock.Mock(side_effect=OSError("red"))), \
              self.assertLogs(tarea.log, logging.WARNING):
             resumen = tarea.actualizar(ahora=AHORA)
         self.assertEqual(resumen["fallas"], [])
-        self.assertEqual(resumen["avisos"], ["descripciones: OSError: red"])
+        self.assertEqual(resumen["avisos"], ["textos oficiales: OSError: red"])
         [filas] = conn.params(tarea.SQL_AREA)
         self.assertEqual({f["descripcion"] for f in filas}, {None})
+        # sin párrafo general: gota (el rayo no se inventa), sin lectura y anotado para reintentar
+        self.assertEqual({(f["icono"], f["lectura"], f["texto_dia"]) for f in filas}, {("gota", None, None)})
+        self.assertEqual(resumen["lectura"]["sin_general"], [376])
 
     def test_aviso_24h_desactualizado(self):
         viejo = [_area(None, tipo="lluvia24h", inicio=datetime(2026, 9, 21, 18, tzinfo=UTC),
@@ -831,7 +989,7 @@ class TestTarea(unittest.TestCase):
         with self.assertLogs(tarea.log, logging.WARNING):
             conn, resumen = self.correr(conn=_Conexion(hay_tabla=False))
         self.assertIsNone(self.excepcion)
-        for nombre in ("tabla_avisos", "areas_aviso", "aviso_24h", "descripciones"):
+        for nombre in ("tabla_avisos", "areas_aviso", "aviso_24h", "textos"):
             self.mocks[nombre].assert_not_called()
         self.assertEqual([s for s, _ in conn.registro], [tarea.SQL_HAY_TABLA, SQL_LATIDO])
         self.assertEqual((resumen["fallas"], resumen["avisos"]), (["migracion"], [tarea.AVISO_SIN_TABLA]))
@@ -843,6 +1001,100 @@ class TestTarea(unittest.TestCase):
         self.assertEqual(resumen["fallas"], ["tabla", "lluvia24h"])
         self.assertEqual(conn.params(tarea.SQL_BORRAR_METEOROLOGICO) + conn.params(tarea.SQL_BORRAR_24H), [])
         self.assertEqual(conn.params(SQL_ALERTA), [])
+
+    # --- íconos y textos oficiales ---------------------------------------------------------
+    def test_filas_con_icono_lectura_y_texto_del_dia(self):
+        conn, resumen = self.correr(tabla=fuente.TablaAvisos(avisos=[A375, A376], filas=2054),
+                                    areas=_por_mapa(**{"375": 3, "376": 2}), textos=TEXTOS)
+        [filas] = conn.params(tarea.SQL_AREA)
+        por_clave = {(f["tipo"], f["numero"], f["mapa"]): f for f in filas}
+        f376 = por_clave[("meteorologico", 376, 2)]
+        self.assertEqual((f376["icono"], f376["texto_dia"]), ("gota", DIAS_376[2]))
+        self.assertEqual(json.loads(f376["lectura"])["montos"][2]["lugar"], "Sierra norte")
+        self.assertIsNone(por_clave[("meteorologico", 375, 2)]["texto_dia"])
+        self.assertEqual(por_clave[("lluvia24h", None, 1)]["icono"], "gota")
+        self.assertEqual(resumen["lectura"], {"iconos": {"376": "gota", "24h": "gota"},
+                                              "fecha_no_coincide": ["aviso 375 mapa 2"],
+                                              "mm_literal": [], "sin_general": []})
+        self.mocks["textos"].assert_called_once_with(A375.url)
+
+    def test_lluvia_guardada_sin_icono_se_vuelve_a_bajar(self):
+        # guardado hace 1 h, pero sin ícono (antes de la migración de íconos): se completa
+        conn = _Conexion(previos=[_previo(376, 1, GENERAL_376, DIAS_376, incompleto=True)], lluvia=[LLUVIA_376])
+        conn, resumen = self.correr(conn=conn, tabla=fuente.TablaAvisos(avisos=[A376], filas=2054),
+                                    areas=_por_mapa(**{"376": 2}))
+        self.assertEqual((resumen["bajados"], resumen["reusados"]), ([376], []))
+        self.mocks["textos"].assert_not_called()   # ya tenía el general y los dos días
+        [filas] = conn.params(tarea.SQL_AREA)
+        self.assertEqual([(f["mapa"], f["icono"], f["texto_dia"]) for f in filas if f["numero"] == 376],
+                         [(1, "gota", DIAS_376[1]), (2, "gota", DIAS_376[2])])
+        # completo y reciente: se reusa
+        conn = _Conexion(previos=[_previo(376, 1, GENERAL_376, DIAS_376)], lluvia=[LLUVIA_376])
+        _, resumen = self.correr(conn=conn, tabla=fuente.TablaAvisos(avisos=[A376], filas=2054))
+        self.assertEqual((resumen["bajados"], resumen["reusados"]), ([], [376]))
+        # reciente, con ícono (gota) pero sin su párrafo general (no estaba en la página): también
+        # se reusa; no se pide el WFS ni la página en cada corrida, se reintenta a las REFRESCO_HORAS
+        conn = _Conexion(previos=[_previo(376, 1)], lluvia=[LLUVIA_376])
+        _, resumen = self.correr(conn=conn, tabla=fuente.TablaAvisos(avisos=[A376], filas=2054))
+        self.assertEqual((resumen["bajados"], resumen["reusados"]), ([], [376]))
+        self.mocks["textos"].assert_not_called()
+        self.mocks["areas_aviso"].assert_not_called()
+
+    def test_con_la_pagina_caida_se_usan_los_textos_guardados(self):
+        # el 376 se vuelve a bajar (7 h) con sus textos guardados; al 377 le falta el suyo y la página cae
+        conn = _Conexion(previos=[_previo(376, 7, GENERAL_376, DIAS_376)], lluvia=[LLUVIA_376])
+        with self.assertLogs(tarea.log, logging.WARNING):
+            conn, resumen = self.correr(conn=conn, tabla=fuente.TablaAvisos(avisos=[A377, A376], filas=2054),
+                                        areas=_por_mapa(**{"376": 2}), textos=OSError("timed out"))
+        self.mocks["textos"].assert_called_once_with(A377.url)
+        self.assertEqual(resumen["fallas"], [])
+        self.assertIn("textos oficiales: OSError: timed out", resumen["avisos"])
+        [filas] = conn.params(tarea.SQL_AREA)
+        f376 = [f for f in filas if f["numero"] == 376]
+        self.assertEqual([(f["descripcion"], f["texto_dia"]) for f in f376],
+                         [(GENERAL_376, DIAS_376[1]), (GENERAL_376, DIAS_376[2])])
+        self.assertEqual({json.loads(f["lectura"])["fenomeno"] for f in f376}, {"lluvia"})
+
+    def test_la_pagina_se_baja_solo_si_falta_un_texto(self):
+        tabla = fuente.TablaAvisos(avisos=[A376], filas=2054)
+        # guardado hace 7 h con el general y los dos días: se re-bajan los polígonos, no la página
+        conn = _Conexion(previos=[_previo(376, 7, GENERAL_376, DIAS_376)], lluvia=[LLUVIA_376])
+        self.correr(conn=conn, tabla=tabla, areas=_por_mapa(**{"376": 2}))
+        self.mocks["textos"].assert_not_called()
+        # le falta el día 2: se baja, y se suma a lo guardado
+        conn = _Conexion(previos=[_previo(376, 7, GENERAL_376, {1: DIAS_376[1]})], lluvia=[LLUVIA_376])
+        conn, _ = self.correr(conn=conn, tabla=tabla, areas=_por_mapa(**{"376": 2}),
+                              textos={(2026, 376): fuente.TextoAviso(None, {2: DIAS_376[2]})})
+        self.mocks["textos"].assert_called_once_with(A376.url)
+        [filas] = conn.params(tarea.SQL_AREA)
+        self.assertEqual([(f["descripcion"], f["texto_dia"]) for f in filas if f["numero"] == 376],
+                         [(GENERAL_376, DIAS_376[1]), (GENERAL_376, DIAS_376[2])])
+        # un aviso que no es de lluvia no pide la página por sus días
+        conn = _Conexion(previos=[_previo(377, 7, "El SENAMHI informa que...")])
+        self.correr(conn=conn, tabla=fuente.TablaAvisos(avisos=[A377], filas=2054))
+        self.mocks["textos"].assert_not_called()
+
+    def test_sin_la_migracion_de_iconos_se_guardan_sin_iconos(self):
+        conn = _Conexion(previos=[_previo(376, 1, GENERAL_376, incompleto=True)], lluvia=[LLUVIA_376],
+                         hay_columnas=False)
+        with self.assertLogs(tarea.log, logging.WARNING):
+            conn, resumen = self.correr(conn=conn)
+        sentencias = [s for s, _ in conn.registro]
+        self.assertEqual(sentencias[:2], [tarea.SQL_HAY_TABLA, tarea.SQL_PREVIOS_V1])
+        self.assertNotIn(tarea.SQL_AREA, sentencias)
+        [filas] = conn.params(tarea.SQL_AREA_V1)
+        self.assertEqual([f["numero"] for f in filas], [377, 374, None])   # el 376 (reciente) se reusa
+        self.assertEqual(resumen["reusados"], [376])
+        self.assertEqual((resumen["fallas"], resumen["avisos"][0], resumen["lectura"]),
+                         ([], tarea.AVISO_SIN_ICONOS, None))
+        self.assertEqual(len(conn.params(SQL_ALERTA)), 1)   # las alertas siguen
+
+    def test_hay_tabla_pregunta_por_las_columnas_nuevas(self):
+        self.assertIn("to_regclass('public.aviso_senamhi')", tarea.SQL_HAY_TABLA)
+        self.assertIn("column_name = 'anclas'", tarea.SQL_HAY_TABLA)
+        # incompleto = sin ícono (anterior a la migración), no sin lectura: un aviso cuyo párrafo
+        # no está en la página tiene ícono (gota) y no se vuelve a pedir al WFS en cada corrida
+        self.assertIn("bool_or(tema = 'lluvia' and icono is null)", tarea.SQL_PREVIOS)
 
 
 if __name__ == "__main__":

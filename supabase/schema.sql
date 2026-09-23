@@ -112,6 +112,9 @@ create table icen_serie (
 -- Avisos oficiales de SENAMHI como áreas (tarea 'avisos', cada hora): una fila por aviso,
 -- día (mapa) y nivel (2 amarillo, 3 naranja, 4 rojo), con los polígonos unidos y
 -- simplificados. 'lluvia24h' es el aviso de lluvia acumulada en 24 h (sin número).
+-- texto_dia, icono, lectura y anclas son derivados (backend/ingesta/lectura_aviso.py): el
+-- frontend los rotula "basado en el aviso de SENAMHI". Sin CHECK de rangos numéricos: una
+-- etiqueta derivada mal calculada no debe tumbar la escritura de los avisos oficiales.
 create table aviso_senamhi (
   id            bigint generated always as identity primary key,
   tipo          text not null check (tipo in ('meteorologico', 'lluvia24h')),
@@ -129,17 +132,33 @@ create table aviso_senamhi (
   url           text,                    -- página oficial del aviso
   geom          geometry(MultiPolygon, 4326) not null,
   ts_captura    timestamptz not null default now(),
+  texto_dia     text,                    -- párrafo oficial de ESE día (mapa), literal; null si no se
+                                         -- leyó o su fecha no coincide
+  icono         text check (icono in ('gota', 'gota_rayo', 'copo')),   -- null: no es de lluvia,
+                                                                       -- llovizna ni nevada
+  lectura       jsonb check (lectura is null or jsonb_typeof(lectura) = 'object'),
+  anclas        jsonb not null default '[]'::jsonb check (jsonb_typeof(anclas) = 'array'),
   check (fin > inicio),
   constraint aviso_senamhi_clave unique nulls not distinct (tipo, anio, numero, mapa, nivel)
 );
 create index aviso_senamhi_geom_idx on aviso_senamhi using gist (geom);
 create index aviso_senamhi_fin_idx on aviso_senamhi (fin);
+comment on column aviso_senamhi.lectura is
+  'v=1: fenomeno, donde, intensidad, regiones_titulo, regiones_parrafo, una_region, descargas (si|condicional|no), '
+  'frase_descargas (literal), granizo{menciona,sobre_m}, nieve{menciona,sobre_m}, rafagas{forma,kmh}, montos[] o null. '
+  'null en un aviso de lluvia = aún no se leyó el párrafo general (se reintenta).';
+comment on column aviso_senamhi.anclas is
+  'Dónde va el ícono: [{parte, lon, lat, radio_km, km2, mayor}] por parte del MultiPolygon (de 300 km2 o más, '
+  'y siempre la más grande), en el centro del mayor círculo inscrito (ST_MaximumInscribedCircle).';
 
 -- Para el frontend: los que no han terminado, con el polígono en GeoJSON, el rojo al final.
+-- anclas[].parte es el índice (desde 1) en geojson.coordinates: st_dump y st_asgeojson
+-- recorren las partes en el mismo orden.
 create view aviso_vigente with (security_invoker = true) as
 select id, tipo, anio, numero, mapa, nivel, titulo, tema, descripcion, emision, inicio, fin,
        inicio <= now() as en_curso, departamentos, url, ts_captura,
-       st_asgeojson(geom, 3)::json as geojson
+       st_asgeojson(geom, 3)::json as geojson,
+       texto_dia, icono, lectura, anclas
 from aviso_senamhi
 where fin > now()
 order by nivel, inicio, tipo, numero, mapa;
@@ -176,8 +195,86 @@ select clave, nombre, cod, departamento, provincia, distrito, cuenca, altitud_m,
 from lluvia_senamhi
 where medido_en >= now() - interval '3 hours';
 
+-- Pronóstico oficial de SENAMHI por localidad (https://www.senamhi.gob.pe/?p=pronostico-meteorologico):
+-- 277 localidades (17 en Cajamarca), 3 a 5 días. Lo llena la tarea 'pronostico' (cada hora).
+-- Es un PUNTO por localidad: el frontend nunca sombrea el distrito. Upsert por (codigo, fecha):
+-- una emisión más vieja no pisa una más nueva; solo se borran fechas pasadas.
+-- Coordenadas: catálogo revisado backend/data/localidades_senamhi.json (la página no las trae).
+create table pronostico_localidad (
+  codigo         text not null check (codigo ~ '^\d{2}-\d{4}$'),  -- dp-localidad: '06-0011' = Cajamarca
+  fecha          date not null,                 -- día pronosticado (hora de Perú)
+  dp             text not null,                 -- '06'
+  localidad      text not null,                 -- '0011'
+  nombre         text not null,                 -- 'San Miguel de Pallaques' (legible)
+  nombre_senamhi text not null,                 -- 'SAN MIGUEL DE PALLAQUES - CAJAMARCA' (literal)
+  departamento   text,                          -- canónico (backend/ingesta/departamentos.py)
+  emision        date not null,                 -- 'Emisión: martes, 22 de septiembre del 2026' (sin hora)
+  icono_senamhi  text check (icono_senamhi ~ '^\d{3}$'),   -- el que eligió el pronosticador; no se dibuja
+  tmax           smallint,
+  tmin           smallint,
+  texto          text not null,                 -- texto del pronosticador, literal
+  tipo           text not null check (tipo in ('sin_lluvia', 'lluvia', 'tormenta', 'nieve')),
+  posible        boolean not null default false, -- "tendencia a ..." o solo lo dice el ícono
+  por            text not null check (por in ('texto', 'icono', 'texto+icono')),
+  lluvia_segura  boolean not null default false, -- tormenta posible, pero la lluvia sí la afirma el texto
+  granizo        boolean not null default false,
+  intensidad     text check (intensidad in ('ligera', 'moderada', 'fuerte')),
+  momento        text,                          -- 'en la tarde', 'al atardecer'...; nunca 'durante el día'
+  cielo          text check (cielo in ('despejado', 'parcial', 'nublado', 'neblina')),  -- solo en sin_lluvia
+  lat            double precision,              -- null = sin ubicar: no se muestra
+  lon            double precision,
+  ubicacion      text,                          -- de dónde sale el punto ('estación SENAMHI AUGUSTO WEBERBAUER (CO)')
+  ts_captura     timestamptz not null default now(),
+  primary key (codigo, fecha)
+);
+create index pronostico_localidad_fecha_idx on pronostico_localidad (fecha);
+
+-- Para el frontend: hoy, mañana y pasado (hora de Perú), solo las ubicadas y de una emisión
+-- de 5 días o menos (si SENAMHI deja de publicar, la capa se vacía sola).
+create view pronostico_vigente with (security_invoker = true) as
+select codigo, nombre, departamento, lat, lon, fecha, emision, tmax, tmin, texto,
+       tipo, posible, por, lluvia_segura, granizo, intensidad, momento, cielo,
+       'https://www.senamhi.gob.pe/?p=pronostico-detalle&dp=' || dp || '&localidad=' || localidad as url
+from pronostico_localidad
+where lat is not null and lon is not null
+  and fecha between (now() at time zone 'America/Lima')::date and (now() at time zone 'America/Lima')::date + 2
+  and emision >= (now() at time zone 'America/Lima')::date - 5;
+
+-- Nowcasting de lluvia de SENAMHI (g_nowcasting:view_nowcasting): manchas de ~2 km para ahora
+-- (análisis), +1 h y +2 h. EXPERIMENTAL ("producto referencial y aún en etapa de calibración").
+-- Tiene huecos (22-09: detenido desde las 20:40). Lo llena la tarea 'nowcast' (cada 10 min).
+-- Nada se borra por una falla: las vistas dejan de mostrar una emisión de más de 30 min.
+create table nowcast_producto (
+  horizonte_min smallint primary key check (horizonte_min in (0, 60, 120)),  -- 0 = análisis (ahora)
+  fichero       text not null check (fichero ~ '^nowcasting_\d{8}-\d{4}_(analysis|forecast)_\d{8}-\d{4}_web$'),
+  emision       timestamptz not null,   -- hora del nombre del fichero (hora de Lima)
+  valido_desde  timestamptz not null,   -- fecha1 del WFS (UTC)
+  valido_hasta  timestamptz not null,   -- fecha2 del WFS (UTC)
+  manchas       int not null default 0, -- polígonos de nivel 1 a 3 dentro del recuadro del Perú
+  ts_captura    timestamptz not null default now()
+);
+create table nowcast_mancha (
+  horizonte_min smallint not null references nowcast_producto (horizonte_min) on delete cascade,
+  nivel         smallint not null check (nivel between 1 and 3),   -- leyenda SENAMHI: moderada, fuerte, extrema
+  geom          geometry(MultiPolygon, 4326) not null,             -- unión de las manchas del nivel (~330 m)
+  primary key (horizonte_min, nivel)
+);
+
+-- El umbral de 30 min vive solo aquí (el frontend usa vigente y vence_en; no lo recalcula).
+create view nowcast_estado with (security_invoker = true) as
+select horizonte_min, fichero, emision, valido_desde, valido_hasta, manchas, ts_captura,
+       emision + interval '30 minutes' as vence_en,
+       emision >= now() - interval '30 minutes' as vigente
+from nowcast_producto;
+create view nowcast_vigente with (security_invoker = true) as
+select m.horizonte_min, m.nivel, p.emision, p.valido_desde, p.valido_hasta,
+       st_asgeojson(m.geom, 3)::json as geojson
+from nowcast_mancha m join nowcast_producto p using (horizonte_min)
+where p.emision >= now() - interval '30 minutes'
+order by m.horizonte_min, m.nivel;
+
 -- Cuándo corrió de verdad cada tarea del worker ('ingesta', 'enfen', 'avisos',
--- 'lluvia_nacional'), con su resumen (fallas, avisos y lo que escribió).
+-- 'lluvia_nacional', 'pronostico', 'nowcast'), con su resumen (fallas, avisos y lo que escribió).
 create table latido (
   servicio text primary key,
   ts       timestamptz not null default now(),
@@ -347,6 +444,9 @@ alter table latido         enable row level security;
 alter table icen_serie     enable row level security;
 alter table aviso_senamhi  enable row level security;
 alter table lluvia_senamhi enable row level security;
+alter table pronostico_localidad enable row level security;
+alter table nowcast_producto enable row level security;
+alter table nowcast_mancha enable row level security;
 alter table perfil         enable row level security;
 alter table report         enable row level security;
 alter table voto           enable row level security;
@@ -356,7 +456,8 @@ alter table message        enable row level security;
 -- Datos oficiales: solo lectura para todos.
 grant select on estacion, lectura_lluvia, lectura_caudal, caudal_actual, indice, alerta,
   alerta_actual, mapa, comunicado_enfen, latido, icen_serie, aviso_senamhi, aviso_vigente,
-  lluvia_senamhi, lluvia_senamhi_actual to anon, authenticated;
+  lluvia_senamhi, lluvia_senamhi_actual, pronostico_localidad, pronostico_vigente,
+  nowcast_producto, nowcast_mancha, nowcast_estado, nowcast_vigente to anon, authenticated;
 create policy "lectura publica estacion" on estacion       for select using (true);
 create policy "lectura publica lluvia"   on lectura_lluvia for select using (true);
 create policy "lectura publica caudal"   on lectura_caudal for select using (true);
@@ -368,6 +469,9 @@ create policy "lectura publica latido"   on latido         for select using (tru
 create policy "lectura publica icen_serie" on icen_serie   for select using (true);
 create policy "lectura publica aviso"    on aviso_senamhi  for select using (true);
 create policy "lectura publica lluvia senamhi" on lluvia_senamhi for select using (true);
+create policy "lectura publica pronostico" on pronostico_localidad for select using (true);
+create policy "lectura publica nowcast producto" on nowcast_producto for select using (true);
+create policy "lectura publica nowcast mancha" on nowcast_mancha for select using (true);
 
 -- Comunidad: lo que no aparece aquí, el cliente no lo puede leer ni escribir.
 -- autor no se lee (con autor + GPS + hora se arma el historial de ubicación de alguien),
