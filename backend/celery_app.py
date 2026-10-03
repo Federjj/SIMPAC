@@ -11,6 +11,8 @@ Tareas:
     (cada hora: SENAMHI lo renueva una vez por día hábil, de noche).
   - nowcast: nowcasting de lluvia de SENAMHI para ahora, +1 h y +2 h, EXPERIMENTAL (cada
     10 min, como sale el producto; una corrida atrasada más de 9 min se descarta).
+  - rios: avisos hidrológicos de SENAMHI (lista del país; el detalle solo para los ríos vigilados,
+    hoy el Mashcón) para las señales de la zona que un río podría afectar (cada hora).
   - refresh_cache: refresca el snapshot en Redis (cada 5 min).
 
 Los nombres de las tareas son fijos a propósito: beat las encola por nombre, así
@@ -40,6 +42,7 @@ celery.conf.beat_schedule = {
     # expires: si la cola se atrasa (el worker ocupado con otra tarea), no se juntan corridas
     # viejas del nowcasting; a los 9 min ya viene la siguiente
     "nowcast": {"task": "backend.celery_app.nowcast", "schedule": 600.0, "options": {"expires": 540}},
+    "rios": {"task": "backend.celery_app.rios", "schedule": 3600.0},
 }
 
 
@@ -84,6 +87,14 @@ def nowcast():
     return actualizar()
 
 
+# 240 s: backend/ingesta/rios.py deja de pedir detalles a los 100 s (PLAZO_S) para que el
+# latido se escriba siempre dentro de este límite.
+@celery.task(name="backend.celery_app.rios", soft_time_limit=240, time_limit=300)
+def rios():
+    from backend.ingesta.rios import actualizar
+    return actualizar()
+
+
 @celery.task(name="backend.celery_app.refresh_cache")
 def refresh_cache():
     from backend.snapshot import refresh_snapshot
@@ -102,3 +113,4 @@ def _al_arrancar(**_):
     lluvia_nacional.delay()
     pronostico.delay()
     nowcast.delay()
+    rios.delay()

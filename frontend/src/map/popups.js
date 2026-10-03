@@ -1,12 +1,15 @@
 import { escapeHtml as esc, enlaceSeguro } from "./markers";
 import { glifoSvg } from "./iconos";
-import { AVISO_ARO, AVISO_HALO } from "./palette";
+import { AVISO_ARO, AVISO_HALO, ZONA_HEX } from "./palette";
 import { textoAviso } from "@/lib/avisoTexto";
+import { CERCA_M, TITULO_NIVEL, fraseCorta, pasoAntes } from "@/lib/zonaRio";
+import { lecturaRio } from "@/lib/lenguaje";
 import { aspecto, diaConFecha, franja, temps } from "@/lib/pronostico";
 import { DIAS_CORTOS, diaMesCorto, fechaPeru } from "@/lib/tiempo";
 
-// HTML de los popups nuevos (avisos con insignia, pronóstico por localidad y nowcasting). Los
-// textos salen de lib/avisoTexto.js y lib/pronostico.js; aquí solo se arman, siempre escapados.
+// HTML de los popups nuevos (avisos con insignia, pronóstico por localidad, nowcasting y zonas y
+// desbordes de los ríos vigilados). Los textos salen de lib/avisoTexto.js, lib/pronostico.js y
+// lib/zonaRio.js; aquí solo se arman, siempre escapados.
 // Los glifos (map/iconos.js) son constantes y van sin escapar.
 
 // Ancho fijo; alto con tope que cabe entre los márgenes (en el celular, sobre el panel de estado,
@@ -176,5 +179,144 @@ export function popupNowcast({ titulo, cuando, emitido, color, url }) {
     enlace(url, "Ver el nowcasting en SENAMHI") +
     firma("Basado en el nowcasting de SENAMHI; colores de SIMPAC.") +
     `</div>`
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Ríos vigilados: zona que el río podría afectar y desbordes pasados (layers/zonasRio.js y
+// layers/desbordes.js). Los textos del nivel salen de lib/zonaRio.js.
+// ---------------------------------------------------------------------------
+
+const num = (v) => Number(v).toLocaleString("es-PE", { maximumFractionDigits: 2 });
+const minuscula = (t) => t.charAt(0).toLowerCase() + t.slice(1);
+const INSIGNIA_ZONA = {
+  estimada: '<span class="insig">Estimado</span>',
+  estudio: '<span class="insig oficial">Estudio 2005</span>',
+};
+const ACLARA_ZONA = {
+  estimada: "Es una estimación hecha con el relieve: marca dónde mirar, no hasta dónde llegará el agua.",
+  estudio: "Es un mapa de 2005: la ciudad y el río cambiaron desde entonces; marca dónde mirar, no hasta dónde llegará el agua.",
+};
+const verAviso = (url) =>
+  enlaceSeguro(url) ? ` <a href="${esc(url)}" target="_blank" rel="noopener noreferrer">Ver el aviso</a>` : "";
+
+// Por qué la zona tiene su nivel (sin señales: cómo estaba el río en la última medición de ANA,
+// que es horaria y puede tener horas de atraso: se dice de cuándo es).
+function porQue(estado, caudal) {
+  if (estado.senales.length) {
+    const items = estado.senales.map((s) => `<li><b>${esc(s.titulo)}.</b> ${esc(s.texto)}${verAviso(s.url)}</li>`).join("");
+    return `<div class="sub">Por qué</div><ul>${items}</ul>`;
+  }
+  const t = estado.t;
+  if (!caudal || caudal.valor == null)
+    return `<p>No hay medición reciente del río (ANA) ni avisos de lluvia fuerte en su cuenca.</p>`;
+  const cuando = (lecturaRio(caudal) ?? "").replace(/\s*\(ANA\)$/, "");
+  const medida = `${num(caudal.valor)} ${caudal.unidad}${cuando ? `, ${cuando}` : ""}`;
+  return t && !t.bajo && t.estado === "normal"
+    ? `<p>El río estaba tranquilo en la última medición de ANA (${esc(medida)}) y no hay avisos de lluvia fuerte en su cuenca.</p>`
+    : `<p>En la última medición de ANA el río llevaba ${esc(medida)}, sin señales de crecida, y no hay avisos de lluvia fuerte en su cuenca.</p>`;
+}
+
+// "a 850 m" o "a 4,8 km"
+const aDistancia = (m) =>
+  m < 1000 ? `a ${Math.round(m / 50) * 50 || 50} m` : `a ${(m / 1000).toLocaleString("es-PE", { maximumFractionDigits: 1 })} km`;
+
+// "Pasó antes en el río": con la zona tocada, primero los desbordes y daños más cercanos a ella
+// ("Cerca de aquí", a menos de 1 km; si no, "En otros tramos del río", con la distancia), para que
+// no se lean como ocurridos ahí los de otro tramo; y las crecidas medidas en rojo.
+function pasoAntesHtml(incidentes, rio, zona) {
+  const { danos, crecidas } = pasoAntes(incidentes, 4, zona?.geojson ?? null);
+  if (!danos.length && !crecidas.length) return "";
+  // los que no se listan y sí están en el mapa (los que solo tienen el distrito no van en la capa)
+  const enMapa = (i) => i.tipo !== "crecida" && i.lat != null;
+  const mas = incidentes.filter(enMapa).length - danos.filter(enMapa).length;
+  const fuente = (i) =>
+    enlaceSeguro(i.fuente_url)
+      ? `<a href="${esc(i.fuente_url)}" target="_blank" rel="noopener noreferrer">${esc(i.fuente)}</a>`
+      : esc(i.fuente);
+  const linea = (i) =>
+    `<li><b>${esc(i.fecha_texto)}</b> · ${esc(i.lugar)}${i.distM > 0 ? ` (${esc(aDistancia(i.distM))})` : ""} · ` +
+    `${esc(i.titulo)} — ${fuente(i)}</li>`;
+  const lista = (items) => (items.length ? `<ul>${items.map(linea).join("")}</ul>` : "");
+  const conZona = danos.some((i) => i.distM != null);
+  const cerca = conZona ? danos.filter((i) => i.distM != null && i.distM < CERCA_M) : [];
+  const resto = conZona ? danos.filter((i) => !cerca.includes(i)) : danos;
+  const enRojo = [...crecidas]
+    .sort((a, b) => String(a.fecha ?? "").localeCompare(String(b.fecha ?? "")))
+    .map((i) => `${i.fecha_texto}${i.caudal_m3s != null ? ` (${num(i.caudal_m3s)} m³/s)` : ""}`);
+  return (
+    `<div class="sub">Pasó antes en el ${esc(minuscula(rio.nombre))}</div>` +
+    (cerca.length ? `<p class="tramo">Cerca de aquí</p>${lista(cerca)}` : "") +
+    (conZona && resto.length ? `<p class="tramo">En otros tramos del río</p>` : "") +
+    lista(resto) +
+    (mas ? `<p class="aclara">Y ${mas} más en la capa «Desbordes y daños pasados».</p>` : "") +
+    (enRojo.length ? `<p class="aclara">Crecidas medidas en rojo: ${esc(enRojo.join(", "))} (SENAMHI).</p>` : "")
+  );
+}
+
+// Popup de una zona que el río podría afectar (o del aura, sin zona si aún no hay polígonos).
+// rio: fila de rio_vigilado_mapa; zona: de rio_zona_mapa; estado: estadoZona(); caudal: fila de ANA.
+// (La franja de color va con opcionesPopup(map, {acento}) según el nivel.)
+export function popupZonaRio({ rio, zona, estado, caudal, incidentes = [] }) {
+  const { nivel, avisoHidro } = estado;
+  const fuerte = nivel === "alerta" || nivel === "emergencia";
+  const accion = fuerte ? fraseCorta(rio, estado).accion : null;
+  const titulo = zona ? `${zona.nombre} · ${minuscula(rio.nombre)}` : `Zona que podría afectar el ${minuscula(rio.nombre)}`;
+  // sin señales y sin medición, porQue() ya dice que ANA no tiene medición
+  const menciones = estado.menciones.filter((m) => estado.senales.length || m.clave !== "sin_ana");
+  const lugares = (rio.lugares_aviso ?? []).map((l) => l.nombre);
+  return (
+    `<div class="pop pop-zona"><h4>${esc(titulo)}</h4>` +
+    `<div class="meta">${esc(rio.departamento)} ·${zona ? ` ${INSIGNIA_ZONA[zona.tipo] ?? ""}` : ""}</div>` +
+    `<div class="nivel-zona" style="--c:${ZONA_HEX[nivel]}"><i></i><span>${esc(TITULO_NIVEL[nivel])}` +
+    (accion ? `. <b>${esc(accion)}</b>` : "") +
+    `</span></div>` +
+    (zona?.texto ? `<p>${esc(zona.texto)}</p>` : "") +
+    porQue(estado, caudal) +
+    menciones.map((m) => `<p class="aclara">${esc(m.texto)}${verAviso(m.url)}</p>`).join("") +
+    (avisoHidro?.areas ? `<div class="sub">Según SENAMHI</div><p class="cita">«${esc(avisoHidro.areas)}»</p>` : "") +
+    (fuerte && !avisoHidro && lugares.length
+      ? `<div class="sub">Lugares que SENAMHI suele nombrar</div><p>${esc(lugares.join(", "))}.</p>`
+      : "") +
+    pasoAntesHtml(incidentes, rio, zona) +
+    (nivel === "emergencia" && avisoHidro?.significado_rojo
+      ? `<p>Para SENAMHI, el nivel rojo en este río significa: «${esc(avisoHidro.significado_rojo)}»</p>`
+      : "") +
+    `<p class="aclara">${zona ? `${esc(ACLARA_ZONA[zona.tipo] ?? ACLARA_ZONA.estimada)} ` : ""}` +
+    `Ante una emergencia sigue las indicaciones de Defensa Civil (INDECI).</p>` +
+    (zona?.atribucion ? firma(zona.atribucion) : "") +
+    (zona ? enlace(zona.fuente_url, "Ver la fuente") : "") +
+    `</div>`
+  );
+}
+
+// Popup de un rombo de desbordes pasados: uno o varios incidentes juntos (del más nuevo). Con el
+// mapa alejado un rombo junta lugares distintos: cada incidente dice el suyo.
+export function popupIncidentes(lista, rio) {
+  const [primero] = lista;
+  const unLugar = lista.every((i) => i.lugar === primero.lugar);
+  const titulo =
+    lista.length === 1 ? primero.titulo : `${lista.length} incidentes ${unLugar ? "en este lugar" : "en este tramo del río"}`;
+  const meta = [rio?.nombre ?? "Río", unLugar ? primero.lugar : null].filter(Boolean).join(" · ");
+  const enlaceDe = (href, texto) =>
+    enlaceSeguro(href) ? `<a href="${esc(href)}" target="_blank" rel="noopener noreferrer">${esc(texto)}</a>` : esc(texto);
+  const items = lista
+    .map((i) => {
+      const otras = (Array.isArray(i.otras_fuentes) ? i.otras_fuentes : [])
+        .filter((o) => o?.fuente)
+        .map((o) => enlaceDe(o.url, o.fuente));
+      return (
+        `<div class="inc"><p class="tit"><b>${esc(i.fecha_texto)}</b> · ${esc(i.titulo)}</p>` +
+        (unLugar ? "" : `<p class="aclara">Lugar: ${esc(i.lugar)}</p>`) +
+        (i.detalle ? `<p class="aclara">${esc(i.detalle)}</p>` : "") +
+        `<p class="aclara">Ubicación: ${esc(i.precision_texto)}</p>` +
+        `<p class="enl">Fuente: ${enlaceDe(i.fuente_url, i.fuente)}${otras.length ? ` · También: ${otras.join(" · ")}` : ""}</p></div>`
+      );
+    })
+    .join("");
+  return (
+    `<div class="pop pop-inc"><h4>${esc(titulo)}</h4><div class="meta">${esc(meta)}</div>${items}` +
+    `<p class="aclara">Aquí el río ya causó daños: es una zona de peligro cuando el río crece. Que haya pasado antes no ` +
+    `significa que esté pasando hoy; mira el color de la zona y los avisos de hoy.</p></div>`
   );
 }

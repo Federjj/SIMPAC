@@ -3,9 +3,23 @@
 // sola vez en el documento (DEFS_SVG, que monta main.jsx), con ids prefijados "simpac-" para no
 // chocar con otros SVG de la página. Son constantes: nunca llevan datos de una fuente.
 // Trazos de viento basados en Lucide 0.454 (ISC).
-// Módulo puro, sin imports: lo leen también las pruebas con node --test.
+// Aquí viven también los rayados de las zonas que un río podría afectar (layers/zonasRio.js), que se
+// usan como relleno de un polígono: fillColor "url(#simpac-rayado-<nivel>)".
+// Módulo puro (solo importa la paleta, también pura): lo leen también las pruebas con node --test.
+import { ZONA_OSCURO } from "./palette.js";
 
 export const DEFS_ID = "simpac-defs-iconos";
+
+// Rayado a 45 grados de una zona: franjas del tono oscuro del nivel sobre un fondo blanquecino (se
+// lee también encima del área naranja de un aviso); sin señales (azul), franjas algo más suaves.
+const rayado = (nivel) => {
+  const tenue = nivel === "sin_senales";
+  return (
+    `<pattern id="simpac-rayado-${nivel}" width="8" height="8" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">` +
+    `<rect width="8" height="8" fill="#fff" fill-opacity=".45"/>` +
+    `<rect width="3.2" height="8" fill="${ZONA_OSCURO[nivel]}" fill-opacity="${tenue ? ".55" : ".75"}"/></pattern>`
+  );
+};
 
 // userSpaceOnUse en las nubes: una nube hecha de varios círculos lleva un solo degradado continuo.
 export const DEFS_SVG = `<svg id="${DEFS_ID}" width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
@@ -17,6 +31,7 @@ export const DEFS_SVG = `<svg id="${DEFS_ID}" width="0" height="0" style="positi
 <linearGradient id="simpac-gCalor" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FF8A5B"/><stop offset="1" stop-color="#E03E1A"/></linearGradient>
 <linearGradient id="simpac-gFrio" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#7CC4FF"/><stop offset="1" stop-color="#2563EB"/></linearGradient>
 <filter id="simpac-fSombra" x="-20%" y="-20%" width="140%" height="150%"><feDropShadow dx="0" dy=".8" stdDeviation=".6" flood-color="#0f172a" flood-opacity=".38"/></filter>
+${["emergencia", "alerta", "atentos", "sin_senales"].map(rayado).join("")}
 </defs></svg>`;
 
 // Monta los degradados una vez (antes de dibujar cualquier glifo).

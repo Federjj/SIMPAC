@@ -82,7 +82,7 @@
   color: hsl(var(--muted-foreground)) !important;
 }
 
-/* marcadores circulares (estaciones / rios) */
+/* marcadores circulares (estaciones; los ríos usan .mk-rio) */
 .mk {
   display: grid;
   place-items: center;
@@ -101,7 +101,7 @@
 .mk.diamond svg {
   transform: rotate(-45deg);
 }
-/* con el mapa alejado, ríos y estaciones se achican para no tapar avisos y pronóstico
+/* con el mapa alejado, las estaciones se achican para no tapar avisos y pronóstico
    (scale se compone con el rotate del rombo; el ancla es el centro, no se corre).
    El mismo factor lo usa map/acomodo.js (ESCALA_MK) para calcular sus cajas. */
 [data-escala="region"] .mk {
@@ -448,6 +448,402 @@
 }
 
 /* ============================================================
+   Ríos (map/marcadores.js iconoRio, layers/rios.js): disco blanco con
+   aro del color del estado y rótulo; mismo sistema que .mk-ins y .mk-loc
+   (ícono 0x0, corrido por --dx/--dy). Tamaños como TAM_RIO de acomodo.js.
+   ============================================================ */
+.rio-cuerpo {
+  position: absolute;
+  left: 0;
+  top: 0;
+  display: grid;
+  place-items: center;
+  box-sizing: border-box;
+  width: 40px;
+  height: 40px;
+  border-radius: 9999px;
+  background: #fff;
+  color: var(--g);
+  border: 4px solid var(--c);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--c) 22%, transparent), 0 3px 10px rgba(15, 23, 42, 0.3);
+  transform: translate(calc(-50% + var(--dx, 0px)), calc(-50% + var(--dy, 0px)));
+  transition: opacity 0.18s, transform 0.18s;
+}
+.rio-cuerpo svg {
+  width: 22px;
+  height: 22px;
+}
+/* área de toque más grande que el disco */
+.rio-cuerpo::before {
+  content: "";
+  position: absolute;
+  inset: -8px;
+  border-radius: 9999px;
+}
+[data-escala="region"] .rio-cuerpo {
+  width: 30px;
+  height: 30px;
+  border-width: 3px;
+}
+[data-escala="region"] .rio-cuerpo svg {
+  width: 17px;
+  height: 17px;
+}
+/* país (y cuando no cabe): punto de color con borde blanco */
+[data-escala="pais"] .rio-cuerpo,
+[data-escala] .mk-rio.es-punto .rio-cuerpo {
+  width: 14px;
+  height: 14px;
+  border: 2px solid #fff;
+  background: var(--c);
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.35);
+}
+[data-escala="pais"] .rio-cuerpo svg,
+.mk-rio.es-punto .rio-cuerpo svg {
+  display: none;
+}
+/* en alerta o emergencia: aro que late (quieto si la persona pidió menos movimiento) */
+.mk-rio.fuerte .rio-cuerpo {
+  animation: rio-late 1.6s ease-out infinite;
+}
+@keyframes rio-late {
+  0% {
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--c) 55%, transparent), 0 3px 10px rgba(15, 23, 42, 0.3);
+  }
+  70% {
+    box-shadow: 0 0 0 14px color-mix(in srgb, var(--c) 0%, transparent), 0 3px 10px rgba(15, 23, 42, 0.3);
+  }
+  100% {
+    box-shadow: 0 0 0 0 transparent, 0 3px 10px rgba(15, 23, 42, 0.3);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .mk-rio.fuerte .rio-cuerpo {
+    animation: none;
+  }
+}
+/* rótulo: empieza a 6 px del borde del disco (colocar.js usa lo mismo) */
+.rio-rot {
+  display: none;
+  position: absolute;
+  left: 0;
+  top: 0;
+  white-space: nowrap;
+  align-items: center;
+  gap: 6px;
+  transform: translate(calc(26px + var(--dx, 0px)), calc(-50% + var(--dy, 0px)));
+  background: rgba(255, 255, 255, 0.96);
+  border-radius: 9999px;
+  padding: 0 9px 0 7px;
+  font: 600 12px/22px Geist, Inter, sans-serif;
+  color: #0f172a;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.18);
+  transition: opacity 0.18s, transform 0.18s;
+}
+.rio-rot .pt {
+  width: 8px;
+  height: 8px;
+  border-radius: 9999px;
+  background: var(--c);
+  box-shadow: 0 0 0 1.5px #fff, 0 0 0 2.5px rgba(15, 23, 42, 0.15);
+}
+.rio-rot .v {
+  color: #64748b;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+/* la medida, solo a escala local */
+[data-escala="region"] .rio-rot .v,
+[data-escala="pais"] .rio-rot .v {
+  display: none;
+}
+.mk-rio.con-rot .rio-rot {
+  display: flex;
+}
+.mk-rio.rot-izq .rio-rot {
+  transform: translate(calc(-100% - 26px + var(--dx, 0px)), calc(-50% + var(--dy, 0px)));
+}
+[data-escala="region"] .rio-rot {
+  transform: translate(calc(21px + var(--dx, 0px)), calc(-50% + var(--dy, 0px)));
+}
+[data-escala="region"] .mk-rio.rot-izq .rio-rot {
+  transform: translate(calc(-100% - 21px + var(--dx, 0px)), calc(-50% + var(--dy, 0px)));
+}
+[data-escala="pais"] .rio-rot {
+  transform: translate(calc(14px + var(--dx, 0px)), calc(-50% + var(--dy, 0px)));
+}
+[data-escala="pais"] .mk-rio.rot-izq .rio-rot {
+  transform: translate(calc(-100% - 14px + var(--dx, 0px)), calc(-50% + var(--dy, 0px)));
+}
+/* arriba o abajo del disco (si a los lados no cabe), a 4 px de su borde (colocar.js usa lo mismo) */
+.mk-rio.rot-arr .rio-rot {
+  transform: translate(calc(-50% + var(--dx, 0px)), calc(-100% - 24px + var(--dy, 0px)));
+}
+.mk-rio.rot-aba .rio-rot {
+  transform: translate(calc(-50% + var(--dx, 0px)), calc(24px + var(--dy, 0px)));
+}
+[data-escala="region"] .mk-rio.rot-arr .rio-rot {
+  transform: translate(calc(-50% + var(--dx, 0px)), calc(-100% - 19px + var(--dy, 0px)));
+}
+[data-escala="region"] .mk-rio.rot-aba .rio-rot {
+  transform: translate(calc(-50% + var(--dx, 0px)), calc(19px + var(--dy, 0px)));
+}
+[data-escala="pais"] .mk-rio.rot-arr .rio-rot {
+  transform: translate(calc(-50% + var(--dx, 0px)), calc(-100% - 11px + var(--dy, 0px)));
+}
+[data-escala="pais"] .mk-rio.rot-aba .rio-rot {
+  transform: translate(calc(-50% + var(--dx, 0px)), calc(11px + var(--dy, 0px)));
+}
+/* en alerta o emergencia el rótulo va en una pastilla del color del estado */
+.mk-rio.fuerte .rio-rot {
+  background: var(--c);
+  color: #fff;
+}
+.mk-rio.fuerte .rio-rot .v {
+  color: #fff;
+  opacity: 0.9;
+}
+.mk-rio.fuerte .rio-rot .pt {
+  background: #fff;
+}
+.mk-rio:hover .rio-cuerpo {
+  transform: translate(calc(-50% + var(--dx, 0px)), calc(-50% + var(--dy, 0px))) scale(1.08);
+}
+.leaflet-marker-icon:focus-visible .rio-cuerpo {
+  outline: 2px solid #0f172a;
+  outline-offset: 3px;
+}
+.es-oculto .rio-cuerpo,
+.es-oculto .rio-rot {
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* río resaltado (layers/rios.js): halo, cauce y nombre sobre la línea. El grosor lo pone la banda
+   de zoom (MapView: data-zoom-banda = z10 | z12 | z13 | z14 | z16); el CSS le gana al atributo
+   stroke-width del SVG. */
+.rio-halo {
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.rio-cauce {
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+[data-zoom-banda="z10"] .rio-halo {
+  stroke-width: 6px;
+}
+[data-zoom-banda="z10"] .rio-cauce {
+  stroke-width: 3px;
+}
+[data-zoom-banda="z12"] .rio-halo {
+  stroke-width: 9px;
+}
+[data-zoom-banda="z12"] .rio-cauce {
+  stroke-width: 4.5px;
+}
+[data-zoom-banda="z13"] .rio-halo {
+  stroke-width: 11px;
+}
+[data-zoom-banda="z13"] .rio-cauce {
+  stroke-width: 5.5px;
+}
+[data-zoom-banda="z14"] .rio-halo {
+  stroke-width: 13px;
+}
+[data-zoom-banda="z14"] .rio-cauce {
+  stroke-width: 6.5px;
+}
+[data-zoom-banda="z16"] .rio-halo {
+  stroke-width: 17px;
+}
+[data-zoom-banda="z16"] .rio-cauce {
+  stroke-width: 9px;
+}
+.rio-nombre {
+  font: 600 12px/1 Geist, Inter, sans-serif;
+  letter-spacing: 0.04em;
+  fill: #12406b;
+  paint-order: stroke;
+  stroke: #fff;
+  stroke-width: 3.5px;
+  stroke-linejoin: round;
+  pointer-events: none;
+}
+/* nombre sobre la línea desde zoom 13; afluentes desde zoom 12; faja marginal desde zoom 14 */
+[data-zoom-banda="z10"] .rio-nombre,
+[data-zoom-banda="z12"] .rio-nombre,
+[data-zoom-banda="z10"] .rio-afluente,
+[data-zoom-banda="z10"] .rio-faja,
+[data-zoom-banda="z12"] .rio-faja,
+[data-zoom-banda="z13"] .rio-faja {
+  display: none;
+}
+
+/* zona que un río podría afectar (layers/zonasRio.js): desde zoom 13 los polígonos (en zoom 13,
+   con el aura suave debajo: los polígonos aún miden pocos píxeles); con el mapa más alejado, si hay
+   señales, el aura a lo largo del río. El rótulo «zona que podría inundarse», desde zoom 14. */
+.zona-aura {
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  display: none;
+}
+[data-zoom-banda="z10"] .zona-aura {
+  display: inline;
+  stroke-width: 16px;
+}
+[data-zoom-banda="z12"] .zona-aura {
+  display: inline;
+  stroke-width: 24px;
+}
+[data-zoom-banda="z13"] .zona-aura {
+  display: inline;
+  stroke-width: 28px;
+  stroke-opacity: 0.35;
+}
+[data-zoom-banda="z10"] .zona-pol,
+[data-zoom-banda="z12"] .zona-pol {
+  display: none;
+}
+.zona-nombre {
+  font: italic 600 11.5px/1 Geist, Inter, sans-serif;
+  letter-spacing: 0.02em;
+  fill: #1e3a8a;
+  paint-order: stroke;
+  stroke: #fff;
+  stroke-width: 3.5px;
+  stroke-linejoin: round;
+  pointer-events: none;
+}
+.zona-nombre.n-atentos {
+  fill: #854d0e;
+}
+.zona-nombre.n-alerta {
+  fill: #9a3412;
+}
+.zona-nombre.n-emergencia {
+  fill: #991b1b;
+}
+[data-zoom-banda="z10"] .zona-nombre,
+[data-zoom-banda="z12"] .zona-nombre,
+[data-zoom-banda="z13"] .zona-nombre {
+  display: none;
+}
+
+/* desborde o daño pasado (layers/desbordes.js): rombo pizarra con el año; "×2" si hay más de uno.
+   Si quedaría tapado, el acomodo corre .inc (--dx/--dy) y una línea fina lo une con su punto. El
+   ícono (24x24 en el punto) no recibe toques: los recibe .inc, esté donde esté. */
+.leaflet-marker-icon.mk-inc,
+.leaflet-marker-icon.mk-inc.leaflet-interactive {
+  pointer-events: none;
+}
+.mk-inc .inc {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  pointer-events: auto;
+  cursor: pointer;
+  transform: translate(var(--dx, 0px), var(--dy, 0px));
+  transition: transform 0.18s;
+}
+.mk-inc .inc-linea {
+  display: none;
+  position: absolute;
+  left: 12px;
+  top: 11.25px;
+  width: var(--len, 0px);
+  height: 1.5px;
+  background: #334155;
+  transform-origin: 0 50%;
+  transform: rotate(var(--ang, 0rad));
+  pointer-events: none;
+}
+/* el punto real del incidente, en la punta de la línea */
+.mk-inc .inc-linea::after {
+  content: "";
+  position: absolute;
+  right: -3px;
+  top: -2.25px;
+  width: 6px;
+  height: 6px;
+  border-radius: 9999px;
+  background: #334155;
+  box-shadow: 0 0 0 1.5px #fff;
+}
+.mk-inc .inc.corrido .inc-linea {
+  display: block;
+}
+.mk-inc .inc-rombo {
+  position: absolute;
+  left: 1.5px;
+  top: 1.5px;
+  box-sizing: border-box;
+  width: 21px;
+  height: 21px;
+  border-radius: 5px;
+  background: #334155;
+  border: 2px solid #fff;
+  transform: rotate(45deg);
+  box-shadow: 0 1px 4px rgba(15, 23, 42, 0.35);
+}
+.mk-inc .inc-anio {
+  position: relative;
+  color: #fff;
+  font: 700 10px/1 Geist, Inter, sans-serif;
+  letter-spacing: -0.02em;
+}
+.mk-inc .inc-n {
+  position: absolute;
+  right: -12px;
+  top: -9px;
+  background: #0f172a;
+  color: #fff;
+  font: 700 9px/14px Geist, Inter, sans-serif;
+  padding: 0 4px;
+  border-radius: 9999px;
+  border: 1.5px solid #fff;
+  white-space: nowrap;
+}
+/* lugar que SENAMHI nombra en sus avisos del río (layers/zonasRio.js) */
+.mk-lugar .lug-punto {
+  position: absolute;
+  left: 2px;
+  top: 2px;
+  width: 8px;
+  height: 8px;
+  border-radius: 9999px;
+  background: #0f172a;
+  box-shadow: 0 0 0 2px #fff, 0 1px 3px rgba(15, 23, 42, 0.45);
+}
+.mk-lugar .lug-rot {
+  position: absolute;
+  left: 15px;
+  top: 50%;
+  transform: translateY(-50%);
+  white-space: nowrap;
+  font: 600 11px/16px Geist, Inter, sans-serif;
+  color: #0f172a;
+  text-shadow: 0 0 2px #fff, 0 0 2px #fff, 0 0 3px #fff;
+  pointer-events: none;
+}
+/* con el mapa alejado no se ven; el nombre del lugar, desde zoom 13 */
+[data-zoom-banda="z10"] .mk-inc,
+[data-zoom-banda="z10"] .mk-lugar,
+[data-zoom-banda="z12"] .mk-lugar .lug-rot {
+  display: none;
+}
+.leaflet-marker-icon.mk-inc:focus-visible .inc-rombo {
+  outline: 2px solid #0f172a;
+  outline-offset: 2px;
+}
+.leaflet-marker-icon.mk-lugar:focus-visible {
+  outline: 2px solid #0f172a;
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* ============================================================
    Popups de avisos, pronostico y nowcasting (map/popups.js)
    ============================================================ */
 
@@ -755,4 +1151,89 @@
 }
 .pop-nc .meta {
   margin: 6px 0 0;
+}
+
+/* zona que un río podría afectar y desbordes pasados (map/popups.js popupZonaRio, popupIncidentes) */
+.pop .insig.oficial {
+  border: 1px solid #bae6fd;
+  background: #f0f9ff;
+  color: #075985;
+}
+.pop-zona .meta .insig {
+  vertical-align: 1px;
+}
+.pop-zona .nivel-zona {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  margin: 8px 0;
+  padding: 7px 10px;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--c) 12%, #fff);
+  font-size: 0.86rem;
+  font-weight: 500;
+  line-height: 1.35;
+}
+.pop-zona .nivel-zona i {
+  flex: none;
+  width: 12px;
+  height: 12px;
+  margin-top: 3px;
+  border-radius: 3px;
+  background: var(--c);
+}
+.pop-zona p {
+  margin: 0 0 8px;
+  font-size: 0.84rem;
+  line-height: 1.4;
+}
+.pop-zona ul {
+  margin: 0 0 6px;
+  padding-left: 18px;
+  font-size: 0.82rem;
+  line-height: 1.4;
+  list-style: disc;
+}
+.pop-zona li {
+  margin: 3px 0;
+}
+.pop-zona a,
+.pop-inc a {
+  color: hsl(var(--foreground));
+  text-decoration: underline;
+}
+.pop-zona .sub {
+  margin: 10px 0 4px;
+  font-size: 0.7rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #475569;
+}
+/* "Cerca de aquí" / "En otros tramos del río" dentro de "Pasó antes" */
+.pop-zona .tramo {
+  margin: 4px 0 2px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #0f172a;
+}
+.pop-zona .cita {
+  margin: 0 0 8px;
+}
+.pop-inc .inc {
+  margin: 8px 0 0;
+  padding-top: 8px;
+  border-top: 1px solid hsl(var(--border));
+}
+.pop-inc .meta + .inc {
+  border-top: none;
+  padding-top: 0;
+}
+.pop-inc .tit {
+  margin: 0;
+  font-weight: 400;
+}
+.pop-inc .enl {
+  margin: 6px 0 0;
+  font-weight: 500;
+  font-size: 0.78rem;
 }

@@ -2,7 +2,7 @@ import { useEffect, useRef } from "react";
 import L from "leaflet";
 import { createBaseMap } from "@/map/baseMap";
 import { SVG } from "@/map/markers";
-import { crearAcomodo, escalaDeZoom } from "@/map/acomodo";
+import { bandaDeZoom, crearAcomodo, escalaDeZoom } from "@/map/acomodo";
 
 // Anfitrión del mapa: crea el mapa base y un L.layerGroup por capa. Cada capa se
 // carga la primera vez que se enciende, cada refreshMs mientras siga encendida, al
@@ -14,15 +14,48 @@ import { crearAcomodo, escalaDeZoom } from "@/map/acomodo";
 // recibe `acomodo` (su registro) en render, y localidadUsuario marca tu localidad.
 const REINTENTOS_MS = [5_000, 15_000, 60_000];
 
+// Márgenes para encuadrar algo en lo que queda libre del mapa: debajo de los chips de arriba
+// (data-tapa-mapa="arriba") que caen sobre la mitad central del ancho (ahí queda lo encuadrado; los
+// botones de las esquinas no cuentan) y encima del panel de estado (data-tapa-mapa="abajo").
+function margenesLibres(map) {
+  const m = map.getContainer().getBoundingClientRect();
+  const [x0, x1] = [m.left + m.width * 0.25, m.right - m.width * 0.25];
+  let arriba = 16;
+  let abajo = 16;
+  for (const el of document.querySelectorAll('[data-tapa-mapa="arriba"], [data-tapa-mapa="abajo"]')) {
+    const r = el.getBoundingClientRect();
+    if (!r.width || !r.height || r.bottom < m.top || r.top > m.bottom) continue;
+    if (el.dataset.tapaMapa === "arriba" && (r.right < x0 || r.left > x1)) continue;
+    if (el.dataset.tapaMapa === "arriba") arriba = Math.max(arriba, r.bottom - m.top + 12);
+    else abajo = Math.max(abajo, m.bottom - r.top + 12);
+  }
+  // si casi no queda lugar (pantalla muy baja), se reparte
+  const sobra = m.height - arriba - abajo;
+  if (sobra < 160) {
+    const k = Math.max(0, m.height - 160) / (arriba + abajo);
+    arriba *= k;
+    abajo *= k;
+  }
+  return { paddingTopLeft: [16, Math.round(arriba)], paddingBottomRight: [16, Math.round(abajo)] };
+}
+
 // Panes de las áreas: el relleno de los avisos va en uno por nivel, con la transparencia en el
-// pane (dos amarillos superpuestos no se oscurecen); los bordes encima; el nowcasting más arriba.
+// pane (dos amarillos superpuestos no se oscurecen); los bordes encima; las zonas que un río
+// podría afectar sobre los avisos (el toque cae en la zona, y su popup cita el aviso); el
+// nowcasting más arriba; los ríos resaltados sobre las demás líneas (overlayPane, 400) y debajo
+// de los marcadores: el halo y los afluentes, encima la faja marginal (casi toda cae dentro del
+// ancho del halo: debajo de él no se vería) y arriba el cauce con su nombre.
 const PANES = [
   ["areas", 350], // eventos El Niño pasados
   ["aviso2", 350, 0.3],
   ["aviso3", 351, 0.4],
   ["aviso4", 352, 0.4],
   ["avisoBorde", 353],
+  ["zonaRio", 356],
   ["nowcast", 380],
+  ["rios", 410],
+  ["rioFaja", 411],
+  ["rioCauce", 412],
 ];
 
 export default function MapView({ layers, visible, opciones = {}, focus, userPos, onNota, localidadUsuario }) {
@@ -41,8 +74,13 @@ export default function MapView({ layers, visible, opciones = {}, focus, userPos
       pane.style.zIndex = z;
       if (opacidad != null) pane.style.opacity = opacidad;
     }
-    // tamaño de insignias y discos por zoom (index.css: [data-escala])
-    const escala = () => (map.getContainer().dataset.escala = escalaDeZoom(map.getZoom()));
+    // tamaño de insignias y discos por zoom (index.css: [data-escala]) y grosor de los ríos
+    // resaltados y qué se ve de sus zonas ([data-zoom-banda])
+    const escala = () => {
+      const el = map.getContainer();
+      el.dataset.escala = escalaDeZoom(map.getZoom());
+      el.dataset.zoomBanda = bandaDeZoom(map.getZoom());
+    };
     escala();
     map.on("zoomend", escala);
     // un <details> que se abre o se cierra dentro de un popup cambia su alto; y con un popup
@@ -109,10 +147,13 @@ export default function MapView({ layers, visible, opciones = {}, focus, userPos
     }
   }, [visible, opciones]);
 
-  // recentra el mapa cuando cambia la ciudad / ubicación
+  // recentra el mapa cuando cambia la ciudad / ubicación; con `bounds` (p. ej. "Ver en el mapa" de
+  // un río) encuadra esa caja en lo que queda libre del mapa, sin pasar de `zoom`
   useEffect(() => {
     const map = ctxRef.current?.map;
-    if (map && focus) map.setView([focus.lat, focus.lon], focus.zoom ?? map.getZoom());
+    if (!map || !focus) return;
+    if (focus.bounds) map.fitBounds(focus.bounds, { ...margenesLibres(map), maxZoom: focus.zoom ?? 14 });
+    else map.setView([focus.lat, focus.lon], focus.zoom ?? map.getZoom());
   }, [focus]);
 
   // marcador de "tu ubicación"

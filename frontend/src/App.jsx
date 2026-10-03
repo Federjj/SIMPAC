@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ChevronRight, Layers, LocateFixed, Plus, ShieldAlert } from "lucide-react";
 import Sidebar from "@/components/Sidebar";
 import MapView from "@/components/MapView";
@@ -21,11 +21,28 @@ import { usePanorama } from "@/hooks/usePanorama";
 import { useGeolocation } from "@/hooks/useGeolocation";
 import { useLayerVisibility } from "@/hooks/useLayerVisibility";
 import { usePronosticoLocal } from "@/hooks/usePronosticoLocal";
+import { useRiosVigilados } from "@/hooks/useRiosVigilados";
 
 const NOWCAST_OTRO_DIA = { texto: "El nowcasting es solo para las próximas 2 horas: elige Hoy." };
 
+// [[sur, oeste], [norte, este]] de una geometría GeoJSON (el cauce de un río vigilado), o null
+function cajaGeo(g) {
+  const pts = [];
+  const juntar = (c) => (typeof c?.[0] === "number" ? pts.push(c) : c?.forEach(juntar));
+  juntar(g?.coordinates);
+  if (!pts.length) return null;
+  const lons = pts.map((p) => p[0]);
+  const lats = pts.map((p) => p[1]);
+  return [
+    [Math.min(...lats), Math.min(...lons)],
+    [Math.max(...lats), Math.max(...lons)],
+  ];
+}
+
 export default function App() {
-  const { visible, toggle, mostrar, opciones, elegir } = useLayerVisibility(LAYERS);
+  // capas encendidas y opciones, recordadas en este navegador (o en la cuenta, con sesión)
+  const { visible, toggle, mostrar, opciones, elegir, nuevas, conocerTodas, cambios, restablecer, dondeGuarda } =
+    useLayerVisibility(LAYERS);
   // Día elegido para los avisos y el pronóstico (opción vinculada); el nowcasting solo va con "Hoy".
   const dia = opciones.avisos ?? "ahora";
   const visibleMapa = useMemo(() => ({ ...visible, nowcast: visible.nowcast && dia === "ahora" }), [visible, dia]);
@@ -34,6 +51,12 @@ export default function App() {
   const notasPanel = useMemo(() => (dia === "ahora" ? notas : { ...notas, nowcast: NOWCAST_OTRO_DIA }), [notas, dia]);
   const onNota = useCallback((id, texto) => setNotas((n) => (n[id] === texto ? n : { ...n, [id]: texto })), []);
   const [showLayers, setShowLayers] = useState(false);
+  // al cerrar el panel de capas, las capas nuevas pasan a conocidas (deja de verse "Nueva")
+  const capasAbiertas = useRef(false);
+  useEffect(() => {
+    if (capasAbiertas.current && !showLayers) conocerTodas();
+    capasAbiertas.current = showLayers;
+  }, [showLayers, conocerTodas]);
   const [showElNino, setShowElNino] = useState(false);
   // capa a traer a la vista en el panel de capas; `vez` cambia en cada pedido, así un segundo
   // "ver evento" con el panel ya abierto vuelve a desplazarlo
@@ -46,6 +69,8 @@ export default function App() {
   const [depto, setDepto] = useState(DEFAULT_CITY.depto);
   const [porGps, setPorGps] = useState(false);
   const p = usePanorama(depto);
+  // ríos vigilados de la zona con el nivel de su zona (panel de estado; no cambian el contador)
+  const rios = useRiosVigilados(depto);
   // Pronóstico de SENAMHI de tu localidad (franja de 3 días) y su disco marcado en el mapa.
   const ciudad = useMemo(() => CITIES.find((c) => c.name === city) ?? DEFAULT_CITY, [city]);
   const pron = usePronosticoLocal({ ciudad, porGps, userPos });
@@ -96,6 +121,17 @@ export default function App() {
   useEffect(() => {
     geolocate();
   }, []);
+
+  // Desde el panel de estado (que se pliega): prende el río y sus zonas y encuadra el cauce entero
+  // en lo que queda libre entre los chips de arriba y el panel (MapView), hasta zoom 14.
+  const verRio = useCallback(
+    (r) => {
+      mostrar("rio");
+      mostrar("zona");
+      setFocus({ lat: r.centro_lat, lon: r.centro_lon, zoom: Math.max(r.zoom ?? 13, 14), bounds: cajaGeo(r.cauce) });
+    },
+    [mostrar]
+  );
 
   // Desde el panel El Niño: prende la capa de eventos pasados con ese evento y encuadra el norte.
   const verEvento = (evento) => {
@@ -239,8 +275,12 @@ export default function App() {
             opciones={opciones}
             notas={notasPanel}
             destacar={destacar}
+            nuevas={nuevas}
+            cambios={cambios}
+            dondeGuarda={dondeGuarda}
             onToggle={toggle}
             onOpcion={elegir}
+            onRestablecer={restablecer}
           />
         )}
 
@@ -300,6 +340,8 @@ export default function App() {
           lluviaDesactualizada={p.lluviaDesactualizada}
           pron={pron}
           fechaMapa={visible.pronostico || visible.avisos ? fechaDeOpcion(dia) : null}
+          rios={rios}
+          onVerRio={verRio}
           tope={topePanel}
         />
       </main>

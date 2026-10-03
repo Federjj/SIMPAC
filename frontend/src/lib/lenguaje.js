@@ -10,7 +10,7 @@
 //   Lluvia      escala horaria de AEMET como referencia (no hay escala oficial internacional)
 //   Referencia  la que SENAMHI usa para cada estación (1 h y 6 h); no es un aviso oficial
 //   "Atento" (80 % del umbral o menos de 0.5 m) y lo de meses secos son criterios de SIMPAC.
-import { MESES, diaLegible, diasDesde, fechaPeru } from "./tiempo";
+import { MESES, diaLegible, diasDesde, fechaPeru } from "./tiempo.js";
 
 const TRIMESTRES = {
   DJF: "dic–feb", JFM: "ene–mar", FMA: "feb–abr", MAM: "mar–may", AMJ: "abr–jun", MJJ: "may–jul",

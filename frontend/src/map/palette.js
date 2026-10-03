@@ -25,5 +25,16 @@ export const AVISO_HALO = { 2: "#EAB30838", 3: "#F58E2738", 4: "#DB040438" };
 export const PRONOSTICO_HEX = { lluvia: "#1C7ED6", posible: "#93C5FD", tormenta: "#4338CA", nieve: "#0891B2", seco: "#CBD5E1" };
 export const NOWCAST_HEX = { 1: "#3BA5EB", 2: "#3B3BEB", 3: "#7B2FBE" };
 
+// Zonas que un río vigilado podría afectar (lib/zonaRio.js): relleno y trazo oscuro del rayado por
+// nivel de la zona (los mismos tonos que avisos y ríos). Sin señales, azul de agua: la zona sigue
+// siendo una zona que podría inundarse (un gris no se leía como peligro). El rayado son los
+// patrones simpac-rayado-* de map/iconos.js. Como los rellenos de ámbar, naranja y rojo son los
+// de las áreas de los avisos, layers/zonasRio.js pone las zonas con borde blanco y trazo oscuro.
+export const ZONA_HEX = { emergencia: "#DB0404", alerta: "#F58E27", atentos: "#EAB308", sin_senales: "#1D4ED8" };
+export const ZONA_OSCURO = { emergencia: "#991B1B", alerta: "#C2410C", atentos: "#A16207", sin_senales: "#1E3A8A" };
+// Cauce de un río resaltado: azul agua si está tranquilo (un río verde se confunde con un parque o
+// una pista); si no, el color de su estación (amarillo oscuro: #EBEB3B no se lee sobre el halo).
+export const CAUCE_HEX = { normal: "#1C7ED6", atento: "#EAB308", alerta: "#F58E27", emergencia: "#DB0404", sd: "#94A3B8" };
+
 // Las clases de la anomalía mensual de lluvia viven en lib/lenguaje.js (CLASES_ANOMALIA),
 // junto con su texto: son las clases oficiales de SENAMHI.

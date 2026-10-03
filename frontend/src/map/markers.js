@@ -26,7 +26,7 @@ export function escapeHtml(valor) {
   return String(valor ?? "").replace(/[&<>"']/g, (c) => ESCAPES[c]);
 }
 
-// Marcador redondo con ícono (estaciones, ríos) o gota tipo Waze (reportes).
+// Marcador redondo con ícono (estaciones) o gota tipo Waze (reportes).
 export function markerIcon(color, icono, { forma = "circulo" } = {}) {
   if (forma === "gota") {
     return L.divIcon({
@@ -55,7 +55,7 @@ export function enlaceSeguro(href) {
 }
 
 // Popup con título, contexto, una frase en lenguaje claro, filas etiqueta/valor, una
-// nota (qué hacer) y un enlace opcional a la fuente. Todo se escapa.
+// nota (qué hacer; o varias, como lista) y un enlace opcional a la fuente. Todo se escapa.
 export function popupHtml({ title, meta = [], resumen, filas = [], nota, enlace }) {
   const m = meta.filter(Boolean).map(escapeHtml).join(" · ");
   const f = filas
@@ -67,7 +67,7 @@ export function popupHtml({ title, meta = [], resumen, filas = [], nota, enlace 
     (m ? `<div class="meta">${m}</div>` : "") +
     (resumen ? `<p class="resumen">${escapeHtml(resumen)}</p>` : "") +
     (f ? `<dl class="filas">${f}</dl>` : "") +
-    (nota ? `<p class="nota">${escapeHtml(nota)}</p>` : "") +
+    [nota].flat().filter(Boolean).map((n) => `<p class="nota">${escapeHtml(n)}</p>`).join("") +
     (enlace && enlaceSeguro(enlace.href)
       ? `<p class="nota"><a href="${escapeHtml(enlace.href)}" target="_blank" rel="noopener noreferrer">${escapeHtml(enlace.texto)}</a></p>`
       : "") +

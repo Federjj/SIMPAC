@@ -164,6 +164,7 @@ Las imágenes no traen las pruebas, por eso el último comando monta la carpeta 
 | `lluvia_nacional` (cada 30 min) | lluvia de la última hora en ~216 estaciones del país y alertas de lluvia | `docker compose run --rm worker python -m backend.ingesta.lluvia_nacional` |
 | `pronostico` (cada hora) | pronóstico de SENAMHI por localidad (hoy, mañana y pasado) | `docker compose run --rm worker python -m backend.ingesta.pronostico` |
 | `nowcast` (cada 10 min) | lluvia de las próximas 1 a 2 horas (producto experimental de SENAMHI) | `docker compose run --rm worker python -m backend.ingesta.nowcast` |
+| `rios` (cada hora) | avisos hidrológicos de SENAMHI para los ríos vigilados (hoy el Mashcón): colorean la zona que el río podría afectar | `docker compose run --rm worker python -m backend.ingesta.rios` |
 
 ## Configuración (`.env`)
 
@@ -238,7 +239,19 @@ Para no depender de la base del proyecto:
    docker compose run --rm worker python -m backend.mapas.cargar_fen --simplificar 0.005 --decimales 4 --aplicar
    ```
 
-   La capa "Lluvia del mes frente a lo normal" no tiene cargador automático y quedará vacía.
+6. El río Mashcón (el río resaltado, las zonas que podría afectar y sus desbordes pasados) también
+   se carga aparte, una sola vez, desde los archivos de `backend/data/rios/mashcon/`. Sin `--aplicar`
+   solo revisa los archivos y muestra el resumen ("13 zonas ..., 14 incidentes"); con `--aplicar`
+   los escribe (se puede repetir sin duplicar nada):
+
+   ```
+   docker compose run --rm worker python -m backend.mapas.cargar_rios
+   docker compose run --rm worker python -m backend.mapas.cargar_rios --aplicar
+   ```
+
+   Los avisos hidrológicos del río los trae solo el worker (tarea `rios`).
+
+La capa "Lluvia del mes frente a lo normal" no tiene cargador automático y quedará vacía.
 
 ## Problemas comunes
 
@@ -261,8 +274,9 @@ Para no depender de la base del proyecto:
 
 ```
 backend/        API (app.py), worker (celery_app.py), conectores a las fuentes (connectors/),
-                tareas de ingesta (ingesta/), cargador de mapas (mapas/), prototipo sin
-                dependencias (prototipo/) y pruebas (tests/)
+                tareas de ingesta (ingesta/), cargadores de mapas y ríos vigilados (mapas/),
+                datos revisados a mano (data/), prototipo sin dependencias (prototipo/) y
+                pruebas (tests/)
 frontend/       web en React + Vite + Tailwind + Leaflet (ver frontend/README.md)
 supabase/       migraciones de la base (migrations/) y esquema consolidado (schema.sql)
 docs/           documentación técnica y estado del proyecto
@@ -279,8 +293,12 @@ docker-compose.yml, .env.docker.example
 
 ## Fuentes de datos
 
-SENAMHI (estaciones, avisos, pronóstico, mapas), la ANA (caudales y umbrales de ríos), ENFEN
-(comunicados y estado del sistema de alerta), IGP (índice costero El Niño), NOAA (índice RONI) y NASA
-(lluvia satelital). Los datos de SENAMHI se muestran con la leyenda que exigen sus términos de uso:
+SENAMHI (estaciones, avisos, avisos hidrológicos, pronóstico, mapas), la ANA (caudales y umbrales de
+ríos, faja marginal y emergencias hídricas), ENFEN (comunicados y estado del sistema de alerta), IGP
+(índice costero El Niño), NOAA (índice RONI) y NASA (lluvia satelital). Para el río Mashcón, además: el
+estudio INDECI-PNUD 2005, el trazo de OpenStreetMap (© colaboradores de OpenStreetMap, licencia ODbL)
+y el modelo de elevación Copernicus GLO-30 (© DLR e.V. 2010-2014 y © Airbus Defence and Space GmbH
+2014-2018, provisto bajo COPERNICUS por la Unión Europea y la ESA). Los datos de SENAMHI se muestran
+con la leyenda que exigen sus términos de uso:
 "Información recopilada y trabajada por el Servicio Nacional de Meteorología e Hidrología del Perú.
 El uso que se le da a esta información es de mi (nuestra) entera responsabilidad".

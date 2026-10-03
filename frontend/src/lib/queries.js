@@ -184,6 +184,84 @@ export function getNowcast(h) {
   );
 }
 
+// Ríos vigilados (primero el Mashcón; vista rio_vigilado_mapa): el trazo del río, sus afluentes y la
+// guía del nombre sobre la línea en GeoJSON, los lugares que SENAMHI nombra en sus avisos y las
+// fuentes. Se cargan una vez (backend/mapas/cargar_rios.py): caché de 60 min. null si la vista aún
+// no existe (migración pendiente).
+export function getRiosVigilados() {
+  return cached(
+    "rios_vigilados",
+    () =>
+      siExiste(() =>
+        filas(
+          supabase
+            .from("rio_vigilado_mapa")
+            .select(
+              "id,nombre,departamento,estacion_ana,rio_ana,estacion_senamhi,centro_lat,centro_lon,zoom,cauce,afluentes,guia_rotulo,lugares_aviso,fuentes"
+            )
+        )
+      ),
+    60 * 60_000
+  );
+}
+
+// Las otras vistas de los ríos vigilados llegan con la misma migración: sin rio_vigilado_mapa no se
+// piden (mientras falte, un solo pedido fallido por hora y no cuatro).
+async function conRios(fn) {
+  return (await getRiosVigilados()) == null ? null : siExiste(fn);
+}
+
+// Zonas que un río vigilado podría afectar (estimación por relieve, estudio INDECI-PNUD 2005) y la
+// faja marginal de ANA, del fondo hacia arriba (`orden`). null si la vista aún no existe.
+export function getZonasRio() {
+  return cached(
+    "zonas_rio",
+    () =>
+      conRios(() =>
+        filas(
+          supabase
+            .from("rio_zona_mapa")
+            .select(
+              "clave,rio,tipo,subtipo,orden,nombre,texto,fuente,fuente_url,licencia,atribucion,metodo,fecha_fuente,area_km2,geojson"
+            )
+            .order("orden")
+        )
+      ),
+    60 * 60_000
+  );
+}
+
+// Desbordes y daños pasados documentados de los ríos vigilados (y sus crecidas medidas en rojo),
+// del más nuevo al más viejo. null si la tabla aún no existe.
+export function getIncidentesRio() {
+  return cached(
+    "incidentes_rio",
+    () =>
+      conRios(() =>
+        filas(
+          supabase
+            .from("rio_incidente")
+            .select(
+              "id,rio,fecha,fecha_texto,tipo,titulo,lugar,detalle,precision,precision_texto,caudal_m3s,fuente_tipo,fuente,fuente_url,otras_fuentes,lat,lon"
+            )
+            .order("fecha", { ascending: false, nullsFirst: false })
+        )
+      ),
+    60 * 60_000
+  );
+}
+
+// Señales de hoy por río vigilado (vista rio_senal, una fila por río): avisos de lluvia que tocan su
+// cuenca, lluvia medida en la cuenca y avisos hidrológicos vigentes de SENAMHI. El nivel de la zona
+// lo decide lib/zonaRio.js. null si la vista aún no existe.
+export function getSenalesRio() {
+  return cached(
+    "senales_rio",
+    () => conRios(() => filas(supabase.from("rio_senal").select("rio,avisos_lluvia,lluvia_cuenca,avisos_hidro"))),
+    5 * 60_000
+  );
+}
+
 // Lluvia de la última hora en ~200 estaciones automáticas de SENAMHI en todo el país
 // (vista lluvia_senamhi_actual: solo lecturas de las últimas 3 h), con la referencia de
 // SENAMHI de cada estación en 1 h y en 6 h. La comparten el mapa y el panel de estado.

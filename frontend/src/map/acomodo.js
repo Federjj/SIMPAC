@@ -3,11 +3,12 @@ import { anchoRotulo, colocar } from "./colocar";
 import { cajaDeAnillo, dentroDeAnillo } from "@/lib/geo";
 import { tooltipJuntos } from "@/lib/avisoTexto";
 
-// Enlace del acomodo (map/colocar.js) con Leaflet: junta las insignias de los avisos y los discos
-// del pronóstico que están a la vista, decide qué se ve, qué se corre, qué se junta en "2 avisos",
-// qué queda como punto y qué rótulo cabe, y lo aplica con clases y --dx/--dy sobre cada marcador.
-// Los marcadores de las otras capas (ríos, estaciones, reportes, tu ubicación) cuentan como fijos:
-// un disco encima pasa a punto y los rótulos los esquivan.
+// Enlace del acomodo (map/colocar.js) con Leaflet: junta las insignias de los avisos, los discos
+// del pronóstico y los discos de los ríos que están a la vista, decide qué se ve, qué se corre, qué
+// se junta en "2 avisos", qué queda como punto y qué rótulo cabe, y lo aplica con clases y --dx/--dy
+// sobre cada marcador. También corre los rombos de los desbordes pasados que quedarían tapados (por
+// el disco de un río, una insignia u otro rombo). Los marcadores de las otras capas (estaciones,
+// reportes, tu ubicación) cuentan como fijos: un disco encima pasa a punto y los rótulos los esquivan.
 // Corre al mover o acercar el mapa y al entrar o salir una capa (una vez por cuadro). Con cientos
 // de localidades, cada vuelta evita leer el DOM (las cajas de los paneles se guardan) y solo
 // escribe en los marcadores que cambiaron.
@@ -15,18 +16,28 @@ import { tooltipJuntos } from "@/lib/avisoTexto";
 // crearAcomodo(map) -> { capa(id) -> {registrar(marker, meta), limpiar()}, usuario({codigo, departamento}), recalcular(), destruir() }
 //   meta de una insignia: {tipo:"insignia", prioridad, clave, fila, anillo, radioKm, mayor, chip, tooltip}
 //   meta de un disco:     {tipo:"disco", prioridad, codigo, departamento, clase, rotulo (texto), zIndex}
+//   meta de un río:       {tipo:"rio", fuerte, vigilado, prioridad, departamento, rotulo (con la medida), rotuloCorto}
+//   meta de un rombo:     {tipo:"rombo", prioridad} (ícono de 24x24 con su contenido en .inc)
 
 // Escala por zoom: país (todo como puntos), región y local (íconos más grandes, con nombres).
 export const escalaDeZoom = (z) => (z <= 6 ? "pais" : z <= 8 ? "region" : "local");
+// Banda de zoom para los trazos de los ríos resaltados y sus zonas (index.css: [data-zoom-banda]):
+// grosor del halo y del cauce, nombre sobre la línea desde z13, polígonos de la zona desde z13 (con
+// el mapa más alejado, el aura), faja marginal desde z14.
+export const bandaDeZoom = (z) => (z <= 11 ? "z10" : z <= 12 ? "z12" : z <= 13 ? "z13" : z <= 15 ? "z14" : "z16");
 
 // Tamaño de las cajas por escala (igual que el CSS de index.css).
 const TAM_INSIGNIA = { pais: 30, region: 40, local: 44 };
-// ríos y estaciones (.mk) se achican con el mapa alejado (index.css)
+// las estaciones (.mk) se achican con el mapa alejado (index.css)
 const ESCALA_MK = { pais: 0.45, region: 0.62, local: 1 };
 const TAM_DISCO = { pais: 10, region: 28, local: 32 };
 const TAM_SECO = { pais: 7, region: 24, local: 28 };
+// disco de río (map/marcadores.js iconoRio); su rótulo lleva además el punto de color (14 px)
+const TAM_RIO = { pais: 16, region: 30, local: 40 };
 const ALTO_CHIP = 18;
 const ALTO_ROTULO = 20;
+const ALTO_ROTULO_RIO = 22;
+const TAM_ROMBO = 24;
 // una insignia de una parte chica (no la más grande del aviso) se oculta si su círculo mide menos de esto
 const RADIO_MIN_PX = 14;
 // lugares alternativos de una insignia tapada: 8 direcciones a 44 px, dentro de su zona
@@ -38,6 +49,7 @@ const DIRECCIONES = [
 ];
 const Z_TUYA = 900;
 const Z_PUNTO = -1000;
+const Z_RIO_FUERTE = 950;
 // lo que tapa el mapa (chips, paneles: data-tapa-mapa en App/StatusPanel/LayersPanel) y los botones de zoom
 const TAPA_MAPA = "[data-tapa-mapa], .leaflet-control-zoom";
 
@@ -97,6 +109,7 @@ export function crearAcomodo(map) {
   // de su posición y del tamaño y el ancla de su ícono (o del radio de un círculo de radio fijo).
   function fijos(propios, tam) {
     const out = [];
+    const zoom = map.getZoom();
     map.eachLayer((l) => {
       if (propios.has(l)) return;
       let w;
@@ -104,11 +117,13 @@ export function crearAcomodo(map) {
       let p;
       if (l instanceof L.Marker) {
         const o = l.options.icon?.options ?? {};
+        // los desbordes y los lugares de los avisos no se ven con el mapa alejado (index.css)
+        if (zoom <= 11 && /\bmk-(inc|lugar)\b/.test(o.className ?? "")) return;
         const s = L.point(o.iconSize ?? [12, 12]);
         if (!s.x || !s.y) return;
         const a = o.iconAnchor ? L.point(o.iconAnchor) : s.divideBy(2);
         p = map.latLngToContainerPoint(l.getLatLng()).subtract(a).add(s.divideBy(2));
-        const k = /class="mk[\s"]/.test(o.html ?? "") ? ESCALA_MK[escalaDeZoom(map.getZoom())] : 1;
+        const k = /class="mk[\s"]/.test(o.html ?? "") ? ESCALA_MK[escalaDeZoom(zoom)] : 1;
         [w, h] = [s.x * k, s.y * k];
       } else if (l instanceof L.CircleMarker && !(l instanceof L.Circle)) {
         p = map.latLngToContainerPoint(l.getLatLng());
@@ -204,17 +219,28 @@ export function crearAcomodo(map) {
     raiz.classList.toggle("es-punto", r.estado === "punto");
     raiz.classList.toggle("con-rot", Boolean(r.rotulo));
     raiz.classList.toggle("rot-izq", r.rotulo === "izq");
+    raiz.classList.toggle("rot-arr", r.rotulo === "arr");
+    raiz.classList.toggle("rot-aba", r.rotulo === "aba");
     el.tabIndex = oculto ? -1 : 0; // lo que no se ve no se alcanza con el teclado
     if (oculto) marker.closeTooltip();
+    let z = null;
     if (meta.tipo === "disco") {
       raiz.classList.toggle("tuya", tuya);
-      // tu localidad encima de todo; un punto, debajo de los marcadores de las otras capas (un río
-      // no queda con un punto encima)
-      const z = tuya ? Z_TUYA : r.estado === "punto" ? Z_PUNTO : meta.zIndex ?? 0;
-      if (meta.z !== z) {
-        meta.z = z;
-        marker.setZIndexOffset(z);
-      }
+      // tu localidad encima de todo; un punto, debajo de los marcadores de las otras capas (una
+      // estación no queda con un punto encima)
+      z = tuya ? Z_TUYA : r.estado === "punto" ? Z_PUNTO : meta.zIndex ?? 0;
+    } else if (meta.tipo === "rio") {
+      // un río en alerta o emergencia, encima de todo; uno que quedó como punto, debajo
+      z = meta.fuerte ? Z_RIO_FUERTE : r.estado === "punto" ? Z_PUNTO : 0;
+    } else if (meta.tipo === "rombo") {
+      // corrido: una línea fina une el rombo con su punto (index.css .inc-linea)
+      raiz.style.setProperty("--len", `${Math.hypot(r.dx, r.dy)}px`);
+      raiz.style.setProperty("--ang", `${Math.atan2(-r.dy, -r.dx)}rad`);
+      raiz.classList.toggle("corrido", Boolean(r.dx || r.dy));
+    }
+    if (z != null && meta.z !== z) {
+      meta.z = z;
+      marker.setZIndexOffset(z);
     }
   }
 
@@ -266,6 +292,27 @@ export function crearAcomodo(map) {
             id, x: p.x, y: p.y + chip / 2, w: t, h: t + chip,
             prioridad: meta.prioridad, tipo: "insignia", clave: meta.clave, candidatos: candidatos(meta, p),
           });
+        } else if (meta.tipo === "rio") {
+          const ll = marker.getLatLng();
+          if (!holgura.contains(ll)) continue;
+          const p = map.latLngToContainerPoint(ll);
+          const deTuZona = Boolean(usuario?.departamento) && meta.departamento === usuario.departamento;
+          const local = escala === "local";
+          // la medida solo se ve a escala local (index.css); en alerta o emergencia siempre hay rótulo
+          const texto = local ? meta.rotulo : meta.rotuloCorto ?? meta.rotulo;
+          const conRotulo = local || meta.fuerte || (escala === "region" && deTuZona);
+          const t = TAM_RIO[escala];
+          items.push({
+            id, x: p.x, y: p.y, w: t, h: t, tipo: "rio", fuerte: Boolean(meta.fuerte), vigilado: Boolean(meta.vigilado),
+            prioridad: meta.prioridad + (deTuZona ? 1 : 0),
+            rotulo: conRotulo && texto ? { w: anchoRotulo(texto) + 14, h: ALTO_ROTULO_RIO } : null,
+          });
+        } else if (meta.tipo === "rombo") {
+          // con el mapa alejado (zoom 11 o menos) no se ven (index.css)
+          const ll = marker.getLatLng();
+          if (zoom <= 11 || !holgura.contains(ll)) continue;
+          const p = map.latLngToContainerPoint(ll);
+          items.push({ id, x: p.x, y: p.y, w: TAM_ROMBO, h: TAM_ROMBO, tipo: "rombo", prioridad: meta.prioridad });
         } else {
           const ll = marker.getLatLng();
           if (!holgura.contains(ll)) continue;

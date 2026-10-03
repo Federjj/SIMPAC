@@ -4,12 +4,15 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { NIVEL } from "@/lib/nivel";
-import { ENFEN_HEX, NIVEL_HEX } from "@/map/palette";
+import { ENFEN_HEX, NIVEL_HEX, ZONA_HEX } from "@/map/palette";
 import { horaPeru } from "@/lib/tiempo";
+import { fraseCorta } from "@/lib/zonaRio";
 import { ATRIBUCION_SENAMHI } from "@/map/senamhi";
 import FranjaPronostico, { FranjaMini } from "@/components/FranjaPronostico";
 
 const COLOR_AVISO = { aviso: "amarillo", alerta: "naranja", emergencia: "rojo" };
+// el río en una línea, con el panel plegado
+const RIO_CORTO = { atentos: "atentos, hay señales en su cuenca", alerta: "en alerta", emergencia: "en emergencia" };
 const URL_AVISO = (referencia) =>
   referencia === "SENAMHI lluvia 24h"
     ? "https://www.senamhi.gob.pe/?p=aviso-24H"
@@ -70,6 +73,8 @@ export default function StatusPanel({
   lluviaDesactualizada,
   pron,
   fechaMapa,
+  rios = [], // ríos vigilados de la zona con el nivel de su zona: [{rio, estado}] (useRiosVigilados)
+  onVerRio, // (rio) -> prende las capas del río y de sus zonas y lleva el mapa hasta él
   tope, // clase de alto máximo en pantallas bajas (App: no tapar el día ni el chip del nowcasting)
 }) {
   const [abierto, setAbierto] = useState(false);
@@ -94,11 +99,29 @@ export default function StatusPanel({
   const total = cuantasTotal;
   // estaciones de la zona que pasaron la referencia de SENAMHI: las 3 primeras con su detalle
   const masLluvia = lluviaZona.length - 3;
+  // ríos vigilados de la zona con señales (la zona que podrían afectar está en el mapa)
+  const riosConSenales = rios.filter((r) => r.estado.nivel !== "sin_senales");
+  // "Ver en el mapa" pliega el panel (abierto tapa el río) y lleva el mapa hasta el río
+  const verRio = (rio) => {
+    aMano.current = true;
+    setPlegado(true);
+    onVerRio?.(rio);
+  };
+  const botonVer = (rio) =>
+    onVerRio && (
+      <button
+        type="button"
+        onClick={() => verRio(rio)}
+        className="whitespace-nowrap text-xs text-muted-foreground underline hover:text-foreground"
+      >
+        Ver en el mapa
+      </button>
+    );
 
   return (
     <div className="pointer-events-none absolute inset-x-0 bottom-0 z-[600] p-3 md:p-4">
       <div
-        data-tapa-mapa
+        data-tapa-mapa="abajo"
         className={cn(
           "pointer-events-auto mx-auto max-h-[70vh] max-w-3xl overflow-y-auto rounded-2xl border border-border bg-card/95 shadow-2xl backdrop-blur",
           tope
@@ -147,9 +170,21 @@ export default function StatusPanel({
         </div>
 
         {plegado ? (
-          // plegado: bajo el título, el pronóstico de tu localidad en una línea
+          // plegado: bajo el título, el pronóstico de tu localidad en una línea y, si un río
+          // vigilado de la zona tiene señales, una línea que lleva a él
           <div className="px-4 pb-2">
             <FranjaMini pron={pron} />
+            {riosConSenales.map(({ rio, estado }) => (
+              <p key={rio.id} className="mt-1 flex items-center gap-1.5 text-sm text-foreground">
+                <Waves className="h-4 w-4 shrink-0" style={{ color: ZONA_HEX[estado.nivel] }} />
+                <span className="min-w-0">
+                  <span className="font-semibold">
+                    {rio.nombre}: {RIO_CORTO[estado.nivel]}
+                  </span>{" "}
+                  · {botonVer(rio)}
+                </span>
+              </p>
+            ))}
           </div>
         ) : (
           <>
@@ -175,6 +210,18 @@ export default function StatusPanel({
                   </span>
                 </p>
               ))}
+              {riosConSenales.map(({ rio, estado }) => {
+                const f = fraseCorta(rio, estado);
+                return (
+                  <p key={rio.id} className="flex gap-1.5 text-foreground">
+                    <Waves className="mt-0.5 h-4 w-4 shrink-0" style={{ color: ZONA_HEX[estado.nivel] }} />
+                    <span>
+                      <span className="font-semibold">{f.texto}</span>
+                      {f.accion ? ` ${f.accion}` : ""} {botonVer(rio)}
+                    </span>
+                  </p>
+                );
+              })}
               {/* lluvia medida sobre la referencia: no es un aviso oficial, no lleva enlace a uno */}
               {lluviaZona.slice(0, 3).map((a) => (
                 <p key={a.referencia} className="flex gap-1.5 text-foreground">
@@ -269,6 +316,18 @@ export default function StatusPanel({
                   punteado, SENAMHI escribe «tendencia a»: es posible, no seguro. Las manchas azules con borde punteado
                   son el nowcasting de SENAMHI: una estimación experimental de las próximas 2 horas, no un aviso.
                 </p>
+                {rios.length > 0 && (
+                  <p className="text-xs text-muted-foreground">
+                    Las franjas junto al río Mashcón marcan la zona que podría inundarse si el río se desborda. Las
+                    rayadas son una estimación de SIMPAC hecha con el relieve; las lisas vienen del estudio de INDECI de
+                    2005 para la ciudad; ninguna es un mapa oficial vigente. Se pintan de ámbar cuando hay señales en la
+                    cuenca (lluvia fuerte medida, aviso naranja o rojo de SENAMHI por lluvias, el río cerca de su nivel
+                    de alerta o un aviso hidrológico amarillo), de naranja o rojo solo cuando ANA mide el río sobre su
+                    nivel de alerta o de emergencia o SENAMHI emite un aviso hidrológico naranja o rojo, y de azul
+                    cuando no hay señales (siguen siendo zonas que podrían inundarse). Los rombos con un año son
+                    desbordes y daños pasados documentados.
+                  </p>
+                )}
               </div>
             )}
 

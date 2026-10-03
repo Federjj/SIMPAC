@@ -1,7 +1,9 @@
 // Capas del mapa, agrupadas en el panel por `grupo` (en el orden de GRUPOS) y, dentro de
 // cada grupo, en el orden de LAYERS. (El apilado lo decide Leaflet: las áreas sombreadas
-// van en los panes "areas" y "aviso2..4" (MapView), debajo de zonas y puntos; el nowcasting en
-// "nowcast"; los marcadores siempre encima.)
+// van en los panes "areas" y "aviso2..4" (MapView), debajo de zonas y puntos; las zonas de los
+// ríos en "zonaRio", encima de los bordes de los avisos; el nowcasting en "nowcast"; los ríos
+// resaltados en "rios" (halo), "rioFaja" (faja marginal) y "rioCauce" (cauce y nombre); los
+// marcadores siempre encima.)
 //
 // Cada capa exporta la misma forma, así sumar una nueva es crear su archivo y agregarla aquí:
 //   id             clave en el estado de visibilidad
@@ -10,7 +12,8 @@
 //   insignia       opcional: "Oficial" | "Experimental" (junto al nombre en el panel)
 //   defaultVisible si arranca encendida
 //   legend         [{ color, label, zona?, gota?, anillo?, forma?, glifo?, punteado? }] bajo el switch,
-//                  o fn(opcion) que la devuelve (forma: "insignia" | "disco" | "mancha")
+//                  o fn(opcion) que la devuelve (forma: "insignia" | "disco" | "mancha" | "rayado" |
+//                  "linea" | "rio" | "rombo" | "punto"; components/LayersPanel.jsx Muestra)
 //   opciones       opcional: { etiqueta, valores: [{ valor, etiqueta }], defecto, vinculo? } (un
 //                  selector); las capas con el mismo `vinculo` comparten la opción (el día)
 //   fuente         opcional: de dónde sale el dato (y la atribución que pida la licencia)
@@ -22,9 +25,10 @@
 //                  acomodo en pantalla (map/acomodo.js)
 //   refreshMs      opcional: cada cuánto recargar mientras esté encendida
 import estaciones from "./estaciones";
-import zonasCaudal from "./zonasCaudal";
+import zonasRio from "./zonasRio";
 import anomalias from "./anomalias";
 import rios from "./rios";
+import desbordes from "./desbordes";
 import incidentes from "./incidentes";
 import huaycos from "./huaycos";
 import lluviaObservada from "./lluviaObservada";
@@ -41,13 +45,14 @@ export const LAYERS = [
   avisos,
   pronostico,
   nowcast,
-  zonasCaudal,
+  zonasRio,
   huaycos,
   lluviaAhora,
   lluviaObservada,
   lluviaSatelite,
   anomalias,
   rios,
+  desbordes,
   estaciones,
   fenHistorico,
   incidentes,

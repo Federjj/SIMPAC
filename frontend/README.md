@@ -23,26 +23,32 @@ src/
   components/   Sidebar · MapView · LayersPanel · StatusPanel · ElNinoPanel · CitySelector · DiaSelector ·
                 ChipNowcast · FranjaPronostico (y FranjaMini) · Glifo · InsigniaCapa · ui/ (shadcn)
   hooks/        usePanorama(depto) (estado de tu zona y del país, se refresca solo) · useGeolocation ·
-                useLayerVisibility (con opciones vinculadas) · usePronosticoLocal (franja de 3 días)
+                useLayerVisibility (con opciones vinculadas; recuerda las capas) · usePronosticoLocal
+                (franja de 3 días) · useRiosVigilados(depto) (ríos vigilados de tu zona con su nivel)
   map/
     baseMap.js    mapa base (tiles Stadia, zoom, ResizeObserver)
     markers.js    íconos SVG, markerIcon(), popupHtml() y escapeHtml()
     iconos.js     glifos del tiempo con relleno suave (viewBox 32) y sus degradados (DEFS_SVG)
-    marcadores.js insignia de un aviso y disco de una localidad (L.divIcon de 0x0)
+    marcadores.js insignia de un aviso, disco de una localidad y disco de un río (L.divIcon de 0x0),
+                  rombo de un desborde pasado y punto de un lugar de los avisos hidrológicos
     colocar.js    acomodo en pantalla, puro (qué se ve, qué se junta, qué rótulo cabe)
-    acomodo.js    enlace de colocar.js con Leaflet (corre al mover el mapa)
-    popups.js     HTML de los popups de avisos, pronóstico y nowcasting
-    palette.js    colores por nivel, estación, ENFEN, aro de los avisos, pronóstico y nowcasting
+    acomodo.js    enlace de colocar.js con Leaflet (corre al mover el mapa); escala y banda de zoom
+    rotuloLinea.js nombre de un río escrito sobre su trazo (SVG textPath)
+    popups.js     HTML de los popups de avisos, pronóstico, nowcasting, zonas de los ríos y desbordes
+    palette.js    colores por nivel, estación, ENFEN, aro de los avisos, pronóstico, nowcasting, zonas
+                  de los ríos (ZONA_HEX, ZONA_OSCURO) y cauce resaltado (CAUCE_HEX)
     senamhi.js    imágenes WMS de la GeoServer de SENAMHI con estilo propio (SLD) y su atribución
     layers/       una capa por archivo + index.js (GRUPOS y LAYERS)
   lib/          supabaseClient · queries · lenguaje (todos los textos en lenguaje claro) · nivel (semáforo,
                 tu zona / el país) · tiempo (horas de Perú) · ubicacion (departamento del GPS) · reportTypes ·
                 geo (distancias y punto en polígono) · pronostico (ícono y frase de cada día, franja) ·
-                avisoTexto (textos de los avisos)
+                avisoTexto (textos de los avisos) · zonaRio (nivel de la zona de un río vigilado) ·
+                preferencias (capas recordadas) · simulacion (?simular=, solo desarrollo)
   data/         cities.js (capitales del Perú con su departamento y su localidad del pronóstico de SENAMHI)
 ```
 Los módulos puros (`lib/tiempo.js`, `lib/geo.js`, `lib/pronostico.js`, `lib/avisoTexto.js`,
-`map/colocar.js`, `map/iconos.js`) usan imports relativos que terminan en `.js` (sin `@/`) para que
+`lib/lenguaje.js`, `lib/zonaRio.js`, `lib/preferencias.js`, `map/colocar.js`, `map/iconos.js`,
+`map/palette.js`) usan imports relativos que terminan en `.js` (sin `@/`) para que
 `node --test` los lea tal cual; sus pruebas son los `*.test.js` de al lado.
 
 ## Capas del mapa
@@ -55,7 +61,9 @@ de las 14:30") o un objeto `{texto, corto, estado}` que el panel muestra bajo el
 `refreshMs`. `MapView` carga cada capa al encenderla y cada vez que cambia su opción (reintenta si
 falla). Las áreas sombreadas van en el pane `areas` (El Niño) y en `aviso2`/`aviso3`/`aviso4` (el
 relleno de los avisos, con la transparencia en el pane: dos amarillos superpuestos no se ven
-naranja), con los bordes en `avisoBorde` y el nowcasting en `nowcast`, debajo de los marcadores.
+naranja), con los bordes en `avisoBorde`, las zonas que un río podría afectar en `zonaRio` (encima
+de los avisos: el toque cae en la zona y su popup cita el aviso), el nowcasting en `nowcast` y los
+ríos resaltados en `rios` (sobre las demás líneas), debajo de los marcadores.
 **Sumar una capa** = crear su archivo y agregarla a `layers/index.js`.
 
 | Grupo | Capa | Archivo | Datos |
@@ -63,13 +71,14 @@ naranja), con los bordes en `avisoBorde` y el nowcasting en `nowcast`, debajo de
 | Alertas y avisos | Avisos de SENAMHI (hoy / mañana / pasado mañana), con insignia | `avisos.js` | vista `aviso_vigente` (tarea `avisos` del worker; `icono`, `lectura`, `texto_dia` y `anclas` de la migración de íconos) |
 | Pronóstico | Pronóstico por localidad (SENAMHI) | `pronostico.js` | vista `pronostico_vigente` (tarea `pronostico`): un disco por localidad, del mismo día que los avisos |
 | Pronóstico | Lluvia en las próximas 2 horas (experimental) | `nowcast.js` | vistas `nowcast_estado` y `nowcast_vigente` (tarea `nowcast`); solo con "Hoy" |
-| Alertas y avisos | Zonas a vigilar (río crecido) | `zonasCaudal.js` | `caudal_actual` en alerta/emergencia por crecida (no los ríos bajos) |
+| Alertas y avisos | Zonas que un río podría afectar | `zonasRio.js` | vistas `rio_zona_mapa`, `rio_senal`, `rio_vigilado_mapa`, tabla `rio_incidente` y `caudal_actual` (nivel en `lib/zonaRio.js`); un río sin mapa de zonas que crece hasta su alerta, el círculo de 2,5 km de antes |
 | Alertas y avisos | Quebradas que podrían activarse (huaycos) | `huaycos.js` | WMS SENAMHI `silvia:cuencas_nivel_12_prono1_silvia` (niveles 2 a 4) |
 | Lluvia | Lluvia de la última hora (estaciones) | `lluviaAhora.js` | vista `lluvia_senamhi_actual` (tarea `lluvia_nacional`); color por intensidad, borde amarillo si pasó la referencia de SENAMHI (1 h o 6 h) |
 | Lluvia | Lluvia de ayer / de la semana | `lluviaObservada.js` | WMS SENAMHI `prec_1` / `prec_1_ac07d` (superficie interpolada) |
 | Lluvia | Lluvia por satélite (NASA) | `lluviaSatelite.js` | NASA GIBS, GPM IMERG 30 min (llega con 5-6 h de retraso) |
 | Lluvia | Lluvia del mes frente a lo normal | `anomalias.js` | `mapa` con `variable = 'precipitacion'` |
-| Ríos y estaciones | Ríos | `rios.js` | vista `caudal_actual` (última lectura de ayer u hoy por estación) |
+| Ríos y estaciones | Ríos (disco con rótulo; el Mashcón resaltado con su nombre y la faja marginal de ANA) | `rios.js` | vista `caudal_actual` (última lectura de ayer u hoy por estación), `rio_vigilado_mapa` y las fajas de `rio_zona_mapa` |
+| Ríos y estaciones | Desbordes y daños pasados | `desbordes.js` | tabla `rio_incidente` (rombo con el año; "×n" si con ese zoom quedarían encimados) |
 | Ríos y estaciones | Estaciones SENAMHI | `estaciones.js` | `estacion` |
 | El Niño | Eventos El Niño pasados (1982-83, 1997-98, 2017, 2023, 2023-24; un trimestre de cada uno) | `fenHistorico.js` | `mapa` con `variable = 'FEN'` |
 | Comunidad | Reportes ciudadanos | `incidentes.js` | `report` (la BD solo entrega los vigentes) |
@@ -104,15 +113,17 @@ el panel siguen con Lucide.
 
 **Escalas y acomodo.** `MapView` pone `data-escala` en el mapa: `pais` (zoom ≤ 6, todo como puntos),
 `region` (7 y 8) y `local` (≥ 9); el CSS de `index.css` cambia los tamaños (también achica los
-marcadores de ríos y estaciones, `.mk`, a 62 % en `region` y 45 % en `pais`, para que no tapen avisos
-y pronóstico; `acomodo.js` usa el mismo factor, `ESCALA_MK`). `map/acomodo.js` corre
+marcadores de las estaciones, `.mk`, a 62 % en `region` y 45 % en `pais`, para que no tapen avisos
+y pronóstico; `acomodo.js` usa el mismo factor, `ESCALA_MK`; los discos de los ríos tienen sus
+propios tamaños). `map/acomodo.js` corre
 al mover o acercar el mapa y llama a `map/colocar.js` (puro): tu localidad siempre (aro negro y su
 nombre); las insignias que se tocan se juntan en una con el chip "2 avisos"; una insignia tapada
 prueba 8 lugares dentro de su zona (y si lo que tapa es tu disco y no le queda lugar, se pega a su
 lado); los discos que chocan pasan a ser un punto de color; los nombres van a la derecha o a la
 izquierda si caben (en `pais` solo el tuyo, en `region` los de tu departamento, en `local` todos).
-Los marcadores de las otras capas (ríos, estaciones, reportes) cuentan como fijos: un disco encima
-pasa a punto (debajo de ellos) y los nombres los esquivan. Una insignia cuya ancla queda fuera de la
+Los discos de los ríos van antes que los del pronóstico (los de alerta o emergencia, siempre, después
+de tu localidad). Los marcadores de las otras capas (estaciones, desbordes, reportes) cuentan como
+fijos: un disco del pronóstico encima pasa a punto (debajo de ellos) y los nombres los esquivan. Una insignia cuya ancla queda fuera de la
 pantalla (o bajo un panel) sigue a la vista mientras su zona se vea. Los chips y paneles marcados con
 `data-tapa-mapa` cuentan como obstáculos (sus cajas se leen de nuevo solo si cambian, para no forzar
 el diseño de la página en cada movimiento); con un popup abierto, en pantallas angostas los de
@@ -135,6 +146,83 @@ persona lo abre o lo pliega a mano.
 `getAvisosVigentes` pide las columnas de antes (una vez por sesión) y el mapa va sin insignias,
 `getPronosticoVigente` y el nowcasting devuelven `null` (la capa dice que no se pudo cargar y la
 franja no se muestra).
+
+## Ríos vigilados: el río resaltado, la zona que podría afectar y los desbordes pasados
+Primero el **Mashcón** (Cajamarca); los datos se cargan una vez con `backend/mapas/cargar_rios.py`
+(vistas `rio_vigilado_mapa`, `rio_zona_mapa`, `rio_senal` y tabla `rio_incidente`). Sin esas vistas
+(migración pendiente) la app sigue igual: `getRiosVigilados` devuelve `null` (un solo pedido fallido
+por hora; las otras tres ni se piden), la capa de zonas dice "aún no están cargadas" y el panel no
+nombra ríos.
+- **El río:** halo blanco, cauce azul si su estación de ANA está tranquila (si no, el color de su
+  estado o, si es más alto, el del aviso hidrológico de SENAMHI: `estadoCauce`), afluentes finos y
+  "Río Mashcón" escrito sobre la línea desde zoom 13 (`map/rotuloLinea.js`: fuera de chips y paneles
+  y en tramos sin quiebres cerrados). Grosores por banda de zoom (`MapView` pone `data-zoom-banda`: z10
+  hasta el zoom 11, z12, z13, z14 de 14 a 15, z16). La faja marginal de ANA, punteada, desde zoom 14
+  (pane `rioFaja`, entre el halo y el cauce: casi toda cae dentro del ancho del halo).
+- **Discos de río:** blancos con aro del color del estado, 40 px a escala local (30 en región, punto
+  de 14 en país) y rótulo «Mashcón · Tranquilo 0.13 m³/s» (la medida solo a escala local). En alerta
+  o emergencia el aro late (quieto con `prefers-reduced-motion`), el rótulo va en una pastilla de color
+  y siempre se ven. Con aviso hidrológico de SENAMHI más alto que lo que mide ANA, el disco toma el
+  color del aviso: «Mashcón · Aviso rojo SENAMHI  ANA: 0.13 m³/s». Los acomoda `colocar.js` (tipo
+  `rio`): antes que los discos del pronóstico; una insignia de aviso encima lo deja como punto, un
+  marcador de otra capa no. El de un río vigilado tiene más prioridad (más aún con señales en su zona)
+  y, si lo tapa otro disco, se pega a su lado; su rótulo prueba a la derecha, a la izquierda, arriba y
+  abajo.
+- **La zona** (siempre la de **hoy**, no sigue el selector de día; nunca se relacionan m³/s con su
+  extensión). Su nivel es el más alto de sus señales (`lib/zonaRio.js`, `estadoZona`):
+
+| Nivel | Cuándo | Color |
+|---|---|---|
+| Emergencia | ANA mide el río sobre su nivel de emergencia (de crecida) o SENAMHI tiene un aviso hidrológico **rojo** vigente de su estación | rojo |
+| Alerta | ANA, sobre su nivel de alerta, o aviso hidrológico **naranja** | naranja |
+| Atentos | el río al 80 % de su caudal de alerta (criterio SIMPAC), aviso hidrológico **amarillo**, aviso de lluvia **naranja o rojo** en curso que toca la cuenca, o una estación de la cuenca que pasó la referencia de SENAMHI | ámbar |
+| Sin señales | nada de lo anterior | azul (sigue siendo una zona que podría inundarse) |
+
+  Solo lo que trata del río mismo (ANA o el aviso hidrológico) sube a naranja o rojo. Un río muy bajo
+  (vaciante) y un aviso hidrológico de descenso o vencido no cuentan; un aviso amarillo de lluvia, uno
+  naranja de mañana y un aviso hidrológico de crecida que SENAMHI publica sin nivel (`hidro_sin_nivel`)
+  se mencionan en el popup sin subir el nivel. Con SENAMHI caído, la vista sigue dando un aviso
+  hidrológico con fin conocido hasta ese fin; si su `visto_en` pasa de 3 h, el popup dice que la web
+  de SENAMHI no responde desde esa hora y que es su último aviso conocido (`hidro_viejo`).
+  Rayada = estimación de SIMPAC con el relieve; lisa = estudio INDECI-PNUD 2005 (ninguna es un mapa
+  oficial vigente). Todas con borde blanco y trazo oscuro (ámbar, naranja y rojo son también los
+  rellenos de las áreas de los avisos). Desde zoom 13 los polígonos (en zoom 13, con el aura suave
+  debajo) y desde zoom 14 «zona que podría inundarse» escrito junto al río donde cabe; si hay
+  señales, un "aura" del color del nivel a lo largo del río hasta zoom 13 (se ve con el mapa alejado;
+  desde zoom 14 ya no). Con aviso hidrológico (o el río en alerta o emergencia) se marcan los centros
+  poblados que SENAMHI nombra en sus avisos. El aviso hidrológico **no** suma al contador
+  de alertas. En el popup de una zona, «Pasó antes en el río» lista primero los desbordes más cercanos
+  a ella («Cerca de aquí», a menos de 1 km; si no, «En otros tramos del río», con la distancia).
+- **Desbordes pasados:** con cada zoom se juntan en un rombo «×n» los que en pantalla quedarían
+  encimados (`agruparIncidentes` con el radio de un rombo); el acomodo (`colocar.js`, tipo `rombo`)
+  corre el que quedaría bajo el disco de un río, una insignia u otro rombo, con una línea fina hasta su
+  punto real: un rombo nunca se oculta.
+- **Panel de estado:** una línea por río de tu zona con señales («Río Mashcón: tranquilo, pero hay
+  aviso de SENAMHI por lluvia fuerte sobre su cuenca. Mira la zona que podría afectar.»; si la señal es
+  lluvia medida, «…pero llovió fuerte en su cuenca»), también con el panel plegado («Río Mashcón:
+  atentos, hay señales en su cuenca»), y el botón «Ver en el mapa», que pliega el panel, prende las
+  capas del río y de la zona y encuadra el cauce entre los chips de arriba y el panel (hasta zoom 14).
+- **Simulación (solo `npm run dev`):** `?simular=mashcon:15.4` (caudal de ANA), `mashcon:hidro2` a
+  `hidro4` (aviso hidrológico falso), `mashcon:lluvia` (RIO GRANDE GORE con 7,2 mm) o `mashcon:calma`
+  (sin señales en la cuenca); varias con coma.
+  La nota de la capa dice «SIMULACIÓN (solo desarrollo)». En la compilación de producción no existe.
+
+## Capas recordadas
+`hooks/useLayerVisibility.js` + `lib/preferencias.js` (puro, con pruebas). Se guardan en
+`localStorage`, clave `simpac.mapa`: `{v: 1, capas, opciones, dia, conocidas, guardado}`.
+- Solo se guarda lo distinto de lo de siempre: una capa que la persona nunca tocó sigue el
+  `defaultVisible` del código (si el equipo cambia un defecto, le llega).
+- El día de avisos y pronóstico vale solo esa fecha de Perú (al día siguiente vuelve a "Hoy").
+- Una capa nueva arranca con su defecto y lleva el chip «Nueva» hasta que se cierra el panel de capas;
+  una capa que ya no existe se ignora (si cambia de id, `RENOMBRADAS`); una versión desconocida o un
+  dato roto vuelven a los valores de siempre.
+- Sin `localStorage` (ventana privada, datos del sitio bloqueados: leerlo ya lanza) el mapa arranca con
+  los valores de siempre y el pie del panel lo dice. Si otra pestaña cambia las capas, esta la sigue
+  (evento `storage`).
+- Pie del panel: «Tus capas se guardan en este navegador.» y, si algo cambió, «Restablecer capas».
+- Con sesión de Supabase Auth también en la tabla `preferencia_mapa` (RLS: cada quien la suya; gana la
+  copia guardada más tarde, y un celular nuevo sin cambios no pisa la cuenta). La app aún no tiene
+  pantalla de inicio de sesión: queda lista.
 
 ## El Niño en gráficos
 El chip "El Niño costero" del mapa (y el botón de la barra lateral) abre `ElNinoPanel`: en qué
@@ -179,6 +267,11 @@ país. Nunca se dice "todo normal" a secas: solo lo que SIMPAC mide.
 | Lluvia de tu zona (24 h) | `lectura_lluvia` + `estacion!inner(nombre,departamento)` | hoy solo Cajamarca tiene lluvia horaria |
 | "ríos: actualizado HH:MM · lluvia: actualizada HH:MM" | `latido` (`servicio = 'ingesta'` y `'lluvia_nacional'`) | "sin actualizar desde" si pasan 3 h (ríos) o 1.5 h (lluvia). Si `lluvia_nacional` trae la falla `umbrales`, se avisa que la lluvia de la última hora puede estar atrasada |
 | Ríos | `caudal_actual` | **no** `lectura_caudal`: esa es el historial (repite estaciones) |
+| Ríos vigilados (trazo, rótulo, lugares) | `rio_vigilado_mapa` (`id,nombre,departamento,estacion_ana,rio_ana,estacion_senamhi,centro_lat,centro_lon,zoom,cauce,afluentes,guia_rotulo,lugares_aviso,fuentes`) | GeoJSON listo; caché 60 min; se empareja con `caudal_actual` por estación y río (sin tildes) |
+| Zonas y faja marginal | `rio_zona_mapa` (`clave,rio,tipo,subtipo,orden,nombre,texto,fuente,fuente_url,licencia,atribucion,metodo,fecha_fuente,area_km2,geojson`) | ordenadas por `orden`; caché 60 min |
+| Señales de la zona | `rio_senal` (`rio,avisos_lluvia,lluvia_cuenca,avisos_hidro`) | las cruza la BD con la cuenca; caché 5 min; el nivel lo decide `lib/zonaRio.js` |
+| Desbordes pasados | `rio_incidente` (`fecha desc nulls last`) | solo los que nombran al río en su fuente; caché 60 min |
+| Capas recordadas (con sesión) | `preferencia_mapa` (`usuario,version,datos`) | RLS por usuario; sin sesión, solo `localStorage` |
 | Gráfico de lluvia (detalle) | `lectura_lluvia` (`ts,medido_en,precip_mm,temp_c` where `cod=…`) | ordenar por `medido_en` (ya en hora correcta) |
 | Mapas FEN históricos | `mapa` con `variable = 'FEN'` | se pide el `geojson` del evento elegido (`periodo`); solo trae la propiedad `RANGO` (mm frente a lo normal) |
 | Comunidad | `report`, `voto`, `comentario`, `message`, `perfil` | ver abajo |

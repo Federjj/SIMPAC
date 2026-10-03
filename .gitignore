@@ -28,6 +28,8 @@ dist/
 # GeoJSON generados desde IDESEP/SENAMHI: no se redistribuyen en el repo.
 # Viven en la BD y se regeneran con backend/mapas/cargar_fen.py --exportar
 *.geojson
+# Excepción: los ríos vigilados son datos revisados a mano que carga backend/mapas/cargar_rios.py
+!/backend/data/rios/**/*.geojson
 
 # Base de datos local del prototipo
 *.db

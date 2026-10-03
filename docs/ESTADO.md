@@ -1,15 +1,17 @@
 # SIMPAC — Estado del proyecto
 
-> Panel vivo de "dónde estamos". Actualizado: **2026-09-23**.
+> Panel vivo de "dónde estamos". Actualizado: **2026-10-03**.
 > Repo: `github.com/Federjj/SIMPAC` (monorepo, rama `main`).
 
 ## Resumen en una línea
 Backend + Supabase con datos reales (**ríos a nivel nacional**, **avisos oficiales de SENAMHI
 como áreas, con ícono**, **pronóstico oficial por localidad**, **nowcasting experimental**,
-**lluvia de la última hora en todo el país**, **serie del ICEN** y **5 mapas históricos de eventos
-El Niño**); **frontend React (Mapa) con datos reales, capas de lluvia sombreadas, selector de día,
-franja de 3 días y un panel gráfico de El Niño**; **stack dockerizado y corriendo** con 6 tareas de
-datos programadas en el worker. Faltan las demás páginas del front (Alertas, Comunidad, Chat, Cuenta).
+**lluvia de la última hora en todo el país**, **serie del ICEN**, **5 mapas históricos de eventos
+El Niño** y el **río Mashcón vigilado**, con la zona que podría afectar y sus desbordes pasados);
+**frontend React (Mapa) con datos reales, capas de lluvia sombreadas, selector de día, franja de 3
+días, un panel gráfico de El Niño y capas recordadas**; **stack dockerizado y corriendo** con 7
+tareas de datos programadas en el worker. Faltan las demás páginas del front (Alertas, Comunidad,
+Chat, Cuenta) y el inicio de sesión.
 
 ---
 
@@ -27,9 +29,9 @@ datos programadas en el worker. Faltan las demás páginas del front (Alertas, C
 - [x] Proyecto **DATASYMPAC** (ref `clrnommkjyksnyrtnisf`, región São Paulo).
 - [x] **Esquema aplicado**: 16 tablas + vistas `caudal_actual`, `aviso_vigente`,
       `lluvia_senamhi_actual` y `alerta_actual` + **PostGIS** + **RLS**. Historia en
-      `supabase/migrations/` (22 migraciones, versionadas en el repo); foto final en
-      `supabase/schema.sql`: 19 tablas y 7 vistas con las de los avisos con ícono, el pronóstico
-      y el nowcasting (ver abajo).
+      `supabase/migrations/` (25 migraciones, versionadas en el repo); foto final en
+      `supabase/schema.sql`: 24 tablas y 11 vistas, con las de los avisos con ícono, el pronóstico,
+      el nowcasting y los ríos vigilados (ver abajo).
 - [x] **Datos (22 sep, los llena la ingesta horaria)**: 982 estaciones SENAMHI en 24 departamentos
       (con `lat`/`lon`) · lluvia horaria de las 14 automáticas de Cajamarca · ~120 ríos con caudal y
       umbrales en 23 departamentos · ICEN / RONI / estado ENFEN · capa de **anomalías de
@@ -78,6 +80,69 @@ datos programadas en el worker. Faltan las demás páginas del front (Alertas, C
       Conectores con TLS siempre verificado; BD por pooler con `sslmode=require`.
 - [x] **Endurecido**: Redis publicado solo en `127.0.0.1`; geopandas solo en la imagen del worker
       (`requirements-mapas.txt`), la imagen de la API bajó a ~310 MB.
+
+**Ríos vigilados: el Mashcón (03 oct)** — **532 pruebas** del backend sin red y **68** del frontend
+(`npm test`), build OK. Diseño verificado en vivo contra las fuentes (URLs y datos de hoy);
+migraciones, cargador y vistas probados en PostGIS desechable y contra la BD real en transacciones
+revertidas. **Desplegado**: migraciones `rios_vigilados`, `preferencia_mapa` y
+`rios_aviso_vigente_fuente_caida` aplicadas, el Mashcón cargado (13 zonas, 14 incidentes), la tarea
+`rios` corriendo (1680 avisos hidrológicos del país; el Mashcón sin aviso vigente hoy) e imágenes de
+worker y backend reconstruidas. Una verificación adversarial posterior dejó las correcciones de abajo
+(zona azul sin señales, aviso hidrológico en el cauce, fuente caída, guardas de la tarea y del
+cargador). Detalle en `README-tecnico.md` §5.6.7 y `frontend/README.md` ("Ríos vigilados" y "Capas
+recordadas").
+- [x] **El río se ve siempre:** el Mashcón con halo blanco, su color según la estación de ANA y
+      "Río Mashcón" escrito sobre la línea (trazo de OpenStreetMap). Su disco pasa a 40 px con el
+      rótulo «Mashcón · Tranquilo 0.13 m³/s»; en alerta o emergencia late y siempre se ve. Si un aviso
+      hidrológico de SENAMHI (también el amarillo) es más alto que la lectura de ANA, el cauce y el
+      disco toman el color del aviso y lo dicen («Mashcón · Aviso rojo SENAMHI», con la cifra de ANA
+      al lado): así la zona no sale roja con el río "tranquilo".
+- [x] **La zona que podría afectar, sin leer nada:** una franja rayada (estimación de SIMPAC con el
+      relieve, Copernicus GLO-30) y manchas lisas (estudio INDECI-PNUD 2005 pasado a coordenadas).
+      Ninguna es un mapa oficial vigente y nunca se dan metros. Los polígonos, desde zoom 13; desde
+      zoom 14, «zona que podría inundarse» escrito junto al río y el límite de la faja marginal
+      aprobada por ANA (4 resoluciones, 6 líneas). Si hay señales, un aura del color del nivel a lo
+      largo del río hasta zoom 13 (en zoom 13, suave debajo de los polígonos): se ve con el mapa
+      alejado.
+- [x] **El color sale de las señales de hoy:** azul sin señales (sigue siendo una zona que podría
+      inundarse; un gris no se leía como peligro); ámbar con lluvia fuerte medida en la cuenca, aviso
+      de lluvia naranja o rojo en curso sobre ella, el río al 80 % de su alerta o un aviso
+      hidrológico amarillo; naranja o rojo **solo** con ANA sobre su alerta o emergencia, o con un
+      aviso hidrológico naranja o rojo de SENAMHI. La BD cruza los avisos y las estaciones con la
+      cuenca (vista `rio_senal`); el nivel lo decide `lib/zonaRio.js`. El popup menciona sin subir el
+      nivel un aviso de crecida que SENAMHI publica sin nivel y, si SENAMHI no responde hace más de
+      3 h, que el aviso que se muestra es su último aviso conocido.
+- [x] **Avisos hidrológicos de SENAMHI** (tarea `rios`, cada hora): la lista del país (12 meses) y el
+      detalle solo de los avisos vigentes de los ríos vigilados (caudal, umbral rojo, centros poblados
+      que podrían verse afectados), que se vuelve a pedir si la lista cambia su fin o su nivel. Con la
+      lista caída o rara (menos de 500 filas) no escribe nada; si el texto "(vigente)" y la marca de
+      la fila no coinciden, no apaga ningún aviso; un valor imposible (más de 10 veces el umbral) no
+      se guarda; no crea alertas. Con SENAMHI caído, un aviso con fin conocido se sigue viendo hasta
+      ese fin (migración `rios_aviso_vigente_fuente_caida`).
+- [x] **Desbordes y daños pasados:** rombos con su año (’14, ’16, ’25...), 11 incidentes
+      con fuente verificada (10 en el mapa) y 3 crecidas medidas en rojo. Solo los que nombran al
+      Mashcón en su fuente (ANA, INDECI, Red Integrada de Salud Cajamarca del Gobierno Regional,
+      Municipalidad de Cajamarca, SENAMHI, prensa, una tesis). Con cada zoom se juntan («×n») los
+      que en pantalla quedarían encimados, y el acomodo corre el que quedaría tapado, con una línea
+      fina hasta su lugar real (nunca se oculta). En el popup de la zona, «Pasó antes» va por
+      cercanía a la zona tocada («Cerca de aquí» / «En otros tramos del río»).
+- [x] **Panel de estado:** «Río Mashcón: ...» cuando su zona tiene señales, también con el panel
+      plegado, con el botón «Ver en el mapa» (pliega el panel y encuadra el cauce). El contador y el
+      badge no cambian.
+- [x] **Capas recordadas** en el navegador (`localStorage`, `simpac.mapa`), con chip «Nueva» y
+      «Restablecer capas»; sin `localStorage` (ventana privada) arranca con lo de siempre. Tabla
+      `preferencia_mapa` (RLS por dueño) lista para cuando haya inicio de sesión.
+- [x] **Simulación solo en desarrollo** (`?simular=mashcon:15.4`, `:19`, `:hidro2` a `:hidro4`,
+      `:lluvia`, `:calma`) para ver la alerta sin esperar una crecida, o un día sin señales.
+- [x] **Cargador con guardas:** exige al menos una zona estimada o de estudio y un incidente; con
+      `--aplicar` cancela la carga si iba a borrar más de la mitad de lo que el río tiene en la BD
+      (salvo con `--podar`) o si un id de incidente ya es de otro río.
+- **Descartado:** SILVIA como disparador (es de huaycos y no tiene CORS), los tramos críticos de ANA
+  (están en los afluentes) y la susceptibilidad de CENEPRED e INGEMMET (pinta todo el valle de
+  "Alto"). SIGRID pide token: no se usa el que incrusta su visor.
+- **Decisiones abiertas** (del usuario): ofrecer el trazo y lo derivado bajo ODbL o pasar a un cauce
+  de Copernicus; si el aviso hidrológico suma al contador y al badge; validar con usuarios el rayado
+  ámbar sobre un aviso naranja y la zona azul (sin señales) desde zoom 13.
 
 **Avisos con ícono, pronóstico por localidad y nowcasting (23 sep)** — **467 pruebas** del backend
 sin red, 24 del frontend (`npm test`) y build OK; cada tarea probada contra la BD real en
@@ -338,6 +403,10 @@ estaciones evaluadas, 1 alerta real de 6 h en Cotahuasi, Arequipa)
       `pronostico_localidad` y `nowcast_senamhi` aplicadas; imágenes reconstruidas). Kevin, tras el
       pull: reconstruir frontend, worker y API. Control con las consultas de `README-tecnico.md`
       §5.6.6.
+- [x] **Ríos vigilados desplegados** (3 migraciones aplicadas, Mashcón cargado, tarea `rios`
+      corriendo; worker, backend y frontend de Docker reconstruidos). Kevin, tras el pull:
+      reconstruir frontend, worker y API (no hace falta volver a cargar el río: ya está en la BD).
+      Control con las consultas de `README-tecnico.md` §5.6.7.
 - [ ] **Serie de lluvia (24 h) en más estaciones y departamentos**: hoy la ingesta baja la serie
       horaria solo de Cajamarca (`SIMPAC_LLUVIA_DEPTS`; sumar otros es cambiar esa variable) y solo
       de las meteorológicas. Las hidrológicas automáticas también la dan si se pide con
@@ -369,6 +438,12 @@ estaciones evaluadas, 1 alerta real de 6 h en Cotahuasi, Arequipa)
 - [ ] Validar con SENAMHI o Defensa Civil, en temporada de lluvias (oct–abr), esa referencia como
       disparador de "Atentos a la lluvia": cada cuánto sale (`latido.alertas`, `alertas_6h`), las
       estaciones de valle amazónico con 5 mm/h y las de la costa con 1 mm/h (`README-tecnico.md` §10).
+- [ ] **Otros ríos vigilados**: el Chonta, el San Lucas y el Namora (estación SENAMHI 220206, que
+      también tiene avisos hidrológicos). Por río: una carpeta en `backend/data/rios/<id>/` con sus 6
+      archivos revisados y `cargar_rios --rio <id> --aplicar`; la tarea `rios` ya baja sus avisos si
+      tiene `estacion_senamhi`.
+- [ ] Decidir lo abierto de los ríos vigilados: ODbL (o cauce de Copernicus) y si el aviso
+      hidrológico suma al contador y al badge.
 
 **Frontend / móvil**
 - [x] **Web (Mapa)**: React + Vite + Leaflet conectado a Supabase (ya está).
@@ -378,6 +453,10 @@ estaciones evaluadas, 1 alerta real de 6 h en Cotahuasi, Arequipa)
       FMA) y hoy se guarda solo el primero (dic a feb; en 2023, ene a mar), así que el mapa de
       2017 no muestra marzo, cuando se desbordó el río Piura. La capa ya rotula los meses.
 - [ ] **Web (resto)**: páginas Alertas, Comunidad, Chat, Cuenta, crear reporte + react-router.
+- [ ] **Inicio de sesión** (Supabase Auth): lo necesitan los reportes y las capas recordadas en la
+      cuenta (`preferencia_mapa` ya está lista; sin sesión, solo en el navegador).
+- [ ] **Validar con usuarios** las zonas de los ríos: si el rayado ámbar sobre un aviso naranja se lee
+      bien y si la zona azul (sin señales) debe verse siempre desde zoom 13 (la propuesta es que sí).
 - [ ] **App móvil**: arrancar `appmobile/` (React Native); GPS + push.
 - [ ] Crear el proyecto **Firebase (FCM)** para push y conseguir la server key.
 
@@ -429,3 +508,23 @@ estaciones evaluadas, 1 alerta real de 6 h en Cotahuasi, Arequipa)
   `sin_ubicacion` del latido.
 - **Términos de SENAMHI**: además de la leyenda literal, dicen que la página es "para el uso
   personal y del usuario". Conviene mencionarlo al presentar el proyecto.
+- **Límites del relieve (zona estimada de los ríos)**: Copernicus GLO-30 es un modelo de superficie
+  (techos y árboles) con 2 a 3 m de error vertical, del orden de los umbrales. En la ciudad se queda
+  corto (las manchas de INDECI 2005 caen solo entre un 5 % y un 36 % dentro de la zona de 3 m) y dos
+  estimaciones independientes coincidieron solo en un 44 %. Por eso la web la rotula como
+  estimación, muestra también el estudio de 2005, nunca da metros y nunca relaciona m³/s con la
+  extensión. No existe un mapa oficial de inundación del Mashcón.
+- **ODbL**: el trazo de OpenStreetMap y lo derivado de él (zonas estimadas, cuenca) se leen por la API
+  pública de Supabase, así que hay que ofrecerlos bajo ODbL con atribución (va en la fuente de las
+  capas y en cada zona). Pendiente la decisión del usuario; la alternativa es un cauce de Copernicus.
+- **Overpass sin uso en vivo**: saturado en 4 de 7 consultas durante la investigación. El trazo del
+  río se bajó una vez por la API 0.6 de OSM y vive en el repo y en la BD; nada consulta OSM, ANA ni
+  GEOCATMIN por visita. Si OSM corrige el río, hay que volver a armar los archivos y cargarlos.
+- **Avisos hidrológicos de SENAMHI sin API**: se leen de una página HTML (~700 KB por pedido). Si
+  cambia, la tarea `rios` falla con `lista_rara` (menos de 500 filas: no escribe nada) o con
+  `vigente_ambiguo` (guarda la lista, pero no apaga ningún aviso); sus pruebas usan muestras reales.
+  Con SENAMHI caído o la página cambiada, un aviso con fin conocido se sigue viendo hasta ese fin
+  (pasadas 3 h, el popup dice que es su último aviso conocido) y uno sin fin conocido deja de verse
+  a las 3 h de la última lectura de la lista.
+- **Ubicación de los incidentes**: es aproximada (prensa, municipio, ANA); cada rombo cita su fuente y
+  su precisión.

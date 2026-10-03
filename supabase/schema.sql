@@ -274,7 +274,7 @@ where p.emision >= now() - interval '30 minutes'
 order by m.horizonte_min, m.nivel;
 
 -- Cuándo corrió de verdad cada tarea del worker ('ingesta', 'enfen', 'avisos',
--- 'lluvia_nacional', 'pronostico', 'nowcast'), con su resumen (fallas, avisos y lo que escribió).
+-- 'lluvia_nacional', 'pronostico', 'nowcast', 'rios'), con su resumen (fallas, avisos y lo que escribió).
 create table latido (
   servicio text primary key,
   ts       timestamptz not null default now(),
@@ -338,11 +338,180 @@ create table mapa (
 );
 create unique index mapa_uuid_key on mapa (uuid);   -- upsert idempotente de backend/mapas/cargar_fen.py
 
+-- Ríos vigilados (primero el Mashcón, Cajamarca): el río resaltado, las zonas que podría afectar si
+-- se desborda, sus incidentes pasados documentados y las señales de hoy. rio_vigilado, rio_zona y
+-- rio_incidente los carga UNA vez backend/mapas/cargar_rios.py desde backend/data/rios/<id>/ (como
+-- los mapas FEN); aviso_hidrologico lo llena la tarea 'rios' del worker (cada hora).
+-- Honestidad del dato: rio_zona.tipo 'estimada' = estimación SIMPAC por relieve (HAND, Copernicus
+-- GLO-30), 'estudio' = mapa de un estudio oficial pasado a coordenadas (INDECI-PNUD 2005), 'faja' =
+-- límite de la faja marginal de ANA (no es un mapa de inundación). El trazo (OSM) y lo derivado de
+-- él van con ODbL 1.0 y atribución; Copernicus con su aviso; ANA, INDECI y SENAMHI citando la fuente.
+create table rio_vigilado (
+  id               text primary key check (id ~ '^[a-z0-9_]+$'),  -- 'mashcon'
+  nombre           text not null,                -- 'Río Mashcón'
+  departamento     text not null,                -- canónico (backend/ingesta/departamentos.py)
+  estacion_ana     text,                         -- caudal_actual.estacion ('Mashcón')
+  rio_ana          text,                         -- caudal_actual.rio ('Mashcon')
+  estacion_senamhi text,                         -- estación hidrológica SENAMHI ('220213'): empareja
+                                                 -- aviso_hidrologico.ce
+  centro_lat       double precision not null,    -- a dónde lleva "Ver en el mapa"
+  centro_lon       double precision not null,
+  zoom             smallint not null default 13,
+  cauce            geometry(MultiLineString, 4326) not null,  -- tronco del río (OSM)
+  afluentes        geometry(MultiLineString, 4326),           -- formadores y afluente urbano (OSM)
+  guia_rotulo      geometry(LineString, 4326),                -- tronco simplificado (~120 m): nombre sobre la línea
+  cuenca           geometry(MultiPolygon, 4326) not null,     -- estimación SIMPAC; no se dibuja: decide qué avisos
+                                                              -- de lluvia y qué estaciones cuentan para el río
+  lugares_aviso    jsonb not null default '[]'::jsonb check (jsonb_typeof(lugares_aviso) = 'array'),
+                                                 -- centros poblados que SENAMHI nombra en sus avisos del río:
+                                                 -- [{nombre, lat, lon, mapa, dist_rio_m, nota, fuente_coord}]
+  fuentes          jsonb not null default '{}'::jsonb,
+  ts_carga         timestamptz not null default now()
+);
+create index rio_vigilado_cuenca_idx on rio_vigilado using gist (cuenca);
+
+create table rio_zona (
+  clave        text primary key,                 -- 'mashcon:relieve:2', 'mashcon:indeci2005:mayor:norte'
+  rio          text not null references rio_vigilado(id) on delete cascade,
+  tipo         text not null check (tipo in ('estimada', 'estudio', 'faja')),
+  subtipo      text not null,                    -- bajo_1m|bajo_2m|bajo_3m · mayor|menor · derecha|izquierda
+  orden        smallint not null default 0,      -- se dibuja de menor a mayor
+  nombre       text not null,
+  texto        text not null,                    -- explicación en lenguaje claro (popup)
+  fuente       text not null,
+  fuente_url   text check (fuente_url ~ '^https://'),
+  licencia     text not null,
+  atribucion   text not null,
+  metodo       text not null,
+  fecha_fuente text,                             -- '2005-12', '2021-01-11', '2026-10-02'
+  area_km2     numeric,
+  geom         geometry(Geometry, 4326) not null
+               check (st_geometrytype(geom) in ('ST_MultiPolygon', 'ST_MultiLineString')),
+  ts_carga     timestamptz not null default now()
+);
+create index rio_zona_rio_idx on rio_zona (rio, orden);
+comment on table rio_zona is
+  'Zonas que un río vigilado podría afectar. tipo: estimada (relieve, SIMPAC) | estudio (INDECI-PNUD 2005 digitalizado) | faja (faja marginal ANA). Ninguna es un mapa oficial de inundación vigente.';
+
+create table rio_incidente (
+  id              text primary key,              -- 'MAS-2014-03-26', 'ANA-EEH-9913', 'SEN-2021-0987'
+  rio             text not null references rio_vigilado(id) on delete cascade,
+  fecha           date,                          -- null si la fuente solo da años
+  fecha_texto     text not null,                 -- '26 de marzo de 2014', '2012–2013'
+  tipo            text not null check (tipo in ('desborde', 'erosion', 'puente', 'infraestructura', 'crecida')),
+  titulo          text not null,
+  lugar           text not null,
+  detalle         text,
+  precision       text not null check (precision in ('punto', 'sector', 'distrito', 'estacion')),
+  precision_texto text not null,
+  caudal_m3s      numeric,                       -- solo tipo 'crecida' (medido en la estación)
+  fuente_tipo     text not null check (fuente_tipo in ('oficial', 'prensa', 'academica', 'base_historica')),
+  fuente          text not null,
+  fuente_url      text not null check (fuente_url ~ '^https://'),
+  otras_fuentes   jsonb not null default '[]'::jsonb check (jsonb_typeof(otras_fuentes) = 'array'),
+  lat             double precision,              -- null: no se dibuja (solo distrito, o crecida en la estación)
+  lon             double precision,
+  ts_carga        timestamptz not null default now(),
+  check ((lat is null) = (lon is null)),
+  check (precision not in ('punto', 'sector') or lat is not null)
+);
+create index rio_incidente_rio_idx on rio_incidente (rio, fecha desc);
+comment on table rio_incidente is
+  'Incidentes pasados que nombran al río en su fuente (desbordes, erosión, puentes) y crecidas medidas en rojo. Carga única: backend/mapas/cargar_rios.py.';
+
+-- Avisos hidrológicos de SENAMHI (https://www.senamhi.gob.pe/?p=avisos-hidrologicos): la lista de
+-- los últimos 12 meses de todo el país, una fila por aviso. El detalle (hora, caudal, áreas que
+-- podrían verse afectadas, umbral rojo) solo se lee para las estaciones de rio_vigilado.
+create table aviso_hidrologico (
+  ca          int primary key,                   -- id del aviso en la web (?ca=)
+  ce          text not null,                     -- código de la estación ('220213' = Mashcón)
+  numero      int not null,
+  titulo      text not null,                     -- literal ('INCREMENTO DEL CAUDAL DEL RÍO MASHCÓN - ESTACIÓN MASHCÓN')
+  nivel       smallint check (nivel between 2 and 4),  -- 2 amarillo, 3 naranja, 4 rojo; null si la lista no lo trae
+  sentido     text not null check (sentido in ('crecida', 'descenso')),  -- 'descenso' si el título dice DESCENSO
+  inicio_dia  date not null,                     -- columnas de la lista
+  fin_dia     date not null,
+  duracion_h  int,
+  vigente     boolean not null default false,    -- "(vigente)" en la lista la última vez que se leyó
+  emision     timestamptz,                       -- del detalle (solo estaciones vigiladas)
+  inicio      timestamptz,
+  fin         timestamptz,
+  valor       numeric,                           -- caudal o nivel que registró la estación
+  unidad      text,                              -- 'm3/s' | 'm.s.n.m' | 'm'
+  umbral_rojo numeric,
+  areas       text,                              -- literal: 'Las potenciales áreas de afectación serían ...'
+  significado_rojo text,                         -- literal de la leyenda del nivel rojo: 'Se espera desborde del río. ...'
+  url         text not null check (url ~ '^https://'),
+  visto_en    timestamptz not null default now(),  -- última vez que vino en la lista
+  ts_captura  timestamptz not null default now()
+);
+create index aviso_hidrologico_ce_idx on aviso_hidrologico (ce, fin_dia desc);
+
+-- Para el frontend (PostgREST devuelve geometry en hex): GeoJSON con 5 decimales (~1 m).
+create view rio_vigilado_mapa with (security_invoker = true) as
+select id, nombre, departamento, estacion_ana, rio_ana, estacion_senamhi, centro_lat, centro_lon, zoom,
+       st_asgeojson(cauce, 5)::json as cauce,
+       st_asgeojson(afluentes, 5)::json as afluentes,
+       st_asgeojson(guia_rotulo, 5)::json as guia_rotulo,
+       lugares_aviso, fuentes
+from rio_vigilado;
+
+create view rio_zona_mapa with (security_invoker = true) as
+select clave, rio, tipo, subtipo, orden, nombre, texto, fuente, fuente_url, licencia, atribucion, metodo,
+       fecha_fuente, area_km2, st_asgeojson(geom, 5)::json as geojson
+from rio_zona
+order by rio, orden;
+
+-- Vigentes: "(vigente)" en la última lectura de la lista y que no terminó. Con fin conocido (del
+-- detalle) se muestra hasta ese fin aunque SENAMHI no responda (una fuente caída no apaga un aviso);
+-- sin fin conocido, hasta 3 h después de la última lectura de la lista (fin_dia es solo un día).
+create view aviso_hidrologico_vigente with (security_invoker = true) as
+select ca, ce, numero, titulo, nivel, sentido, inicio_dia, fin_dia, emision, inicio, fin,
+       valor, unidad, umbral_rojo, areas, significado_rojo, url, visto_en
+from aviso_hidrologico
+where vigente
+  and fin_dia >= (now() at time zone 'America/Lima')::date
+  and (fin is null or fin > now())
+  and (fin is not null or visto_en > now() - interval '3 hours');
+
+-- Señales de hoy por río (una fila por río vigilado), cruzadas con PostGIS; el nivel de la zona lo
+-- decide el frontend (lib/zonaRio.js) con estas señales y caudal_actual.
+--   avisos_lluvia   avisos de SENAMHI de tema lluvia que no terminaron y tocan la cuenca
+--   lluvia_cuenca   estaciones de lluvia_senamhi_actual (últimas 3 h) dentro de la cuenca
+--   avisos_hidro    avisos hidrológicos vigentes de la estación SENAMHI del río (visto_en de más de
+--                   3 h: SENAMHI no responde y es el último aviso conocido)
+create view rio_senal with (security_invoker = true) as
+select r.id as rio,
+  (select coalesce(json_agg(json_build_object(
+            'id', a.id, 'tipo', a.tipo, 'numero', a.numero, 'mapa', a.mapa, 'nivel', a.nivel, 'titulo', a.titulo,
+            'inicio', a.inicio, 'fin', a.fin, 'en_curso', a.inicio <= now(), 'url', a.url)
+          order by a.nivel desc, a.inicio), '[]'::json)
+     from aviso_senamhi a
+    where a.tema = 'lluvia' and a.fin > now() and st_intersects(a.geom, r.cuenca)) as avisos_lluvia,
+  (select coalesce(json_agg(json_build_object(
+            'clave', l.clave, 'nombre', l.nombre, 'pp_1h', l.pp_1h, 'umbral_1h', l.umbral_1h,
+            'pp_6h', l.pp_6h, 'umbral_6h', l.umbral_6h, 'medido_en', l.medido_en)
+          order by l.nombre), '[]'::json)
+     from lluvia_senamhi_actual l
+    where l.lat is not null and l.lon is not null
+      and st_intersects(r.cuenca, st_setsrid(st_makepoint(l.lon, l.lat), 4326))) as lluvia_cuenca,
+  (select coalesce(json_agg(json_build_object(
+            'ca', h.ca, 'numero', h.numero, 'titulo', h.titulo, 'nivel', h.nivel, 'sentido', h.sentido,
+            'inicio', coalesce(h.inicio, h.inicio_dia::timestamp at time zone 'America/Lima'),  -- sin detalle: 00:00 de Lima
+            'fin', h.fin, 'fin_dia', h.fin_dia,
+            'valor', h.valor, 'unidad', h.unidad, 'umbral_rojo', h.umbral_rojo, 'areas', h.areas,
+            'significado_rojo', h.significado_rojo, 'url', h.url, 'visto_en', h.visto_en)
+          order by h.nivel desc nulls last, h.inicio_dia desc), '[]'::json)
+     from aviso_hidrologico_vigente h
+    where h.ce = r.estacion_senamhi) as avisos_hidro
+from rio_vigilado r;
+
 -- ===========================================================================
 -- B) COMUNIDAD: reportes estilo Waze validados por votos. Usuarios de Supabase
 --    Auth (auth.users.id es uuid). Todos los ids son uuid: no se pueden recorrer.
 --    Lo que decide la comunidad (estado, confianza, likes, reputación) y los
---    vencimientos los calcula la BD; el cliente no los puede escribir.
+--    vencimientos los calcula la BD; el cliente no los puede escribir. Aquí van
+--    también las preferencias del mapa de cada usuario (preferencia_mapa).
 -- ===========================================================================
 
 create table perfil (                   -- se crea solo al registrarse (trigger crear_perfil)
@@ -411,6 +580,18 @@ create table message (                  -- chat efímero por zona
 create index message_zona_idx  on message (zona, expira_en);
 create index message_autor_idx on message (autor, creado_en);
 
+-- Preferencias del mapa por usuario (capas encendidas y opciones elegidas). Sin sesión la web las
+-- guarda solo en el navegador (localStorage "simpac.mapa", frontend/src/lib/preferencias.js); con
+-- sesión, también aquí. La web aún no tiene inicio de sesión: la tabla queda lista.
+create table preferencia_mapa (
+  usuario        uuid primary key default auth.uid() references auth.users(id) on delete cascade,
+  version        smallint    not null default 1 check (version between 1 and 100),
+  datos          jsonb       not null check (jsonb_typeof(datos) = 'object' and pg_column_size(datos) <= 4096),
+  actualizado_en timestamptz not null default now()   -- la pone el trigger preferencia_tocar
+);
+comment on table preferencia_mapa is
+  'Capas y opciones del mapa de cada usuario (lib/preferencias.js, esquema v1). Solo las ve y cambia su dueño.';
+
 -- Triggers (funciones en el esquema privado, que el Data API no expone):
 --   voto_validar      before insert on voto: no se vota el propio reporte.
 --   voto_aplicar      after insert/update/delete on voto: actualiza likes, dislikes,
@@ -421,11 +602,13 @@ create index message_autor_idx on message (autor, creado_en);
 --   message_limite    before insert on message: máximo 30 mensajes por hora y autor.
 --                     (los límites toman un lock por autor: no se evaden en paralelo)
 --   crear_perfil      after insert on auth.users: crea el perfil (nombre de options.data).
+--   preferencia_tocar before insert/update on preferencia_mapa: actualizado_en = now() (la hora
+--                     la pone la BD, no el reloj del celular).
 --   srs_solo_lectura  on spatial_ref_sys: rechaza escrituras de anon/authenticated.
 -- Función pública: mis_reportes() (rpc, solo con sesión) devuelve los reportes propios,
 -- vigentes y vencidos: es la única forma de verlos, porque autor no es legible.
 -- Definición completa en supabase/migrations/ (comunidad_uuid_y_permisos,
--- permisos_api_endurecidos y comunidad_privacidad_y_limites).
+-- permisos_api_endurecidos, comunidad_privacidad_y_limites y preferencia_mapa).
 
 -- ===========================================================================
 -- C) SEGURIDAD: RLS en todas las tablas y permisos POR COLUMNA.
@@ -447,17 +630,24 @@ alter table lluvia_senamhi enable row level security;
 alter table pronostico_localidad enable row level security;
 alter table nowcast_producto enable row level security;
 alter table nowcast_mancha enable row level security;
+alter table rio_vigilado   enable row level security;
+alter table rio_zona       enable row level security;
+alter table rio_incidente  enable row level security;
+alter table aviso_hidrologico enable row level security;
 alter table perfil         enable row level security;
 alter table report         enable row level security;
 alter table voto           enable row level security;
 alter table comentario     enable row level security;
 alter table message        enable row level security;
+alter table preferencia_mapa enable row level security;
 
 -- Datos oficiales: solo lectura para todos.
 grant select on estacion, lectura_lluvia, lectura_caudal, caudal_actual, indice, alerta,
   alerta_actual, mapa, comunicado_enfen, latido, icen_serie, aviso_senamhi, aviso_vigente,
   lluvia_senamhi, lluvia_senamhi_actual, pronostico_localidad, pronostico_vigente,
-  nowcast_producto, nowcast_mancha, nowcast_estado, nowcast_vigente to anon, authenticated;
+  nowcast_producto, nowcast_mancha, nowcast_estado, nowcast_vigente,
+  rio_vigilado, rio_zona, rio_incidente, aviso_hidrologico,
+  rio_vigilado_mapa, rio_zona_mapa, aviso_hidrologico_vigente, rio_senal to anon, authenticated;
 create policy "lectura publica estacion" on estacion       for select using (true);
 create policy "lectura publica lluvia"   on lectura_lluvia for select using (true);
 create policy "lectura publica caudal"   on lectura_caudal for select using (true);
@@ -472,6 +662,10 @@ create policy "lectura publica lluvia senamhi" on lluvia_senamhi for select usin
 create policy "lectura publica pronostico" on pronostico_localidad for select using (true);
 create policy "lectura publica nowcast producto" on nowcast_producto for select using (true);
 create policy "lectura publica nowcast mancha" on nowcast_mancha for select using (true);
+create policy "lectura publica rio vigilado"      on rio_vigilado      for select using (true);
+create policy "lectura publica rio zona"          on rio_zona          for select using (true);
+create policy "lectura publica rio incidente"     on rio_incidente     for select using (true);
+create policy "lectura publica aviso hidrologico" on aviso_hidrologico for select using (true);
 
 -- Comunidad: lo que no aparece aquí, el cliente no lo puede leer ni escribir.
 -- autor no se lee (con autor + GPS + hora se arma el historial de ubicación de alguien),
@@ -489,6 +683,11 @@ grant delete                                on voto       to authenticated;
 grant insert (report_id, autor, texto)      on comentario to authenticated;
 grant insert (autor, zona, contenido, geom) on message    to authenticated;
 grant update (nombre, zona)                 on perfil     to authenticated;
+-- preferencia_mapa: nada para anon; actualizado_en no se escribe (la pone el trigger)
+grant select                           on preferencia_mapa to authenticated;
+grant insert (usuario, version, datos) on preferencia_mapa to authenticated;
+grant update (usuario, version, datos) on preferencia_mapa to authenticated;  -- upsert de supabase-js
+grant delete                           on preferencia_mapa to authenticated;
 
 -- report: todos leen los vigentes; crea el autor; edita el autor mientras no tenga votos
 create policy "report lectura vigente" on report for select to anon, authenticated
@@ -530,3 +729,13 @@ create policy "perfil propio select" on perfil for select to authenticated
   using (id = (select auth.uid()));
 create policy "perfil propio update" on perfil for update to authenticated
   using (id = (select auth.uid())) with check (id = (select auth.uid()));
+
+-- preferencia_mapa: cada quien lee, crea, edita y borra solo la suya
+create policy "preferencia lee dueno"   on preferencia_mapa for select to authenticated
+  using (usuario = (select auth.uid()));
+create policy "preferencia crea dueno"  on preferencia_mapa for insert to authenticated
+  with check (usuario = (select auth.uid()));
+create policy "preferencia edita dueno" on preferencia_mapa for update to authenticated
+  using (usuario = (select auth.uid())) with check (usuario = (select auth.uid()));
+create policy "preferencia borra dueno" on preferencia_mapa for delete to authenticated
+  using (usuario = (select auth.uid()));

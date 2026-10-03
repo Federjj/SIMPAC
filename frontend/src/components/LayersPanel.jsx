@@ -9,7 +9,9 @@ import { ATRIBUCION_SENAMHI } from "@/map/senamhi";
 // Muestra de color de la leyenda: punto (marcadores), anillo (borde de un marcador),
 // gota (reportes) o cuadro translúcido (áreas sombreadas). Con `forma`: insignia de un aviso
 // (aro del color con su glifo), disco del pronóstico (blanco con su glifo; punteado = "tendencia
-// a") o mancha del nowcasting (cuadro con borde punteado).
+// a"), mancha del nowcasting (cuadro con borde punteado), rayado (zona estimada junto a un río),
+// línea (un río resaltado; punteada = faja marginal), disco de un río (blanco con aro), rombo
+// (desborde pasado), punto (lugar nombrado en un aviso) o círculo (zona alrededor de una estación).
 function Muestra({ color, zona, gota, anillo, forma, glifo, punteado }) {
   if (forma === "insignia")
     return (
@@ -36,6 +38,28 @@ function Muestra({ color, zona, gota, anillo, forma, glifo, punteado }) {
         style={{ background: `${color}8C`, border: `1.5px dashed ${color}` }}
       />
     );
+  if (forma === "rayado")
+    return (
+      <span
+        className="h-3 w-3 shrink-0 rounded-[3px]"
+        style={{ background: `repeating-linear-gradient(45deg, ${color} 0 2px, #fff9 2px 5px)`, border: `1.5px solid ${color}` }}
+      />
+    );
+  if (forma === "linea")
+    return (
+      <span
+        className="h-1 w-4 shrink-0 rounded-sm"
+        style={punteado ? { borderTop: `2px dashed ${color}` } : { background: color, boxShadow: "0 0 0 1.5px #fff, 0 0 0 2.5px #cbd5e1" }}
+      />
+    );
+  if (forma === "circulo")
+    return <span className="h-3 w-3 shrink-0 rounded-full" style={{ background: `${color}2E`, border: `1.5px solid ${color}` }} />;
+  if (forma === "rio")
+    return <span className="h-[18px] w-[18px] shrink-0 rounded-full bg-white shadow" style={{ border: `3px solid ${color}` }} />;
+  if (forma === "rombo")
+    return <span className="mx-px h-2.5 w-2.5 shrink-0 rotate-45 rounded-[2px] border border-white shadow" style={{ background: color }} />;
+  if (forma === "punto")
+    return <span className="mx-0.5 h-2 w-2 shrink-0 rounded-full" style={{ background: color, boxShadow: "0 0 0 2px #fff, 0 0 0 3px #cbd5e1" }} />;
   return (
     <span
       className={cn(
@@ -54,7 +78,7 @@ function Muestra({ color, zona, gota, anillo, forma, glifo, punteado }) {
   );
 }
 
-function Capa({ layer, on, opcion, nota, destacada, onToggle, onOpcion }) {
+function Capa({ layer, on, nueva, opcion, nota, destacada, onToggle, onOpcion }) {
   const { id, label, Icon, legend = [], opciones, fuente, insignia } = layer;
   // la nota puede ser un texto o un objeto {texto, ...} (p. ej. el nowcasting)
   const textoNota = nota && typeof nota === "object" ? nota.texto : nota;
@@ -77,6 +101,11 @@ function Capa({ layer, on, opcion, nota, destacada, onToggle, onOpcion }) {
         <span className="leading-tight">
           {label}
           {insignia && <InsigniaCapa tipo={insignia} className="relative -top-px whitespace-nowrap" />}
+          {nueva && (
+            <span className="relative -top-px ml-1 whitespace-nowrap rounded bg-primary px-1 text-[0.55rem] font-semibold uppercase tracking-wider text-primary-foreground">
+              Nueva
+            </span>
+          )}
         </span>
         <Switch className="ml-auto shrink-0" checked={on} onCheckedChange={() => onToggle(id)} />
       </label>
@@ -110,7 +139,33 @@ function Capa({ layer, on, opcion, nota, destacada, onToggle, onOpcion }) {
   );
 }
 
-export default function LayersPanel({ layers, visible, opciones = {}, notas = {}, destacar, onToggle, onOpcion }) {
+// Pie del panel: dónde se guardan las capas (useLayerVisibility) y "Restablecer capas" si algo
+// difiere de lo de siempre; al restablecer, un aviso corto.
+const DONDE = {
+  navegador: "Tus capas se guardan en este navegador.",
+  cuenta: "Tus capas se guardan en tu cuenta.",
+};
+const LISTO_MS = 3000;
+
+export default function LayersPanel({
+  layers,
+  visible,
+  opciones = {},
+  notas = {},
+  destacar,
+  nuevas = [],
+  cambios = false,
+  dondeGuarda = "navegador",
+  onToggle,
+  onOpcion,
+  onRestablecer,
+}) {
+  const [listo, setListo] = useState(false);
+  useEffect(() => {
+    if (!listo) return undefined;
+    const t = setTimeout(() => setListo(false), LISTO_MS);
+    return () => clearTimeout(t);
+  }, [listo]);
   return (
     <div data-tapa-mapa className="absolute right-[70px] top-4 z-[601] max-h-[calc(100%-2rem)] w-72 overflow-y-auto rounded-xl border border-border bg-popover/95 p-4 shadow-2xl backdrop-blur">
       <h4 className="mb-2 text-[0.68rem] font-semibold uppercase tracking-widest text-muted-foreground">
@@ -129,6 +184,7 @@ export default function LayersPanel({ layers, visible, opciones = {}, notas = {}
                 key={layer.id}
                 layer={layer}
                 on={Boolean(visible[layer.id])}
+                nueva={nuevas.includes(layer.id)}
                 opcion={opciones[layer.id]}
                 nota={notas[layer.id]}
                 destacada={destacar?.id === layer.id ? destacar.vez : 0}
@@ -139,9 +195,29 @@ export default function LayersPanel({ layers, visible, opciones = {}, notas = {}
           </div>
         );
       })}
-      <p className="mt-3 border-t border-border pt-2 text-[0.62rem] leading-snug text-muted-foreground">
+      <div className="mt-3 flex items-center gap-2 border-t border-border pt-2 text-[0.68rem] leading-snug text-muted-foreground">
+        <span role="status" className="min-w-0 flex-1">
+          {listo
+            ? "Listo: volviste a las capas de siempre."
+            : DONDE[dondeGuarda] ?? "Este navegador no deja guardar tus capas: al recargar vuelven las de siempre."}
+        </span>
+        {cambios && onRestablecer && (
+          <button
+            type="button"
+            onClick={() => {
+              onRestablecer();
+              setListo(true);
+            }}
+            className="shrink-0 rounded-md border border-border px-2 py-1 font-medium text-foreground hover:bg-accent"
+          >
+            Restablecer capas
+          </button>
+        )}
+      </div>
+      <p className="mt-2 text-[0.62rem] leading-snug text-muted-foreground">
         Ríos: ANA. Lluvia, avisos y mapas: SENAMHI. Pronóstico y nowcasting: SENAMHI. {ATRIBUCION_SENAMHI} Lluvia por
-        satélite: NASA. El Niño: ENFEN, IGP y NOAA.
+        satélite: NASA. El Niño: ENFEN, IGP y NOAA. Zonas de ríos: estimación SIMPAC (Copernicus DEM), INDECI-PNUD 2005 y
+        ANA. Trazo de ríos: © OpenStreetMap.
       </p>
     </div>
   );
