@@ -6,9 +6,18 @@
 // Aquí viven también los rayados de las zonas que un río podría afectar (layers/zonasRio.js), que se
 // usan como relleno de un polígono: fillColor "url(#simpac-rayado-<nivel>)".
 // Módulo puro (solo importa la paleta, también pura): lo leen también las pruebas con node --test.
+//
+// Dos formas de usar un glifo:
+//   - glifoSvg(k): el SVG en línea, para los popups, la franja y las leyendas (pocos a la vez);
+//   - como imagen (clase .glifo-img con data-g="<k>", map/marcadores.js): el mismo dibujo, con sus
+//     degradados y su sombra adentro, en un data: URI que montarDefsIconos deja una sola vez por
+//     glifo en una hoja de estilos (ESTILO_GLIFOS). Antes cada uno de los ~380 marcadores llevaba su
+//     SVG en línea (582 paths, 192 filtros de sombra, 510 degradados) y Chrome volvía a rasterizar
+//     cada filtro y degradado en cada zoom; con la imagen decodifica cada glifo una vez y la reusa.
 import { ZONA_OSCURO } from "./palette.js";
 
 export const DEFS_ID = "simpac-defs-iconos";
+export const ESTILO_ID = "simpac-estilo-glifos";
 
 // Rayado a 45 grados de una zona: franjas del tono oscuro del nivel sobre un fondo blanquecino (se
 // lee también encima del área naranja de un aviso); sin señales (azul), franjas algo más suaves.
@@ -22,21 +31,31 @@ const rayado = (nivel) => {
 };
 
 // userSpaceOnUse en las nubes: una nube hecha de varios círculos lleva un solo degradado continuo.
-export const DEFS_SVG = `<svg id="${DEFS_ID}" width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
-<linearGradient id="simpac-gNube" x1="0" y1="4" x2="0" y2="25" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#ffffff"/><stop offset="1" stop-color="#B4C1D3"/></linearGradient>
+// DEGRADADOS va también dentro de cada glifo-imagen (una imagen no ve los <defs> del documento).
+const DEGRADADOS = `<linearGradient id="simpac-gNube" x1="0" y1="4" x2="0" y2="25" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#ffffff"/><stop offset="1" stop-color="#B4C1D3"/></linearGradient>
 <linearGradient id="simpac-gNubeOsc" x1="0" y1="4" x2="0" y2="25" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#A9B6C8"/><stop offset="1" stop-color="#5B6B82"/></linearGradient>
 <linearGradient id="simpac-gGota" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#6CCBFF"/><stop offset="1" stop-color="#1673D9"/></linearGradient>
 <linearGradient id="simpac-gRayo" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FFE066"/><stop offset="1" stop-color="#F59E0B"/></linearGradient>
 <radialGradient id="simpac-gSol" cx=".4" cy=".35" r=".7"><stop offset="0" stop-color="#FFE9A3"/><stop offset=".55" stop-color="#FFC53D"/><stop offset="1" stop-color="#F59E0B"/></radialGradient>
 <linearGradient id="simpac-gCalor" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FF8A5B"/><stop offset="1" stop-color="#E03E1A"/></linearGradient>
 <linearGradient id="simpac-gFrio" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#7CC4FF"/><stop offset="1" stop-color="#2563EB"/></linearGradient>
-<filter id="simpac-fSombra" x="-20%" y="-20%" width="140%" height="150%"><feDropShadow dx="0" dy=".8" stdDeviation=".6" flood-color="#0f172a" flood-opacity=".38"/></filter>
+<filter id="simpac-fSombra" x="-20%" y="-20%" width="140%" height="150%"><feDropShadow dx="0" dy=".8" stdDeviation=".6" flood-color="#0f172a" flood-opacity=".38"/></filter>`;
+
+export const DEFS_SVG = `<svg id="${DEFS_ID}" width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
+${DEGRADADOS}
 ${["emergencia", "alerta", "atentos", "sin_senales"].map(rayado).join("")}
 </defs></svg>`;
 
-// Monta los degradados una vez (antes de dibujar cualquier glifo).
+// Monta los degradados (y la hoja de estilos con los glifos como imagen) una vez, antes de dibujar
+// cualquier glifo.
 export function montarDefsIconos(doc = document) {
   if (!doc.getElementById(DEFS_ID)) doc.body.insertAdjacentHTML("afterbegin", DEFS_SVG);
+  if (!doc.getElementById(ESTILO_ID)) {
+    const estilo = doc.createElement("style");
+    estilo.id = ESTILO_ID;
+    estilo.textContent = ESTILO_GLIFOS;
+    doc.head.appendChild(estilo);
+  }
 }
 
 const s = (inner) => `<svg viewBox="0 0 32 32" aria-hidden="true" focusable="false">${inner}</svg>`;
@@ -125,3 +144,28 @@ export const GLIFOS = {
 };
 
 export const glifoSvg = (k) => GLIFOS[k] ?? GLIFOS.nube;
+// la clave de un glifo que existe (para data-g del marcador)
+export const glifoClave = (k) => (k in GLIFOS ? k : "nube");
+
+// Un SVG suelto como data: URI para background-image: con xmlns y con los <defs> que usa adentro.
+// encodeURIComponent deja ' sin codificar; se codifica a mano para poder ir entre comillas en CSS.
+export function svgDataUri(svg) {
+  return `data:image/svg+xml;utf8,${encodeURIComponent(svg).replace(/'/g, "%27")}`;
+}
+
+// El glifo `k` como imagen (mismo dibujo que glifoSvg, con sus degradados y su sombra adentro).
+const imagenes = new Map();
+export function glifoDataUri(k) {
+  const clave = glifoClave(k);
+  if (!imagenes.has(clave)) {
+    const interior = GLIFOS[clave].replace(/^<svg[^>]*>/, "").replace(/<\/svg>$/, "");
+    imagenes.set(clave, svgDataUri(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><defs>${DEGRADADOS}</defs>${interior}</svg>`));
+  }
+  return imagenes.get(clave);
+}
+
+// Hoja de estilos con una regla por glifo: .glifo-img[data-g="lluvia"] { background-image: url(...) }.
+// Así el HTML de cada marcador es de una línea y la imagen vive una sola vez.
+export const ESTILO_GLIFOS = Object.keys(GLIFOS)
+  .map((k) => `.glifo-img[data-g="${k}"]{background-image:url("${glifoDataUri(k)}")}`)
+  .join("\n");

@@ -14,6 +14,21 @@ import { bandaDeZoom, crearAcomodo, escalaDeZoom } from "@/map/acomodo";
 // recibe `acomodo` (su registro) en render, y localidadUsuario marca tu localidad.
 const REINTENTOS_MS = [5_000, 15_000, 60_000];
 
+// Un refresco que trae exactamente los mismos datos no vuelve a dibujar la capa: rehacer los 130
+// discos de los ríos o los 236 del pronóstico cada 10 o 30 min costaba ~100 ms de tirón (y cerraba
+// el popup abierto) aunque nada hubiera cambiado. La huella es el JSON de los datos (incluye todo lo
+// que pinta: valor, estado, fechas...); por encima de HUELLA_MAX se redibuja siempre (el JSON
+// costaría más que el dibujo).
+const HUELLA_MAX = 400_000;
+function huellaDe(datos, opcion) {
+  try {
+    const j = JSON.stringify(datos);
+    return j.length > HUELLA_MAX ? null : `${opcion ?? ""}|${j}`;
+  } catch {
+    return null;
+  }
+}
+
 // Márgenes para encuadrar algo en lo que queda libre del mapa: debajo de los chips de arriba
 // (data-tapa-mapa="arriba") que caen sobre la mitad central del ancho (ahí queda lo encuadrado; los
 // botones de las esquinas no cuentan) y encima del panel de estado (data-tapa-mapa="abajo").
@@ -100,6 +115,7 @@ export default function MapView({ layers, visible, opciones = {}, focus, userPos
       cargadas: new Set(),
       ultimaCarga: {},
       opcionCargada: {},
+      huella: {},
       turno: {},
       timers: {},
       opciones: {},
@@ -193,6 +209,7 @@ function cargar(ctx, layer, intento = 0) {
     // otra opción (p. ej. otro evento FEN): no dejar a la vista lo de la anterior mientras carga
     acomodo.limpiar();
     group.clearLayers();
+    delete ctx.huella[layer.id];
     ctx.nota(layer.id, "Cargando…");
   }
   ctx.opcionCargada[layer.id] = opcion;
@@ -200,6 +217,9 @@ function cargar(ctx, layer, intento = 0) {
     .load(opcion)
     .then((datos) => {
       if (!ctx.vivo || ctx.turno[layer.id] !== turno) return; // desmontado, o llegó una carga más nueva
+      const huella = huellaDe(datos, opcion);
+      if (huella != null && huella === ctx.huella[layer.id] && group.getLayers().length) return; // lo mismo que ya está dibujado
+      ctx.huella[layer.id] = huella;
       acomodo.limpiar();
       group.clearLayers();
       const avisar = (texto) => ctx.vivo && ctx.turno[layer.id] === turno && ctx.nota(layer.id, texto);

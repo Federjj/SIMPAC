@@ -14,6 +14,7 @@ services:
       SUPABASE_URL: ${SUPABASE_URL}
       SUPABASE_PUBLISHABLE_KEY: ${SUPABASE_PUBLISHABLE_KEY}
       SNAPSHOT_TTL: ${SNAPSHOT_TTL:-900}
+      SIMPAC_CORS_ORIGENES: ${SIMPAC_CORS_ORIGENES:-}   # vacío = la web local y la app (backend/config.py)
     ports: ["8000:8000"]
     depends_on: [redis]
 
@@ -32,6 +33,8 @@ services:
       SUPABASE_DB_URL: ${SUPABASE_DB_URL}
       SIMPAC_LLUVIA_DEPTS: ${SIMPAC_LLUVIA_DEPTS:-cajamarca}
       SNAPSHOT_TTL: ${SNAPSHOT_TTL:-900}
+      SIMPAC_LLM_KEY: ${SIMPAC_LLM_KEY:-}               # vacío = titular por reglas, sin pedidos externos
+      SIMPAC_LLM_MODELO: ${SIMPAC_LLM_MODELO:-}
     depends_on: [redis]
 
   frontend:                      # React build servido por nginx

@@ -23,6 +23,15 @@ const RADIO = { "sin lluvia": 3, ligera: 6, moderada: 8, fuerte: 10, "muy fuerte
 const num = (v) => Number(v).toLocaleString("es-PE", { maximumFractionDigits: 1 });
 const NO_OFICIAL = "Es lo que midió la estación, no un aviso oficial. Fuente: SENAMHI.";
 
+// Los ~210 círculos van en un solo canvas (un elemento) en vez de 210 <path> SVG que el navegador
+// reproyecta uno por uno en cada zoom. Un renderer por mapa (como en fenHistorico.js): Leaflet lo
+// cuelga del mapa, no del grupo, y crear uno por dibujo dejaba un canvas de más en cada refresco.
+const renderers = new WeakMap();
+function renderer(map) {
+  if (!renderers.has(map)) renderers.set(map, L.canvas({ padding: 0.5 }));
+  return renderers.get(map);
+}
+
 export default {
   id: "lluviaAhora",
   grupo: "Lluvia",
@@ -47,7 +56,8 @@ export default {
     "Lluvia de la última hora en estaciones automáticas de SENAMHI. Escala de intensidad orientativa (AEMET). " +
     "La referencia es la que SENAMHI usa para cada estación; no es un aviso oficial.",
   load: getLluviaAhora,
-  render(group, estaciones) {
+  render(group, estaciones, { map }) {
+    const lienzo = renderer(map);
     // las que llueven al final, para que queden encima de los puntos grises, y encima de todas
     // las que pasaron la referencia
     const pasaAl = (e) => (referenciaLluvia(e).pasa ? 1 : 0);
@@ -61,6 +71,7 @@ export default {
       const { pasa1, pasa6, pasa } = referenciaLluvia(e);
       if (pasa) sobreReferencia++;
       L.circleMarker([e.lat, e.lon], {
+        renderer: lienzo,
         radius: pasa ? Math.max(RADIO[i], 7) : RADIO[i],
         color: pasa ? NIVEL_HEX.aviso : "#fff",
         weight: pasa ? 3 : 1,

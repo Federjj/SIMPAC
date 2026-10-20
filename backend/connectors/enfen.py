@@ -37,6 +37,12 @@ Formato de los PDF (revisados el 22-09-2026 los comunicados 2020-2026):
     "14 de setiembre 2026", "16 de abril de 2025", "Callao, 19 de octubre de 2020".
   - "Estado del sistema de alerta: Alerta de El Niño Costero1" (el 1 pegado es la
     llamada de una nota al pie).
+  - Desde el CO 17-2026 (28-09-2026) cambió el formato: ya no hay rótulo ni "RESUMEN
+    EJECUTIVO"; el estado va en una línea propia bajo la fecha ("Alerta de El Niño
+    Costero1"), sigue un título en mayúsculas ("EL NIÑO COSTERO SE PROLONGARÍA HASTA EL
+    OTOÑO DE 2027") y luego el cuerpo. Ese comunicado además trae la fecha con el año
+    errado ("28 septiembre 2027"): una fecha futura se corrige con el año del encabezado
+    si así deja de serlo (con aviso en el log); si no, es error.
   - "RESUMEN EJECUTIVO" (desde 2024) y, al final, la fecha del próximo comunicado con
     redacción variable: "El próximo Comunicado Oficial se emitirá el lunes 28 de
     septiembre del 2026", "La emisión del próximo Comunicado Oficial ordinario será el
@@ -340,17 +346,34 @@ _RE_ESTADO = re.compile(
 # El mismo estado sobre texto sin espacios: pypdf a veces parte palabras ("Ni ño").
 _RE_ESTADO_COMPACTO = re.compile(r'"?(?:noactiv[oa]|(vigilancia|alerta)(?:de)?(elnino|lanina)coster[oa])')
 _RE_VERBO_ESTADO = re.compile(r"\b(mantiene|cambia|activa|declara)\b")
+# Estado "suelto" (CO 17-2026: línea propia bajo la fecha, sin rótulo): se busca en este
+# tramo de texto _clave que sigue al encabezado.
+_VENTANA_ESTADO_SUELTO = 600
+# Lo que precede a una mención del estado dentro de una frase ('mantiene el estado de
+# "Alerta ..."', 'de "No Activo" a "Vigilancia ..."', 'en Alerta ...'): esa mención no es el
+# estado suelto. La segunda variante es para el texto sin espacios.
+_RE_ANTES_DE_MENCION = re.compile(r'(?<![a-z])(?:de|del|a|al|en|la|el|estado)\s*"?\s*$')
+_RE_ANTES_DE_MENCION_COMPACTA = re.compile(r'(?:de|del|a|al|en|la|el|estado)"?$')
 _RE_PROXIMO = re.compile(r"pr\s?oxim[oa]\s+(?:comunicado|actualizacion|emision)")
 _RE_RESUMEN = re.compile(r"resumen\s+ejecutivo")
 _RE_CUERPO = re.compile(r"la\s+comision\s+multisectorial")
-# Llamada a nota al pie pegada a una palabra o tras una comilla de cierre: "débiles2
-# actuales", "RONI7", '"Alerta de El Niño Costero" 1 ya que'. No toca decimales ("v5.0")
-# ni cifras tras una comilla de apertura ('"58 %"') o antes de un símbolo ('"fuerte" 45 %').
+# Llamada a nota al pie pegada a una palabra, tras una comilla de cierre o tras un año:
+# "débiles2 actuales", "RONI7", '"Alerta de El Niño Costero" 1 ya que', "enero 20272 (Figura".
+# No toca decimales ("v5.0") ni cifras tras una comilla de apertura ('"58 %"') o antes de un
+# símbolo ('"fuerte" 45 %').
 _RE_LLAMADA = re.compile(
     r'(?<=[^\W\d_])\d{1,2}(?![.,]?\d)(?=[\s,.;:)]|$)'
     r'|(?<=\S")\s?\d{1,2}(?=\s+[a-záéíóúñ]|[,;:)]|$)'
+    r'|(?<=\b(?:19|20)\d\d)[1-9]\d?(?=[\s,.;:)]|$)'
 )
 _RE_FRASE = re.compile(r"(?<=[.!?])\s+(?=[¿\"(]?[A-ZÁÉÍÓÚÑ])")
+# Título en mayúsculas al inicio del cuerpo (CO 17-2026): tres o más palabras seguidas sin
+# minúsculas (cifras incluidas).
+_RE_TITULO = re.compile(r"^(?:[^\sa-záéíóúñü]+\s+){3,}")
+# Leyenda de una figura dentro del texto extraído ("Figura 1. Anomalía de la temperatura..."):
+# ahí termina la prosa. No confundir con la referencia "(Figura 1)".
+_RE_PIE_FIGURA = re.compile(r"(?<![(\w])Figura\s+\d+[a-z]?\.\s")
+_RE_ESPACIO_ANTES_DE_PUNTUACION = re.compile(r"\s+([,.;:])")
 
 # Tabla del ICEN (formato del Informe Técnico ENFEN), sobre texto _clave.
 _MES_CORTO = "|".join(_MESES_CORTOS)
@@ -385,8 +408,33 @@ def _estado_tras_rotulo(clave: str, inicio: int) -> tuple[str, int] | None:
     return _estado_canonico(m), inicio + posiciones[m.end() - 1] + 1
 
 
-def _estado(plano: str, clave: str) -> tuple[str, int | None]:
-    """Estado canónico y posición donde termina el rótulo "Estado del sistema de alerta: X"."""
+def _estado_suelto(clave: str, desde: int) -> tuple[str, int] | None:
+    """
+    Estado escrito en una línea propia bajo la fecha, sin rótulo (CO 17-2026: "Alerta de El
+    Niño Costero1"): la primera mención de un estado en el tramo que sigue al encabezado que
+    no forma parte de una frase. Tolera comillas y la llamada de nota al pie pegada.
+    Devuelve (estado, posición en clave donde termina) o None.
+    """
+    ventana = clave[desde:desde + _VENTANA_ESTADO_SUELTO]
+    for m in _RE_ESTADO.finditer(ventana):
+        if not _RE_ANTES_DE_MENCION.search(ventana, 0, m.start()):
+            return _estado_canonico(m), desde + m.end()
+    # pypdf a veces parte palabras ("Ni ño"): se repite sobre el texto sin espacios.
+    posiciones = [i for i, c in enumerate(ventana) if not c.isspace()]
+    compacto = "".join(ventana[i] for i in posiciones)
+    for m in _RE_ESTADO_COMPACTO.finditer(compacto):
+        if not _RE_ANTES_DE_MENCION_COMPACTA.search(compacto, 0, m.start()):
+            return _estado_canonico(m), desde + posiciones[m.end() - 1] + 1
+    return None
+
+
+def _estado(plano: str, clave: str, desde: int = 0) -> tuple[str, int | None]:
+    """
+    Estado canónico y posición (en clave) donde termina su mención, para arrancar el resumen
+    desde ahí. `desde`: fin del encabezado. Se busca, en orden: el rótulo "Estado del sistema
+    de alerta: X"; el estado suelto bajo la fecha (desde el CO 17-2026); la frase del cuerpo
+    con verbo ('mantiene el estado de "X"'), que no da posición.
+    """
     rotulo = _RE_ROTULO_ESTADO.search(clave)
     if rotulo:
         hallado = _estado_tras_rotulo(clave, rotulo.end())
@@ -394,6 +442,9 @@ def _estado(plano: str, clave: str) -> tuple[str, int | None]:
             crudo = plano[rotulo.end():rotulo.end() + 60]
             raise ValueError(f"Estado del sistema de alerta no reconocido: {crudo!r}")
         return hallado
+    suelto = _estado_suelto(clave, desde)
+    if suelto:
+        return suelto
     # Respaldo: la frase del cuerpo, p. ej. 'mantiene el estado de "Alerta de El Niño
     # Costero"' o 'cambia ... de "No Activo" a "Vigilancia de El Niño Costero"'.
     for v in _RE_VERBO_ESTADO.finditer(clave, 0, 8000):
@@ -421,12 +472,32 @@ def _proximo(clave: str, fecha: date) -> date | None:
     return None
 
 
+def _sin_titulo(bloque: str) -> str:
+    """
+    Quita el título en mayúsculas con que arranca el cuerpo desde el CO 17-2026 ("EL NIÑO
+    COSTERO SE PROLONGARÍA HASTA EL OTOÑO DE 2027"). Se omite en vez de pasarlo a minúsculas:
+    el resumen son frases oficiales tal cual, y las primeras del cuerpo dicen lo mismo. Si la
+    frase que sigue empieza con una sigla ("... 2027 ENFEN sostiene que"), la sigla queda
+    como primera palabra del cuerpo, no del título.
+    """
+    m = _RE_TITULO.match(bloque)
+    if not m:
+        return bloque
+    palabras = m.group(0).split()
+    resto = bloque[m.end():]
+    if resto[:1].islower():
+        resto = palabras.pop() + " " + resto
+    return resto if len(palabras) >= 3 else bloque
+
+
 def _resumen(plano: str, clave: str, desde: int, fin_estado: int | None,
              max_frases: int = 3, max_chars: int = 480) -> str | None:
     """
-    Primeras frases del RESUMEN EJECUTIVO (desde 2024). Si no lo hay, las primeras del
-    texto que sigue a "Estado del sistema de alerta: X" (comunicados 2020-2023); si
-    tampoco está ese rótulo, None.
+    Primeras frases del RESUMEN EJECUTIVO (2024 a CO 16-2026). Si no lo hay, las primeras del
+    texto que sigue al estado: tras el rótulo "Estado del sistema de alerta: X" (comunicados
+    2020-2023) o tras el estado suelto bajo la fecha, saltando el título en mayúsculas (desde
+    el CO 17-2026). Si no se ubicó el estado, None. La prosa termina donde empieza la leyenda
+    de una figura.
     """
     # pypdf a veces saca el recuadro del resumen después del cuerpo (CO 05-2026): se
     # busca en todo el texto.
@@ -437,9 +508,14 @@ def _resumen(plano: str, clave: str, desde: int, fin_estado: int | None,
         bloque = plano[inicio:fin.start() if fin else inicio + 3000]
     elif fin_estado is not None:
         bloque = plano[fin_estado:fin_estado + 3000].lstrip("0123456789 ")   # llamada de nota al pie
+        bloque = _sin_titulo(bloque)
     else:
         return None
-    bloque = _RE_LLAMADA.sub("", bloque).strip(" .:-")
+    pie = _RE_PIE_FIGURA.search(bloque)
+    if pie:
+        bloque = bloque[:pie.start()]
+    bloque = _RE_LLAMADA.sub("", bloque)
+    bloque = _RE_ESPACIO_ANTES_DE_PUNTUACION.sub(r"\1", bloque).lstrip(" .:-").rstrip()
     frases: list[str] = []
     for f in _RE_FRASE.split(bloque):
         f = f.strip()
@@ -497,11 +573,33 @@ def _icen(clave: str) -> tuple[list[tuple[str, float, str]], tuple[str, float, s
     return sorted(filas.values()), icen_tmp
 
 
+def _fecha_emision(fecha: date, anio: int, numero: int, url: str) -> date:
+    """
+    La fecha de emisión no puede ser futura (más de un día después de hoy en hora de Perú).
+    Si lo es y con el año del encabezado deja de serlo, es una errata del año (CO 17-2026:
+    "28 septiembre 2027" por 2026) y se corrige con aviso en el log; si ni así cuadra,
+    ValueError. Un comunicado NN-2026 emitido en enero de 2027 no es futuro: queda tal cual.
+    """
+    tope = _hoy() + timedelta(days=1)
+    if fecha <= tope:
+        return fecha
+    try:
+        corregida = fecha.replace(year=anio)
+    except ValueError:   # 29 de febrero en un año que no es bisiesto
+        corregida = None
+    if corregida is not None and corregida != fecha and corregida <= tope:
+        log.warning("ENFEN: la fecha de emisión del comunicado %d-%d dice %s, que es futura: se toma "
+                    "%s, con el año del encabezado", numero, anio, fecha, corregida)
+        return corregida
+    raise ValueError(f"La fecha de emisión {fecha} del comunicado {numero}-{anio} es futura ({url})")
+
+
 def parsear_texto(texto: str, url: str) -> ComunicadoENFEN:
     """
     Datos de un comunicado a partir de su texto (el que devuelve pypdf). Tolera saltos
     de línea y espacios raros, tildes y mayúsculas. Si falta el encabezado con el
-    número, la fecha de emisión o el estado, lanza ValueError: nunca datos a medias.
+    número, la fecha de emisión o el estado, o la fecha es futura, lanza ValueError:
+    nunca datos a medias.
     """
     plano = _plano(texto or "")
     clave = _clave(plano)
@@ -518,8 +616,9 @@ def parsear_texto(texto: str, url: str) -> ComunicadoENFEN:
         raise ValueError(f"No se encontró la fecha de emisión del comunicado {numero}-{anio} ({url})")
     if abs(fecha.year - anio) > 1:
         raise ValueError(f"La fecha de emisión {fecha} no corresponde al comunicado {numero}-{anio} ({url})")
+    fecha = _fecha_emision(fecha, anio, numero, url)
 
-    estado, fin_estado = _estado(plano, clave)
+    estado, fin_estado = _estado(plano, clave, enc.end())
     icen, icen_tmp = _icen(clave)
     return ComunicadoENFEN(
         numero=numero,

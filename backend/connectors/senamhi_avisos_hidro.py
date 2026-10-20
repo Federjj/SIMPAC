@@ -20,10 +20,17 @@ Trampas verificadas:
     de descenso la leyenda es la de descenso (encallamiento de naves, no desborde).
   - Los avisos de la selva van por NIVEL en m.s.n.m (Napo, 70483: umbral 85.81); los de la
     sierra, por CAUDAL en m3/s (Mashcón, 67552: umbral 18).
-  - "SITUACIÓN ACTUAL ..." también es un aviso con nivel; "DESCENSO ..." es de estiaje
-    (sentido 'descenso'): no enciende la zona de un río.
-  - Cada detalle pesa lo mismo que la lista (~700 KB): solo se piden los avisos vigentes de
-    las estaciones vigiladas, en serie y con PAUSA_S (backend/ingesta/rios.py).
+  - El SENTIDO del aviso (crecida o vaciante) no siempre está en el título. "INCREMENTO DEL
+    CAUDAL/NIVEL" es crecida y "DESCENSO DEL NIVEL" es estiaje (sentido 'descenso': no enciende
+    la zona de un río), pero "SITUACIÓN ACTUAL DEL NIVEL/CAUDAL ..." (unos 650 avisos al año) no
+    dice nada: en la selva casi siempre es vaciante (Amazonas, Marañón, Huallaga, Napo, Ucayali
+    en octubre de 2026) y en la costa a veces crecida (Alamor). Esos quedan 'indeterminado'
+    (sentido_del_titulo) hasta leer el detalle: la leyenda del nivel rojo dice "desborde ...
+    inundación" en una crecida y "mayor descenso en el nivel ... encallamiento de naves" en
+    una vaciante (sentido_del_detalle). Verificado el 19-10-2026 con los avisos 1649 (Enapu
+    Perú) y 1654 (Lagarto), los dos "SITUACIÓN ACTUAL" y los dos de vaciante.
+  - Cada detalle pesa lo mismo que la lista (~700 KB): se piden solo los avisos vigentes (los
+    de las estaciones vigiladas primero), en serie y con PAUSA_S (backend/ingesta/rios.py).
   - La presentación de la página dice "indicando las áreas que podrían verse afectadas": el
     detalle se lee solo desde el bloque del aviso; sin ese bloque, todo queda en None.
   - La vigencia va en dos señales de la lista: el texto "(vigente)" y class="vigente" en las
@@ -74,7 +81,7 @@ class FilaAviso:
     fin_dia: date
     duracion_h: int | None
     nivel: int | None    # 2 amarillo, 3 naranja, 4 rojo; None si la fila no trae nivel
-    sentido: str         # 'descenso' si el título dice DESCENSO; si no, 'crecida'
+    sentido: str         # 'crecida' | 'descenso' | 'indeterminado' por el título (sentido_del_titulo)
     ambiguo: bool = False  # el texto y la marca de la fila no coinciden sobre si está vigente
 
     @property
@@ -85,6 +92,43 @@ class FilaAviso:
 def pausa() -> None:
     """Espera entre pedidos a la web de SENAMHI (las pruebas la reemplazan)."""
     time.sleep(PAUSA_S)
+
+
+# ---------------------------------------------------------------------------------------
+# Sentido del aviso: crecida (puede desbordar) o descenso (vaciante: el peligro es que baje)
+# ---------------------------------------------------------------------------------------
+SENTIDOS = ("crecida", "descenso", "indeterminado")
+# Palabras de la leyenda del nivel rojo. Una vaciante: "mayor descenso en el nivel del río ...
+# encallamiento de naves fluviales"; una crecida: "Se espera desborde del río. Probable inundación".
+_LEYENDA_DESCENSO = re.compile(r"descenso|encallamiento|estiaje|vaciante", re.I)
+_LEYENDA_CRECIDA = re.compile(r"desbord|inundaci", re.I)
+
+
+def sentido_del_titulo(titulo: str) -> str:
+    """
+    'INCREMENTO DEL CAUDAL ...' (o CRECIDA) -> 'crecida'; 'DESCENSO DEL NIVEL ...' (también
+    'SITUACIÓN ACTUAL DEL DESCENSO ...') -> 'descenso'; lo demás ('SITUACIÓN ACTUAL DEL NIVEL ...')
+    -> 'indeterminado': el título no dice si el río sube o baja y hay que leer el detalle.
+    """
+    t = (titulo or "").upper()
+    if "DESCENSO" in t:
+        return "descenso"
+    if "INCREMENTO" in t or "CRECIDA" in t:
+        return "crecida"
+    return "indeterminado"
+
+
+def sentido_del_detalle(significado_rojo: str | None) -> str | None:
+    """
+    Sentido según la leyenda del nivel rojo del detalle: 'descenso' si habla de descenso,
+    encallamiento, estiaje o vaciante; 'crecida' si habla de desborde o inundación; None si no
+    dice ninguna de las dos o dice las dos (mejor no afirmar nada que afirmar lo contrario).
+    """
+    s = significado_rojo or ""
+    baja, sube = bool(_LEYENDA_DESCENSO.search(s)), bool(_LEYENDA_CRECIDA.search(s))
+    if baja == sube:
+        return None
+    return "descenso" if baja else "crecida"
 
 
 def _texto(fragmento: str) -> str:
@@ -136,7 +180,7 @@ def parsear_lista(pagina: str) -> list[FilaAviso]:
             continue
         s = _SPAN.search(celdas[5])
         nivel = NIVEL[s.group(1).lower()] if s else NIVEL_TXT.get(_texto(celdas[5]).upper())
-        sentido = "descenso" if "DESCENSO" in titulo.upper() else "crecida"
+        sentido = sentido_del_titulo(titulo)
         ca = int(m.group(1))
         vigente, ambiguo = _vigencia(nro, fila)
         out[ca] = FilaAviso(ca=ca, ce=m.group(2), numero=int(num.group(1)), titulo=titulo,
@@ -204,9 +248,10 @@ def parsear_detalle(pagina: str) -> dict:
     """
     Datos del aviso en su página de detalle: emision, inicio, fin (hora de Perú), valor y
     unidad (lo que registró la estación), areas (literal), umbral_rojo, significado_rojo
-    (literal de la leyenda del nivel rojo), numero (N.º del aviso, para comprobar que es el
-    pedido) y nivel (2 a 4, del encabezado "Aviso N°1169 ROJO": la lista a veces no lo trae).
-    Las claves que no se encuentran quedan en None.
+    (literal de la leyenda del nivel rojo), sentido ('crecida' | 'descenso' según esa leyenda, o
+    None; sentido_del_detalle), numero (N.º del aviso, para comprobar que es el pedido) y nivel
+    (2 a 4, del encabezado "Aviso N°1169 ROJO": la lista a veces no lo trae). Las claves que no
+    se encuentran quedan en None.
     """
     # Solo el bloque del aviso: la página repite la lista y su presentación ("indicando las áreas
     # que podrían verse afectadas y el nivel de peligrosidad") se confundiría con las áreas.
@@ -232,6 +277,7 @@ def parsear_detalle(pagina: str) -> dict:
     # leyenda del nivel rojo (la página trae la del rojo sea cual sea el nivel del aviso)
     rojo = re.search(r'<span class="leyendaNivel\d">\s*ROJO\s*</span>.*?<td class="text-justify">(.*?)</td>',
                      cuerpo, re.S)
+    significado = (_texto(rojo.group(1)) or None) if rojo else None
     return {
         "numero": int(numero.group(1)) if numero else None,
         "nivel": NIVEL_TXT[numero.group(2).upper()] if numero and numero.group(2) else None,
@@ -242,7 +288,8 @@ def parsear_detalle(pagina: str) -> dict:
         "unidad": valor.group(3) if valor else None,
         "areas": areas.group(1).strip() if areas else None,
         "umbral_rojo": _numero(umbral) if umbral else None,
-        "significado_rojo": (_texto(rojo.group(1)) or None) if rojo else None,
+        "significado_rojo": significado,
+        "sentido": sentido_del_detalle(significado),
     }
 
 

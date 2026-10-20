@@ -13,6 +13,9 @@ Tareas:
     10 min, como sale el producto; una corrida atrasada más de 9 min se descarta).
   - rios: avisos hidrológicos de SENAMHI (lista del país; el detalle solo para los ríos vigilados,
     hoy el Mashcón) para las señales de la zona que un río podría afectar (cada hora).
+  - titular: titular en lenguaje claro por departamento (titular_zona) a partir de los datos
+    oficiales ya guardados; con clave de API lo redacta un modelo, si no, reglas fijas (cada 30 min;
+    solo llama al modelo si cambiaron los insumos del departamento).
   - refresh_cache: refresca el snapshot en Redis (cada 5 min).
 
 Los nombres de las tareas son fijos a propósito: beat las encola por nombre, así
@@ -43,6 +46,7 @@ celery.conf.beat_schedule = {
     # viejas del nowcasting; a los 9 min ya viene la siguiente
     "nowcast": {"task": "backend.celery_app.nowcast", "schedule": 600.0, "options": {"expires": 540}},
     "rios": {"task": "backend.celery_app.rios", "schedule": 3600.0},
+    "titular": {"task": "backend.celery_app.titular", "schedule": 1800.0},
 }
 
 
@@ -95,6 +99,14 @@ def rios():
     return actualizar()
 
 
+# 120 s: backend/ingesta/titular.py deja de pedir al modelo a los 90 s (PLAZO_S); lo que falte
+# sale por reglas o conserva el titular anterior, y el latido se escribe siempre.
+@celery.task(name="backend.celery_app.titular", soft_time_limit=120, time_limit=180)
+def titular():
+    from backend.ingesta.titular import actualizar
+    return actualizar()
+
+
 @celery.task(name="backend.celery_app.refresh_cache")
 def refresh_cache():
     from backend.snapshot import refresh_snapshot
@@ -114,3 +126,5 @@ def _al_arrancar(**_):
     pronostico.delay()
     nowcast.delay()
     rios.delay()
+    # countdown: el titular resume lo que las otras tareas acaban de escribir (avisos, lluvia, ríos)
+    titular.apply_async(countdown=300)

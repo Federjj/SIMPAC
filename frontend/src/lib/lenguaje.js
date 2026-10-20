@@ -343,3 +343,15 @@ export function textoAnomalia(p, periodo) {
 
 // Tipo de transmisión de una estación SENAMHI (código del inventario).
 export const TRANSMISION = { AUTOMATICA: "automática", REAL: "en tiempo real", DIFERIDO: "diferida" };
+
+// ---------------------------------------------------------------------------
+// Tu zona ahora (components/TuZona.jsx, lib/zonaAhora.js)
+// ---------------------------------------------------------------------------
+
+// Una sola instrucción cuando la zona está en alerta o emergencia solo por un aviso de SENAMHI
+// por lluvias (naranja o rojo). Para los ríos la instrucción sale de textoRio(c).accion.
+export const ACCION_AVISO = {
+  aviso: "Revisa techos, canaletas y acequias; si llueve fuerte, no cruces ríos ni quebradas.",
+  alerta: "Evita quebradas y laderas; si llueve fuerte, no cruces ríos ni huaycos.",
+  emergencia: "Aléjate de ríos, quebradas y laderas, y sigue las indicaciones de Defensa Civil.",
+};

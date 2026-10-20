@@ -1,39 +1,10 @@
 import { supabase } from "./supabaseClient";
+import { cache, cached, faltaColumna, filas, siExiste, todas } from "./consultaCache";
 
 // Todas las lecturas usan la publishable key (lectura pública por RLS).
 // Las que piden varias partes de la app a la vez (el panel y dos capas del mapa
-// leen los caudales) pasan por cached(): una sola request cada TTL.
-
-const cache = new Map();
-
-function cached(key, fn, ttlMs = 60_000) {
-  const hit = cache.get(key);
-  if (hit && Date.now() - hit.t < ttlMs) return hit.p;
-  const p = fn().catch((e) => {
-    cache.delete(key); // un error no se queda cacheado
-    throw e;
-  });
-  cache.set(key, { t: Date.now(), p });
-  return p;
-}
-
-async function filas(query) {
-  const { data, error } = await query;
-  if (error) throw error;
-  return data ?? [];
-}
-
-// El Data API corta cada respuesta en 1000 filas sin avisar: las tablas que pueden
-// pasar de eso se piden por páginas (con un orden fijo, para no repetir ni saltar filas).
-const PAGINA = 1000;
-async function todas(armar) {
-  const out = [];
-  for (let desde = 0; ; desde += PAGINA) {
-    const pagina = await filas(armar().range(desde, desde + PAGINA - 1));
-    out.push(...pagina);
-    if (pagina.length < PAGINA) return out;
-  }
-}
+// leen los caudales) pasan por cached(): una sola request cada TTL. cached, filas, todas y
+// siExiste viven en lib/consultaCache.js (módulo puro, con pruebas sin red).
 
 export function getEstaciones() {
   return cached("estaciones", () =>
@@ -89,19 +60,6 @@ export function getIcenSerie(meses = 24) {
     ).reverse(),
     10 * 60_000
   );
-}
-
-// Una vista o columna que aún no existe en la base (migración pendiente): la app sigue sin ella.
-const faltaVista = (e) => e?.code === "PGRST205" || e?.code === "42P01";
-const faltaColumna = (e) => e?.code === "42703";
-// null si la vista aún no existe (la capa lo dice y el panel no muestra esa parte)
-async function siExiste(fn) {
-  try {
-    return await fn();
-  } catch (e) {
-    if (faltaVista(e)) return null;
-    throw e;
-  }
 }
 
 // Avisos de SENAMHI que no han terminado (vista aviso_vigente), con el polígono en GeoJSON;
@@ -191,8 +149,8 @@ export function getNowcast(h) {
 export function getRiosVigilados() {
   return cached(
     "rios_vigilados",
-    () =>
-      siExiste(() =>
+    async () => {
+      const r = await siExiste(() =>
         filas(
           supabase
             .from("rio_vigilado_mapa")
@@ -200,16 +158,20 @@ export function getRiosVigilados() {
               "id,nombre,departamento,estacion_ana,rio_ana,estacion_senamhi,centro_lat,centro_lon,zoom,cauce,afluentes,guia_rotulo,lugares_aviso,fuentes"
             )
         )
-      ),
+      );
+      sinRios = r == null;
+      return r;
+    },
     60 * 60_000
   );
 }
 
-// Las otras vistas de los ríos vigilados llegan con la misma migración: sin rio_vigilado_mapa no se
-// piden (mientras falte, un solo pedido fallido por hora y no cuatro).
-async function conRios(fn) {
-  return (await getRiosVigilados()) == null ? null : siExiste(fn);
-}
+// Las otras vistas de los ríos vigilados llegan con la misma migración que rio_vigilado_mapa. Se
+// piden a la vez que ella (no después: esperar su respuesta atrasaba las zonas unos 250 ms en cada
+// apertura). Si la vista principal no existe, queda la bandera `sinRios` y las demás no insisten
+// hasta que vuelva a pedirse (un pedido fallido por hora, no cuatro).
+let sinRios = false;
+const conRios = (fn) => (sinRios ? Promise.resolve(null) : siExiste(fn));
 
 // Zonas que un río vigilado podría afectar (estimación por relieve, estudio INDECI-PNUD 2005) y la
 // faja marginal de ANA, del fondo hacia arriba (`orden`). null si la vista aún no existe.
@@ -356,4 +318,264 @@ export async function getMapaFEN(periodo) {
     Infinity
   );
   return m ?? null;
+}
+
+// ---------------------------------------------------------------------------
+// Páginas Alertas, Comunidad, Chat, Cuenta e Histórico (lecturas y, al final, las escrituras que
+// necesitan sesión). Columnas siempre explícitas: `autor` de report y comentario y `geom` de
+// message no son legibles.
+// ---------------------------------------------------------------------------
+
+// Alertas pasadas (tabla alerta, lectura pública): entre dos fechas de Perú (incluidas) y, si se
+// pide, de una zona. Sin lat/lon: la página no los necesita. Hasta 500, las más nuevas primero.
+export function getAlertasPasadas({ desde, hasta, zona = null } = {}) {
+  let q = supabase
+    .from("alerta")
+    .select("id,tipo,referencia,zona,nivel,detalle,valor,umbral,ventana_h,vigente,ts")
+    .gte("ts", `${desde}T00:00:00-05:00`)
+    .lte("ts", `${hasta}T23:59:59-05:00`)
+    .order("ts", { ascending: false })
+    .limit(500);
+  if (zona) q = q.eq("zona", zona);
+  return filas(q);
+}
+
+// Reportes vigentes para la página Comunidad: como getReportesVigentes más la foto y la
+// confianza (la calcula la BD con los votos). `fresco` salta la caché (tras votar o crear).
+const COLS_REPORTE = "id,tipo,subtipo,descripcion,foto_url,likes,dislikes,confianza,estado,creado_en,expira_en,lat,lon";
+export function getReportesComunidad({ fresco = false } = {}) {
+  if (fresco) cache.delete("reportes_comunidad");
+  return cached(
+    "reportes_comunidad",
+    () => filas(supabase.from("report").select(COLS_REPORTE).order("creado_en", { ascending: false }).limit(500)),
+    60_000
+  );
+}
+
+// Un reporte por id; null si no existe o ya venció (la RLS no lo entrega).
+export async function getReporte(id) {
+  const { data, error } = await supabase.from("report").select(COLS_REPORTE).eq("id", id).maybeSingle();
+  if (error) throw error;
+  return data ?? null;
+}
+
+// Comentarios de un reporte (lectura pública; sin autor), del más viejo al más nuevo.
+export function getComentarios(reportId) {
+  return filas(
+    supabase.from("comentario").select("id,report_id,texto,creado_en").eq("report_id", reportId).order("creado_en").limit(200)
+  );
+}
+
+// Mis votos sobre una lista de reportes (la RLS solo entrega los propios): { [report_id]: 1 | -1 }.
+export async function getMisVotos(ids = []) {
+  if (!ids.length) return {};
+  const v = await filas(supabase.from("voto").select("report_id,valor").in("report_id", ids));
+  return Object.fromEntries(v.map((x) => [x.report_id, x.valor]));
+}
+
+// Mensajes vigentes del chat de una zona (solo con sesión), del más viejo al más nuevo.
+export function getMensajes(zona) {
+  return filas(
+    supabase
+      .from("message")
+      .select("id,autor,zona,contenido,expira_en,creado_en")
+      .eq("zona", zona)
+      .gt("expira_en", new Date().toISOString())
+      .order("creado_en")
+      .limit(300)
+  );
+}
+
+// Histórico de una estación de río (lectura_caudal; una fila por fecha y hora) desde una fecha de
+// Perú "AAAA-MM-DD". Por páginas: 30 días pueden pasar de 1000 filas si ANA publica cada hora.
+export function getHistoricoCaudal({ estacion, rio = null, desde }) {
+  return todas(() => {
+    let q = supabase
+      .from("lectura_caudal")
+      .select("fecha,hora,valor,unidad,umbral_alerta,umbral_emergencia,tendencia,estado")
+      .eq("estacion", estacion)
+      .gte("fecha", desde)
+      .order("fecha")
+      .order("hora");
+    if (rio) q = q.eq("rio", rio);
+    return q;
+  });
+}
+
+// Primera lectura guardada de una estación de río ("hay datos desde..."); null si no hay ninguna.
+export async function getPrimeraLecturaCaudal({ estacion, rio = null }) {
+  let q = supabase.from("lectura_caudal").select("fecha,hora").eq("estacion", estacion).order("fecha").order("hora").limit(1);
+  if (rio) q = q.eq("rio", rio);
+  const [f] = await filas(q);
+  return f ?? null;
+}
+
+// Histórico de lluvia horaria (y temperatura) de una estación de SENAMHI desde un instante ISO.
+export function getHistoricoLluvia({ cod, desdeIso }) {
+  return todas(() =>
+    supabase.from("lectura_lluvia").select("ts,medido_en,precip_mm,temp_c").eq("cod", cod).gte("medido_en", desdeIso).order("medido_en")
+  );
+}
+
+export async function getPrimeraLecturaLluvia(cod) {
+  const [f] = await filas(supabase.from("lectura_lluvia").select("medido_en").eq("cod", cod).order("medido_en").limit(1));
+  return f ?? null;
+}
+
+// --- Escrituras de la comunidad (necesitan sesión; la BD valida y pone autor, fechas y límites).
+// Devuelven { data, error } crudos: la página los traduce con lib/comunidad.js mensajeErrorBD.
+
+// Crea un reporte y devuelve su id. geom es el EWKT del GPS (lib/comunidad.js ewkt).
+export async function crearReporte({ tipo, subtipo = null, descripcion = null, foto_url = null, geom }) {
+  const fila = { tipo, subtipo: subtipo || null, descripcion: descripcion || null, foto_url: foto_url || null, geom };
+  const { data, error } = await supabase.from("report").insert(fila).select("id").single();
+  cache.delete("reportes");
+  cache.delete("reportes_comunidad");
+  return { id: data?.id ?? null, error };
+}
+
+// Sube la foto al bucket público "reportes" dentro de la carpeta del usuario y devuelve su URL.
+export async function subirFotoReporte(archivo, usuarioId) {
+  const ruta = `${usuarioId}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.jpg`;
+  const { error } = await supabase.storage.from("reportes").upload(ruta, archivo, { contentType: archivo.type || "image/jpeg", upsert: false });
+  if (error) return { url: null, error };
+  const { data } = supabase.storage.from("reportes").getPublicUrl(ruta);
+  return { url: data?.publicUrl ?? null, error: null };
+}
+
+// Vota (1 a favor, -1 en contra) o cambia el voto; valor null lo quita.
+export async function votar(reportId, valor) {
+  const r =
+    valor == null
+      ? await supabase.from("voto").delete().eq("report_id", reportId)
+      : await supabase.from("voto").upsert({ report_id: reportId, valor }, { onConflict: "report_id,autor" });
+  cache.delete("reportes");
+  cache.delete("reportes_comunidad");
+  return { error: r.error };
+}
+
+export async function comentar(reportId, texto) {
+  const { data, error } = await supabase.from("comentario").insert({ report_id: reportId, texto }).select("id,report_id,texto,creado_en").single();
+  return { comentario: data ?? null, error };
+}
+
+export async function enviarMensaje(zona, contenido) {
+  const { data, error } = await supabase.from("message").insert({ zona, contenido }).select("id,autor,zona,contenido,expira_en,creado_en").single();
+  return { mensaje: data ?? null, error };
+}
+
+// Canal en tiempo real de los mensajes nuevos de una zona (la publicación supabase_realtime
+// incluye message). Devuelve la función para cerrarlo. La página sondea además cada 10 s.
+export function escucharMensajes(zona, alLlegar) {
+  const canal = supabase
+    .channel(`chat:${zona}`)
+    .on("postgres_changes", { event: "INSERT", schema: "public", table: "message", filter: `zona=eq.${zona}` }, (p) => alLlegar(p.new))
+    .subscribe();
+  return () => supabase.removeChannel(canal);
+}
+
+// ---------------------------------------------------------------------------
+// A dónde acudir (tabla punto_acudir: salud, comisarías, bomberos, Defensa Civil)
+// ---------------------------------------------------------------------------
+
+export const COLUMNAS_ACUDIR =
+  "clave,tipo,nombre,categoria,atiende_24h,direccion,distrito,provincia,departamento,telefono,lat,lon,fuente,fuente_url,atribucion,actualizado,detalle";
+
+// Puntos dentro de una caja de grados { oeste, sur, este, norte }, nunca la tabla entera (hay más
+// de 11 000 establecimientos de salud en el país). La caja llega ya redondeada a 0,1 grados
+// (lib/acudir.js cajaRedondeada), así la clave de la caché se repite al mover un poco el mapa; se
+// guarda 60 min. Por páginas de 1000: alrededor de Lima una caja de 30 km pasa de 1500 filas.
+export function getPuntosAcudirCaja({ oeste, sur, este, norte }) {
+  const clave = `acudir:${oeste},${sur},${este},${norte}`;
+  return cached(
+    clave,
+    () =>
+      todas(() =>
+        supabase
+          .from("punto_acudir")
+          .select(COLUMNAS_ACUDIR)
+          .gte("lat", sur)
+          .lte("lat", norte)
+          .gte("lon", oeste)
+          .lte("lon", este)
+          .order("clave")
+      ),
+    60 * 60_000
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Ríos del país con trazo (vista rio_cauce_mapa; backend/mapas/cargar_cauces.py desde ANA -
+// GeoSNIRH). Los lee la capa `rio` (y `zona`, para el aura y el círculo): lib/cauces.js decide el
+// color y el detalle; el Mashcón (rio_vigilado) no está aquí.
+// ---------------------------------------------------------------------------
+
+// Los ~100 ríos con su trazo simplificado a ~50 m (cauce_lejos, ~750 KB en total) para todo el
+// país de una vez; el trazo fino (cauce) se pide por río con getCauceRio al acercarse. Carga única
+// en la BD: caché de 60 min. null si la vista aún no existe.
+export function getCaucesRios() {
+  return cached(
+    "cauces_rios",
+    () =>
+      siExiste(() =>
+        filas(
+          supabase
+            .from("rio_cauce_mapa")
+            .select(
+              "rio_ana,rio,nombre,departamento,estaciones,estaciones_senamhi,capa,km,dist_estacion_m,nota,fuente,fuente_url,licencia,atribucion,fecha_fuente,vigilado,cauce_lejos"
+            )
+            .order("rio_ana")
+        )
+      ),
+    60 * 60_000
+  );
+}
+
+// Trazo fino (~6 m) de un río (GeoJSON MultiLineString o null): lo pide la capa `rio` solo para los
+// ríos a la vista desde zoom 13. No cambia en la sesión.
+export async function getCauceRio(rioAna) {
+  const [f] = await cached(
+    `cauce:${rioAna}`,
+    () => filas(supabase.from("rio_cauce_mapa").select("rio_ana,cauce").eq("rio_ana", rioAna).limit(1)),
+    Infinity
+  );
+  return f?.cauce ?? null;
+}
+
+// Avisos hidrológicos vigentes de SENAMHI por río con trazo (vista rio_cauce_senal; solo esa
+// columna: las lecturas de ANA ya vienen en getCaudales). null si la vista aún no existe.
+export function getSenalesCauces() {
+  return cached(
+    "senales_cauces",
+    () => siExiste(() => filas(supabase.from("rio_cauce_senal").select("rio_ana,avisos_hidro"))),
+    5 * 60_000
+  );
+}
+
+// --- inicio-impacto: "Tu zona ahora" (components/TuZona.jsx, hooks/useZonaAhora.js) ---
+
+// Titular interpretado del departamento (tabla titular_zona: lo escribe la tarea 'titular' del
+// worker cada 30 min, con reglas fijas o un modelo de lenguaje validado). Es OPCIONAL: null si la
+// tabla aún no existe, no hay fila o la consulta falla; la tarjeta usa entonces el titular
+// determinista de lib/zonaAhora.js (titularCorto). Caché de 5 min.
+export function getTitular(depto) {
+  if (!depto) return Promise.resolve(null);
+  return cached(
+    `titular:${depto}`,
+    () =>
+      siExiste(async () => {
+        const [f] = await filas(
+          supabase
+            .from("titular_zona")
+            .select("departamento,titular,detalle,nivel,generado_en,revisado_en,origen")
+            .eq("departamento", depto)
+            .limit(1)
+        );
+        return f ?? null;
+      }).catch((e) => {
+        console.warn("titular_zona", e);
+        return null;
+      }),
+    5 * 60_000
+  );
 }

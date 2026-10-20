@@ -1,29 +1,60 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ChevronRight, Layers, LocateFixed, Plus, ShieldAlert } from "lucide-react";
+import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import Sidebar from "@/components/Sidebar";
-import MapView from "@/components/MapView";
-import LayersPanel from "@/components/LayersPanel";
-import StatusPanel from "@/components/StatusPanel";
-import ElNinoPanel from "@/components/ElNinoPanel";
+import BarraInferior from "@/components/BarraInferior";
 import ErrorBoundary from "@/components/ErrorBoundary";
-import CitySelector from "@/components/CitySelector";
-import DiaSelector from "@/components/DiaSelector";
-import ChipNowcast from "@/components/ChipNowcast";
-import { Button } from "@/components/ui/button";
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { ContextoApp } from "@/components/ContextoApp";
+import { Cargando, ErrorCarga } from "@/components/EstadoCarga";
+import PanelPagina from "@/components/PanelPagina";
+import Mapa from "@/pages/Mapa";
 import { CITIES, DEFAULT_CITY, nearestCity } from "@/data/cities";
 import { LAYERS } from "@/map/layers";
-import { NIVEL } from "@/lib/nivel";
-import { ENFEN_HEX } from "@/map/palette";
 import { departamentoEn } from "@/lib/ubicacion";
-import { centroCiudad, fechaDeOpcion } from "@/lib/pronostico";
+import { centroCiudad } from "@/lib/pronostico";
+import { guardarZonaLocal, leerZonaLocal } from "@/lib/sesion";
 import { usePanorama } from "@/hooks/usePanorama";
 import { useGeolocation } from "@/hooks/useGeolocation";
 import { useLayerVisibility } from "@/hooks/useLayerVisibility";
 import { usePronosticoLocal } from "@/hooks/usePronosticoLocal";
 import { useRiosVigilados } from "@/hooks/useRiosVigilados";
+import { SesionProvider, useSesion } from "@/hooks/useSesion";
+import { ETIQUETA_NIVEL, nivelMaximo } from "@/lib/zonaAhora";
 
-const NOWCAST_OTRO_DIA = { texto: "El nowcasting es solo para las próximas 2 horas: elige Hoy." };
+// Las páginas que no son el mapa se cargan cuando se entra a ellas (lazy): el mapa arranca igual
+// de rápido que antes.
+const Alertas = lazy(() => import("@/pages/Alertas"));
+const Comunidad = lazy(() => import("@/pages/Comunidad"));
+const ReporteNuevo = lazy(() => import("@/pages/ReporteNuevo"));
+const ReporteDetalle = lazy(() => import("@/pages/ReporteDetalle"));
+const Chat = lazy(() => import("@/pages/Chat"));
+const Cuenta = lazy(() => import("@/pages/Cuenta"));
+const Historico = lazy(() => import("@/pages/Historico"));
+
+// true mientras la pantalla es más angosta que el corte lg de Tailwind (1024 px): ahí la página
+// tapa el mapa entero. Desde lg van lado a lado y el mapa sigue usable.
+const ANGOSTA = "(max-width: 1023.98px)";
+function usePantallaAngosta() {
+  const [angosta, setAngosta] = useState(() => {
+    try {
+      return window.matchMedia(ANGOSTA).matches;
+    } catch {
+      return false;
+    }
+  });
+  useEffect(() => {
+    let mq;
+    try {
+      mq = window.matchMedia(ANGOSTA);
+    } catch {
+      return undefined;
+    }
+    const al = () => setAngosta(mq.matches);
+    al();
+    mq.addEventListener("change", al);
+    return () => mq.removeEventListener("change", al);
+  }, []);
+  return angosta;
+}
 
 // [[sur, oeste], [norte, este]] de una geometría GeoJSON (el cauce de un río vigilado), o null
 function cajaGeo(g) {
@@ -40,33 +71,32 @@ function cajaGeo(g) {
 }
 
 export default function App() {
+  return (
+    <SesionProvider>
+      <Marco />
+    </SesionProvider>
+  );
+}
+
+// El marco: barra lateral (md+), barra inferior (menos de md), el mapa siempre montado y, cuando
+// la ruta no es "/", la página encima del mapa (celular) o en una columna a su lado (desde lg).
+function Marco() {
+  const navigate = useNavigate();
+  const { pathname } = useLocation();
+  const { perfil } = useSesion();
   // capas encendidas y opciones, recordadas en este navegador (o en la cuenta, con sesión)
   const { visible, toggle, mostrar, opciones, elegir, nuevas, conocerTodas, cambios, restablecer, dondeGuarda } =
     useLayerVisibility(LAYERS);
   // Día elegido para los avisos y el pronóstico (opción vinculada); el nowcasting solo va con "Hoy".
   const dia = opciones.avisos ?? "ahora";
   const visibleMapa = useMemo(() => ({ ...visible, nowcast: visible.nowcast && dia === "ahora" }), [visible, dia]);
-  // Texto corto de cada capa encendida (qué muestra, de cuándo es el dato o si falló).
-  const [notas, setNotas] = useState({});
-  const notasPanel = useMemo(() => (dia === "ahora" ? notas : { ...notas, nowcast: NOWCAST_OTRO_DIA }), [notas, dia]);
-  const onNota = useCallback((id, texto) => setNotas((n) => (n[id] === texto ? n : { ...n, [id]: texto })), []);
-  const [showLayers, setShowLayers] = useState(false);
-  // al cerrar el panel de capas, las capas nuevas pasan a conocidas (deja de verse "Nueva")
-  const capasAbiertas = useRef(false);
-  useEffect(() => {
-    if (capasAbiertas.current && !showLayers) conocerTodas();
-    capasAbiertas.current = showLayers;
-  }, [showLayers, conocerTodas]);
-  const [showElNino, setShowElNino] = useState(false);
-  // capa a traer a la vista en el panel de capas; `vez` cambia en cada pedido, así un segundo
-  // "ver evento" con el panel ya abierto vuelve a desplazarlo
-  const [destacar, setDestacar] = useState({ id: null, vez: 0 });
-  const cerrarElNino = useCallback(() => setShowElNino(false), []);
-  const [city, setCity] = useState(DEFAULT_CITY.name);
-  const [focus, setFocus] = useState({ lat: DEFAULT_CITY.lat, lon: DEFAULT_CITY.lon, zoom: 14 });
-  const { pos: userPos, locate } = useGeolocation();
+  // la ciudad por defecto recordada en este navegador (Cuenta > Mi zona), si no, Cajamarca
+  const [city, setCity] = useState(() => leerZonaLocal() ?? DEFAULT_CITY.name);
+  const inicial = CITIES.find((c) => c.name === city) ?? DEFAULT_CITY;
+  const [focus, setFocus] = useState({ lat: inicial.lat, lon: inicial.lon, zoom: 14 });
+  const { pos: userPos, status: gpsStatus, locate } = useGeolocation();
   // Zona del usuario: el departamento de la ciudad elegida o el de su GPS.
-  const [depto, setDepto] = useState(DEFAULT_CITY.depto);
+  const [depto, setDepto] = useState(inicial.depto);
   const [porGps, setPorGps] = useState(false);
   const p = usePanorama(depto);
   // ríos vigilados de la zona con el nivel de su zona (panel de estado; no cambian el contador)
@@ -86,28 +116,17 @@ export default function App() {
     const c = centroCiudad(ciudad, { lat: locLat, lon: locLon });
     if (c.lat !== focus.lat || c.lon !== focus.lon) setFocus({ ...c, zoom: focus.zoom });
   }, [focus, ciudad, porGps, locLat, locLon]);
-  // Más angosto que lg, la columna izquierda baja hasta el selector de día (~188 px) o el chip del
-  // nowcasting (~228 px): en pantallas bajas el panel de estado se acorta para no taparlos.
-  const topePanel = visible.nowcast
-    ? "max-lg:max-h-[min(70vh,calc(100vh-16rem))]"
-    : visible.avisos || visible.pronostico
-      ? "max-lg:max-h-[min(70vh,calc(100vh-13.5rem))]"
-      : undefined;
-  const abrirNowcast = () => {
-    setShowLayers(true);
-    setDestacar((d) => ({ id: "nowcast", vez: d.vez + 1 }));
-  };
 
-  const pickCity = (name) => {
+  const pickCity = useCallback((name) => {
     const c = CITIES.find((x) => x.name === name) || DEFAULT_CITY;
     setCity(c.name);
     setDepto(c.depto);
     setPorGps(false);
     setFocus({ lat: c.lat, lon: c.lon, zoom: 14 });
-  };
+  }, []);
 
-  // Ubicación real (con permiso); si falla, el mapa se queda en Cajamarca.
-  const geolocate = async () => {
+  // Ubicación real (con permiso); si falla, el mapa se queda en la ciudad elegida.
+  const geolocate = useCallback(async () => {
     const lugar = await locate();
     if (!lugar) return;
     const [lat, lon] = lugar;
@@ -116,11 +135,36 @@ export default function App() {
     setCity(cercana.name);
     setDepto((await departamentoEn(lat, lon).catch(() => null)) ?? cercana.depto);
     setPorGps(true);
-  };
+  }, [locate]);
 
+  // Al arrancar solo se usa el GPS si el navegador ya tenía el permiso concedido: nadie ve un pedido
+  // de permiso sin explicación. La primera vez lo pide la pantalla de bienvenida del mapa
+  // (components/OnboardingGps.jsx) o el botón "Mi ubicación".
   useEffect(() => {
-    geolocate();
-  }, []);
+    let vivo = true;
+    try {
+      navigator.permissions
+        ?.query({ name: "geolocation" })
+        .then((r) => vivo && r.state === "granted" && geolocate())
+        .catch(() => {});
+    } catch {
+      /* navegador sin Permissions API: se queda en la ciudad hasta que la persona toque el botón */
+    }
+    return () => {
+      vivo = false;
+    };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // "Mi zona" guardada en la cuenta: la primera vez que llega el perfil, si este navegador no tenía
+  // una ciudad elegida y no se está usando el GPS, se toma la de la cuenta.
+  const zonaAplicada = useRef(false);
+  useEffect(() => {
+    if (!perfil?.ciudad || zonaAplicada.current) return;
+    zonaAplicada.current = true;
+    if (leerZonaLocal() || porGps) return;
+    pickCity(perfil.ciudad);
+    guardarZonaLocal(perfil.ciudad);
+  }, [perfil, porGps, pickCity]);
 
   // Desde el panel de estado (que se pliega): prende el río y sus zonas y encuadra el cauce entero
   // en lo que queda libre entre los chips de arriba y el panel (MapView), hasta zoom 14.
@@ -133,218 +177,137 @@ export default function App() {
     [mostrar]
   );
 
-  // Desde el panel El Niño: prende la capa de eventos pasados con ese evento y encuadra el norte.
-  const verEvento = (evento) => {
-    elegir("fen", evento);
-    mostrar("fen");
-    setFocus({ lat: -7.2, lon: -78.8, zoom: 6 });
-    setShowElNino(false);
-    setDestacar((d) => ({ id: "fen", vez: d.vez + 1 }));
-    setShowLayers(true);
-  };
+  // Para las páginas: volver al mapa centrado en un punto (un reporte) o en un río vigilado.
+  const irAlMapa = useCallback(
+    ({ lat, lon, zoom = 16 }) => {
+      setFocus({ lat, lon, zoom });
+      navigate("/");
+    },
+    [navigate]
+  );
+  const verRioEnMapa = useCallback(
+    (r) => {
+      verRio(r);
+      navigate("/");
+    },
+    [verRio, navigate]
+  );
 
-  const nv = NIVEL[p.nivelLocal];
+  const contexto = useMemo(
+    () => ({ depto, porGps, userPos, city, ciudad, pickCity, geolocate, p, rios, pron, irAlMapa, verRioEnMapa }),
+    [depto, porGps, userPos, city, ciudad, pickCity, geolocate, p, rios, pron, irAlMapa, verRioEnMapa]
+  );
+
+  const enMapa = pathname === "/";
+  // En el celular y la tablet la página tapa el mapa entero: el mapa se marca inerte (inert +
+  // aria-hidden) para que el teclado y el lector de pantalla no lleguen a sus controles tapados
+  // ("Elegir ciudad", "Capas", "A dónde acudir"...). Sigue montado y vivo; al volver a "/" se libera.
+  const angosta = usePantallaAngosta();
+  const mapaTapado = !enMapa && angosta;
+  // la barra lateral muestra el nivel más alto de la zona contando el río vigilado (igual que el
+  // chip del mapa y "Tu zona ahora"); en alerta o emergencia la etiqueta es la del semáforo
+  const nivelMax = nivelMaximo(p.nivelLocal, rios);
+  const etiquetaMax =
+    nivelMax === p.nivelLocal ? p.etiquetaLocal : nivelMax === "aviso" ? "Atentos" : ETIQUETA_NIVEL[nivelMax].charAt(0) + ETIQUETA_NIVEL[nivelMax].slice(1).toLowerCase();
 
   return (
-    <div className="flex h-screen overflow-hidden">
-      <Sidebar
-        active="mapa"
-        depto={depto}
-        nivel={p.nivelLocal}
-        etiqueta={p.etiquetaLocal}
-        alertCount={p.cuantasTotal}
-        enfen={p.enfen}
-        mar={p.mar}
-        pacifico={p.pacifico}
-        actualizado={p.actualizado}
-        desactualizado={p.desactualizado}
-        sinConexion={p.sinConexion}
-        onElNino={() => setShowElNino(true)}
-      />
-
-      <main className="relative flex-1 h-screen">
-        <MapView
-          layers={LAYERS}
-          visible={visibleMapa}
-          opciones={opciones}
-          focus={focus}
-          userPos={userPos}
-          onNota={onNota}
-          localidadUsuario={localidadUsuario}
-        />
-
-        {/* Chip de marca + estado. No pasa bajo los botones de la derecha: en un celular angosto
-            la letra baja un poco y, si aún no cabe ("Atentos a la lluvia en Madre de Dios"), se corta.
-            Desde lg deja libre el centro de arriba para el selector de día. */}
-        <div
-          data-tapa-mapa="arriba"
-          className="absolute left-4 top-4 z-[600] flex max-w-[calc(100%-5rem)] items-center gap-1.5 rounded-full border border-border bg-card/85 px-3 py-1.5 text-[0.8rem] font-semibold shadow-lg backdrop-blur sm:gap-2 sm:px-3.5 sm:text-sm lg:max-w-[calc(50%-9.5rem)]"
-        >
-          <span className="shrink-0 text-primary">SIMPAC</span>
-          <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${nv.dot}`} />
-          <span className={`min-w-0 truncate ${nv.text}`} title={`${p.etiquetaLocal ?? nv.label} en ${depto}`}>
-            {p.etiquetaLocal ?? nv.label} en {depto}
-          </span>
-        </div>
-
-        {/* Selector de ciudad (mueve el mapa y cambia la zona del estado) y El Niño en gráficos */}
-        <div data-tapa-mapa="arriba" className="absolute left-4 top-[60px] z-[600] flex flex-col items-start gap-2">
-          <CitySelector value={city} onChange={pickCity} />
-          <button
-            type="button"
-            onClick={() => setShowElNino(true)}
-            className="flex items-center gap-2 rounded-full border border-border bg-card/90 py-1 pl-1 pr-3 text-sm shadow-lg backdrop-blur hover:bg-accent"
-          >
-            <span
-              className="grid h-7 w-7 place-items-center rounded-full text-white"
-              style={{ background: ENFEN_HEX[p.enfen?.corto] ?? "#9CA3AF" }}
-            >
-              <ShieldAlert className="h-4 w-4" />
-            </span>
-            <span className="leading-tight">
-              <span className="block text-[0.62rem] uppercase tracking-wider text-muted-foreground">
-                {p.enfen?.quien ?? "El Niño costero"}
-              </span>
-              <span className="font-semibold">{p.enfen?.corto ?? "Sin dato"}</span>
-            </span>
-            <ChevronRight className="h-4 w-4 text-muted-foreground" />
-          </button>
-          {/* más angosto que lg: el día y el chip del nowcasting van en esta columna */}
-          {(visible.avisos || visible.pronostico) && (
-            <DiaSelector valor={dia} onCambiar={(v) => elegir("avisos", v)} className="lg:hidden" />
-          )}
-          {visible.nowcast && (
-            <ChipNowcast
-              nota={notas.nowcast}
-              dia={dia}
-              onAbrir={abrirNowcast}
-              className="max-w-[min(26rem,calc(100vw-6rem))] lg:hidden"
-            />
-          )}
-        </div>
-
-        {/* lg: el día arriba al centro y, debajo, el chip del nowcasting (a la altura del selector de
-            ciudad: su ancho deja libre la columna izquierda, 16 + 190 px y aire, a cada lado) */}
-        {(visible.avisos || visible.pronostico) && (
-          <div data-tapa-mapa="arriba" className="absolute left-1/2 top-4 z-[600] hidden -translate-x-1/2 lg:block">
-            <DiaSelector valor={dia} onCambiar={(v) => elegir("avisos", v)} />
-          </div>
-        )}
-        {visible.nowcast && (
-          <div data-tapa-mapa="arriba" className="absolute left-1/2 top-[64px] z-[600] hidden max-w-[min(26rem,calc(100%-27rem))] -translate-x-1/2 lg:block">
-            <ChipNowcast nota={notas.nowcast} dia={dia} onAbrir={abrirNowcast} />
-          </div>
-        )}
-
-        {/* Herramientas */}
-        <TooltipProvider delayDuration={200}>
-          <div data-tapa-mapa="arriba" className="absolute right-4 top-4 z-[600] flex flex-col gap-2">
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant="secondary"
-                  size="icon"
-                  className="rounded-xl border border-border bg-card/90 backdrop-blur"
-                  onClick={() => setShowLayers((s) => !s)}
-                >
-                  <Layers className="h-[18px] w-[18px]" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent side="left">Capas</TooltipContent>
-            </Tooltip>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant="secondary"
-                  size="icon"
-                  className="rounded-xl border border-border bg-card/90 backdrop-blur"
-                  onClick={geolocate}
-                >
-                  <LocateFixed className="h-[18px] w-[18px]" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent side="left">Mi ubicación</TooltipContent>
-            </Tooltip>
-          </div>
-        </TooltipProvider>
-
-        {showLayers && (
-          <LayersPanel
-            layers={LAYERS}
-            visible={visible}
-            opciones={opciones}
-            notas={notasPanel}
-            destacar={destacar}
-            nuevas={nuevas}
-            cambios={cambios}
-            dondeGuarda={dondeGuarda}
-            onToggle={toggle}
-            onOpcion={elegir}
-            onRestablecer={restablecer}
-          />
-        )}
-
-        {showElNino && (
-          <ErrorBoundary
-            fallback={
-              <div className="absolute inset-x-4 top-4 z-[1100] mx-auto flex max-w-md items-center gap-3 rounded-xl border border-border bg-card p-4 text-sm shadow-2xl">
-                No se pudo mostrar el panel de El Niño en este navegador.
-                <Button variant="secondary" size="sm" className="ml-auto" onClick={cerrarElNino}>
-                  Cerrar
-                </Button>
-              </div>
-            }
-          >
-            <ElNinoPanel
-              enfen={p.enfen}
-              mar={p.mar}
-              icen={p.icen}
-              icenTmp={p.icenTmp}
-              onVerEvento={verEvento}
-              onCerrar={cerrarElNino}
-            />
-          </ErrorBoundary>
-        )}
-
-        {/* Botón reportar flotante (solo en pantallas anchas: más angosto chocaría con el panel de estado) */}
-        <Button
-          variant="destructive"
-          className="absolute bottom-6 left-4 z-[610] hidden rounded-xl shadow-xl 2xl:inline-flex"
-        >
-          <Plus className="h-[18px] w-[18px]" />
-          Reportar
-        </Button>
-
-        <StatusPanel
+    <ContextoApp.Provider value={contexto}>
+      <div className="flex h-screen overflow-hidden">
+        <Sidebar
           depto={depto}
-          porGps={porGps}
-          local={p.local}
-          pais={p.pais}
-          nivelLocal={p.nivelLocal}
-          etiqueta={p.etiquetaLocal}
-          cuantasAqui={p.cuantasAqui}
-          cuantasFuera={p.cuantasFuera}
-          cuantasTotal={p.cuantasTotal}
+          nivel={nivelMax}
+          etiqueta={etiquetaMax}
+          alertCount={p.cuantasTotal}
           enfen={p.enfen}
           mar={p.mar}
           pacifico={p.pacifico}
-          lluvia={p.lluvia}
-          avisos={p.avisos}
-          avisosZona={p.avisosAqui}
-          lluviaZona={p.lluviaAqui}
-          nivelOficialAqui={p.nivelOficialAqui}
-          alertasCargadas={p.alertas != null}
           actualizado={p.actualizado}
           desactualizado={p.desactualizado}
-          lluviaActualizada={p.lluviaActualizada}
-          lluviaDesactualizada={p.lluviaDesactualizada}
-          pron={pron}
-          fechaMapa={visible.pronostico || visible.avisos ? fechaDeOpcion(dia) : null}
-          rios={rios}
-          onVerRio={verRio}
-          tope={topePanel}
+          sinConexion={p.sinConexion}
+          onElNino={() => navigate("/", { state: { elNino: Date.now() } })}
         />
-      </main>
-    </div>
+
+        <div className="flex min-w-0 flex-1 flex-col">
+          <div className="relative flex min-h-0 flex-1">
+            {/* La página actual: a pantalla completa sobre el mapa en el celular y la tablet, y
+                como columna junto al mapa desde lg. El mapa de abajo sigue montado y vivo. */}
+            {!enMapa && (
+              <section
+                aria-label="Página"
+                className="absolute inset-0 z-[1200] flex min-h-0 flex-col bg-background lg:static lg:z-auto lg:w-[28rem] lg:flex-none lg:border-r lg:border-border xl:w-[30rem]"
+              >
+                <ErrorBoundary
+                  fallback={
+                    <PanelPagina titulo="Algo salió mal">
+                      <ErrorCarga texto="Esta página no se pudo mostrar en este navegador." onReintentar={() => window.location.reload()} />
+                    </PanelPagina>
+                  }
+                >
+                  <Suspense fallback={<PanelPagina titulo="Cargando"><Cargando /></PanelPagina>}>
+                    <Routes>
+                      <Route path="/alertas" element={<Alertas />} />
+                      <Route path="/comunidad" element={<Comunidad />} />
+                      <Route path="/comunidad/nuevo" element={<ReporteNuevo />} />
+                      <Route path="/comunidad/:id" element={<ReporteDetalle />} />
+                      <Route path="/chat" element={<Chat />} />
+                      <Route path="/cuenta/*" element={<Cuenta />} />
+                      <Route path="/historico" element={<Historico />} />
+                      <Route path="*" element={<NoEncontrada />} />
+                    </Routes>
+                  </Suspense>
+                </ErrorBoundary>
+              </section>
+            )}
+
+            <main
+              className="relative min-w-0 flex-1"
+              aria-label="Mapa"
+              aria-hidden={mapaTapado || undefined}
+              // React 18 no conoce `inert` como booleano: "" lo pone y undefined lo quita
+              inert={mapaTapado ? "" : undefined}
+            >
+              <Mapa
+                visible={visible}
+                visibleMapa={visibleMapa}
+                toggle={toggle}
+                mostrar={mostrar}
+                opciones={opciones}
+                elegir={elegir}
+                nuevas={nuevas}
+                conocerTodas={conocerTodas}
+                cambios={cambios}
+                restablecer={restablecer}
+                dondeGuarda={dondeGuarda}
+                dia={dia}
+                city={city}
+                pickCity={pickCity}
+                focus={focus}
+                setFocus={setFocus}
+                userPos={userPos}
+                gpsStatus={gpsStatus}
+                geolocate={geolocate}
+                ciudad={ciudad}
+                depto={depto}
+                porGps={porGps}
+                p={p}
+                rios={rios}
+                pron={pron}
+                localidadUsuario={localidadUsuario}
+                verRio={verRio}
+              />
+            </main>
+          </div>
+          <BarraInferior alertCount={p.cuantasTotal} />
+        </div>
+      </div>
+    </ContextoApp.Provider>
+  );
+}
+
+function NoEncontrada() {
+  return (
+    <PanelPagina titulo="Esta página no existe">
+      <p className="text-sm text-muted-foreground">Revisa la dirección o vuelve al mapa.</p>
+    </PanelPagina>
   );
 }

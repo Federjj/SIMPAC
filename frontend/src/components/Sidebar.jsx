@@ -1,3 +1,4 @@
+import { Link, NavLink } from "react-router-dom";
 import {
   Map,
   TriangleAlert,
@@ -13,13 +14,16 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { NIVEL } from "@/lib/nivel";
 import { horaPeru, horasDesde } from "@/lib/tiempo";
+import { useSesion } from "@/hooks/useSesion";
+
+export const SUBTITULO_SIFEC = "SIFEC · Sistema Inteligente de Acceso a Información del Fenómeno El Niño";
 
 const NAV = [
-  { id: "mapa", label: "Mapa", Icon: Map },
-  { id: "alertas", label: "Alertas", Icon: TriangleAlert, badgeKey: "alertCount" },
-  { id: "comunidad", label: "Comunidad", Icon: Users },
-  { id: "chat", label: "Chat", Icon: MessageSquare },
-  { id: "cuenta", label: "Cuenta", Icon: User },
+  { to: "/", label: "Mapa", Icon: Map, end: true },
+  { to: "/alertas", label: "Alertas", Icon: TriangleAlert, badgeKey: "alertCount" },
+  { to: "/comunidad", label: "Comunidad", Icon: Users },
+  { to: "/chat", label: "Chat", Icon: MessageSquare },
+  { to: "/cuenta", label: "Cuenta", Icon: User },
 ];
 
 // Una línea del contexto El Niño: la palabra primero, el número y la fuente en chico.
@@ -35,7 +39,6 @@ function Contexto({ titulo, valor, detalle, aviso }) {
 }
 
 export default function Sidebar({
-  active = "mapa",
   depto,
   nivel = "normal",
   etiqueta,
@@ -49,6 +52,7 @@ export default function Sidebar({
   onElNino,
 }) {
   const nv = NIVEL[nivel];
+  const { conSesion, nombre, cargando } = useSesion();
   return (
     <aside className="hidden md:flex w-72 flex-none flex-col h-screen border-r border-border bg-background">
       {/* Marca */}
@@ -66,6 +70,7 @@ export default function Sidebar({
             </div>
           </div>
         </div>
+        <p className="mt-2 text-[0.62rem] leading-snug text-muted-foreground">{SUBTITULO_SIFEC}</p>
       </div>
 
       {/* Estado en la zona del usuario */}
@@ -80,22 +85,25 @@ export default function Sidebar({
       </div>
 
       {/* Navegacion */}
-      <nav className="px-3 flex flex-col gap-1">
-        {NAV.map(({ id, label, Icon, badgeKey }) => {
+      <nav className="px-3 flex flex-col gap-1" aria-label="Secciones">
+        {NAV.map(({ to, label, Icon, badgeKey, end }) => {
           const badge = badgeKey === "alertCount" ? alertCount : 0;
           return (
-            <a
-              key={id}
-              href="#"
-              className={cn(
-                "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors",
-                id === active
-                  ? "bg-primary text-primary-foreground"
-                  : "text-muted-foreground hover:bg-accent hover:text-foreground"
-              )}
+            <NavLink
+              key={to}
+              to={to}
+              end={end}
+              className={({ isActive }) =>
+                cn(
+                  "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors",
+                  isActive
+                    ? "bg-primary text-primary-foreground"
+                    : "text-muted-foreground hover:bg-accent hover:text-foreground"
+                )
+              }
             >
               <Icon className="h-[18px] w-[18px] shrink-0" />
-              <span>{label}</span>
+              <span>{to === "/cuenta" && conSesion && nombre ? nombre : label}</span>
               {badge > 0 ? (
                 <Badge
                   variant="destructive"
@@ -104,7 +112,7 @@ export default function Sidebar({
                   {badge}
                 </Badge>
               ) : null}
-            </a>
+            </NavLink>
           );
         })}
       </nav>
@@ -151,10 +159,21 @@ export default function Sidebar({
         <p className="my-3 text-xs text-muted-foreground">
           Emergencias: <span className="font-semibold text-nivel-alerta">105 (Policía) · 116 (Bomberos)</span>
         </p>
-        <Button className="w-full">
-          <LogIn className="h-4 w-4" />
-          Iniciar sesión
-        </Button>
+        {conSesion ? (
+          <Button asChild variant="outline" className="w-full">
+            <Link to="/cuenta">
+              <User className="h-4 w-4" />
+              <span className="truncate">{nombre ?? "Mi cuenta"}</span>
+            </Link>
+          </Button>
+        ) : (
+          <Button asChild className="w-full" disabled={cargando}>
+            <Link to="/cuenta">
+              <LogIn className="h-4 w-4" />
+              Iniciar sesión
+            </Link>
+          </Button>
+        )}
       </div>
     </aside>
   );

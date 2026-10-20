@@ -1,11 +1,12 @@
 import L from "leaflet";
 import { ShieldAlert } from "lucide-react";
-import { getCaudales, getIncidentesRio, getRiosVigilados, getSenalesRio, getZonasRio } from "@/lib/queries";
+import { getCaucesRios, getCaudales, getIncidentesRio, getRiosVigilados, getSenalesCauces, getSenalesRio, getZonasRio } from "@/lib/queries";
 import { textoRio } from "@/lib/lenguaje";
 import { caudalDelRio, estadoZona, notaZonas } from "@/lib/zonaRio";
+import { GEOMETRIAS, aLatLngs, aligerar, avisosDe, emparejarCauces, esFuerte, estadoRio, notaAuras } from "@/lib/cauces";
 import { NOTA_SIMULACION, conSimulacion } from "@/lib/simulacion";
 import { NIVEL_HEX, ZONA_HEX, ZONA_OSCURO } from "../palette";
-import { escapeHtml, popupHtml } from "../markers";
+import { enlaceSeguro, escapeHtml, popupHtml } from "../markers";
 import { iconoLugar } from "../marcadores";
 import { opcionesPopup, popupZonaRio } from "../popups";
 import { rotuloLinea } from "../rotuloLinea";
@@ -23,11 +24,38 @@ import { rotuloLinea } from "../rotuloLinea";
 // alejado, si hay señales, un "aura" del color del nivel a lo largo del río (index.css:
 // [data-zoom-banda]). Con aviso hidrológico, o el río en alerta o emergencia, se marcan los centros
 // poblados que SENAMHI nombra en sus avisos del río.
-// Un río SIN mapa de zonas que crece hasta su alerta o emergencia (dato ANA) sigue con el círculo
-// de 2,5 km alrededor de su estación. Un río muy bajo (vaciante) no enciende nada.
+// Un río del país con trazo de ANA (vista rio_cauce_mapa, lib/cauces.js) que está en alerta o
+// emergencia (la peor de sus estaciones de ANA o un aviso hidrológico de SENAMHI más alto) lleva el
+// aura del color del nivel a lo largo de su cauce, a todo zoom: no tiene mapa de zonas, así que el
+// aura marca el río a vigilar, no hasta dónde llegaría el agua. Solo una estación SIN trazo que crece
+// hasta su alerta o emergencia (dato ANA) sigue con el círculo de 2,5 km alrededor. Un río muy bajo
+// (vaciante) no enciende nada. Los centros poblados que SENAMHI nombra solo se conocen para el
+// Mashcón (rio_vigilado.lugares_aviso); rio_cauce no los trae.
 const RADIO_M = 2500;
 const ACENTO = { atentos: 2, alerta: 3, emergencia: 4 };
 const minuscula = (t) => t.charAt(0).toLowerCase() + t.slice(1);
+
+// Popup del aura de un río del país: la señal que manda (ANA o el aviso de SENAMHI) y qué es el aura.
+function popupAura(rio, est) {
+  const { fila } = rio;
+  const { cauce, zona, t, peor } = est;
+  const principal = zona.senales[0];
+  const aviso = cauce.porAviso ? zona.avisoHidro : null;
+  return popupHtml({
+    title: fila.nombre,
+    meta: [aviso ? `Aviso hidrológico ${cauce.color} (SENAMHI)` : `${t?.etiqueta ?? "Sin estación de ANA"} (ANA)`, peor ? `Estación ${peor.estacion}` : null, fila.departamento],
+    resumen: principal ? `${principal.titulo}. ${principal.texto}` : null,
+    nota: [
+      aviso && t ? `Última medición de ANA: ${t.frase}` : null,
+      zona.nivel === "emergencia"
+        ? "Aléjate de la orilla, no cruces el río y sigue las indicaciones de Defensa Civil."
+        : "Aléjate de la orilla y no cruces el río.",
+      "Para este río no hay un mapa de zonas inundables cargado: el aura marca el cauce que hay que vigilar, no hasta dónde llegaría el agua.",
+      `Trazo del río: ${fila.fuente}.`,
+    ],
+    enlace: aviso && enlaceSeguro(aviso.url) ? { href: aviso.url, texto: "Ver el aviso de SENAMHI" } : null,
+  });
+}
 
 // Estilo de cada zona por su tipo y subtipo (null: no se dibuja). bajo_1m queda dentro de bajo_2m.
 // `borde`: lleva debajo un borde blanco (ver arriba). bajo_3m (la franja exterior, más incierta)
@@ -67,18 +95,34 @@ export default {
     { zona: true, color: ZONA_HEX.atentos, label: "Ámbar, atentos: señales de crecida o de lluvia fuerte en su cuenca" },
     { zona: true, color: ZONA_HEX.sin_senales, label: "Azul: zona que podría inundarse si el río se desborda, hoy sin señales de crecida" },
     { forma: "punto", color: "#0F172A", label: "Lugar que SENAMHI nombra como posible afectado (con aviso del río)" },
-    { forma: "circulo", color: NIVEL_HEX.alerta, label: "Círculo: zona a vigilar alrededor de una estación en alerta (ríos sin mapa de zonas)" },
+    {
+      forma: "linea",
+      color: ZONA_HEX.alerta,
+      label: "Aura a lo largo del cauce: río del país que pasó su nivel de alerta o de emergencia (ANA) o con aviso hidrológico de SENAMHI; no tiene mapa de zonas, marca el río a vigilar",
+    },
+    { forma: "circulo", color: NIVEL_HEX.alerta, label: "Círculo: zona a vigilar alrededor de una estación en alerta cuyo río no tiene trazo cargado" },
   ],
   fuente:
     "Zona baja: estimación de SIMPAC con el relieve (Copernicus GLO-30 © DLR e.V. 2010-2014 y © Airbus Defence and " +
     "Space GmbH 2014-2018, provisto bajo COPERNICUS por la Unión Europea y la ESA); no es un mapa oficial de " +
     "inundación. Zona inundable: INDECI-PNUD (2005), digitalizado por SIMPAC. Señales: ANA y SENAMHI. Trazo del " +
-    "río: © colaboradores de OpenStreetMap (ODbL).",
+    "Mashcón: © colaboradores de OpenStreetMap (ODbL). Trazo de los ríos del país: ANA - GeoSNIRH.",
   load: () =>
-    Promise.all([getCaudales(), getRiosVigilados(), getZonasRio(), getSenalesRio(), getIncidentesRio()]).then(
-      ([caudales, rios, zonas, senales, incidentes]) => ({ caudales, rios, zonas, senales, incidentes })
-    ),
-  render(group, { caudales, rios, zonas, senales, incidentes }, { map }) {
+    Promise.all([
+      getCaudales(),
+      getRiosVigilados(),
+      getZonasRio(),
+      getSenalesRio(),
+      getIncidentesRio(),
+      // los ríos del país son opcionales: si fallan quedan los círculos de antes
+      getCaucesRios().catch((e) => (console.error("capa zona: ríos del país", e), null)),
+      getSenalesCauces().catch((e) => (console.error("capa zona: avisos de los ríos del país", e), null)),
+    ]).then(([caudales, rios, zonas, senales, incidentes, cauces, senalesCauces]) => ({
+      caudales, rios, zonas, senales, incidentes,
+      cauces: cauces ? aligerar(cauces) : null, // las geometrías quedan en lib/cauces.js GEOMETRIAS
+      senalesCauces: senalesCauces ?? [],
+    })),
+  render(group, { caudales, rios, zonas, senales, incidentes, cauces = null, senalesCauces = [] }, { map }) {
     const vigilados = rios ?? [];
     const estados = [];
     let simulada = false;
@@ -154,11 +198,25 @@ export default {
       }
     }
 
-    // ríos sin mapa de zonas: el círculo alrededor de la estación crecida en alerta o emergencia
-    // (no se toca: el clic va al disco del río o al aviso de abajo; la leyenda lo explica)
-    for (const c of caudales) {
-      if (c.lat == null || c.lon == null) continue;
-      if (vigilados.some((r) => caudalDelRio(r, [c]))) continue;
+    // ríos del país con trazo (sin el Mashcón) en alerta o emergencia: el aura a lo largo del cauce
+    // (trazo de ~50 m: el aura es ancha, no hace falta el fino)
+    const { rios: nacionales, sinTrazo } = emparejarCauces(cauces ?? [], caudales, vigilados);
+    const fuertes = [];
+    for (const rio of nacionales) {
+      const id = rio.fila.rio_ana;
+      const est = estadoRio({ lecturas: rio.lecturas, avisos_hidro: avisosDe(senalesCauces, id) });
+      const g = GEOMETRIAS.get(id);
+      if (!esFuerte(est) || !g?.lejos.length) continue;
+      const nivel = est.cauce.estado; // alerta | emergencia
+      fuertes.push(rio.fila.nombre);
+      L.polyline(aLatLngs(g.lejos), { pane: "zonaRio", className: "zona-aura nac", color: ZONA_HEX[nivel], opacity: 0.55, weight: 20 })
+        .bindPopup(() => popupAura(rio, est), opcionesPopup(map, { acento: ACENTO[nivel] }))
+        .addTo(group);
+    }
+
+    // estaciones sin trazo del río (ni mapa de zonas): el círculo alrededor de la estación crecida
+    // en alerta o emergencia (no se toca: el clic va al disco del río o al aviso de abajo)
+    for (const c of sinTrazo) {
       const t = textoRio(c); // se recalcula aquí: no se confía en filas viejas
       if (t.bajo || (t.estado !== "alerta" && t.estado !== "emergencia")) continue;
       const col = NIVEL_HEX[t.estado];
@@ -172,7 +230,12 @@ export default {
       }).addTo(group);
     }
 
-    const nota = rios == null || zonas == null ? "Las zonas del río Mashcón aún no están cargadas." : notaZonas(estados);
+    const nota = [
+      rios == null || zonas == null ? "Las zonas del río Mashcón aún no están cargadas." : notaZonas(estados),
+      notaAuras(fuertes),
+    ]
+      .filter(Boolean)
+      .join(" ");
     return simulada ? `${NOTA_SIMULACION} ${nota}` : nota;
   },
 };

@@ -143,6 +143,23 @@ export function estadoCauce(t, avisoHidro = null) {
   return { estado: ana, porAviso: false, color: null };
 }
 
+// De qué estación es un aviso hidrológico de SENAMHI: su título termina en "- ESTACIÓN SAN REGIS"
+// ("SITUACIÓN ACTUAL DEL NIVEL DEL RÍO MARAÑÓN - ESTACIÓN SAN REGIS"). Sin tildes ni mayúsculas,
+// o null si el título no la nombra.
+export function estacionDeAviso(aviso) {
+  const m = /ESTACI[OÓ]N\s+(.+?)\s*$/i.exec(aviso?.titulo ?? "");
+  return m ? sinTildes(m[1]).replace(/\s+/g, " ") : null;
+}
+
+// Si el aviso hidrológico es de esa estación de ANA (mismo nombre, sin tildes ni mayúsculas). Un
+// aviso de SENAMHI habla de UNA estación (San Regis, en Loreto): las demás estaciones del mismo
+// río (Balsas, en Cajamarca, a cientos de km) siguen con su propia medición y no lo heredan. Si
+// el título no nombra la estación, o la de SENAMHI no se llama igual que la de ANA, no es de ella.
+export function avisoEsDeEstacion(aviso, estacion) {
+  const de = estacionDeAviso(aviso);
+  return Boolean(de) && de === sinTildes(estacion).replace(/\s+/g, " ");
+}
+
 const ACCION = {
   atentos: "Mira la zona que podría afectar.",
   alerta: "Aléjate de la orilla y no cruces el río.",

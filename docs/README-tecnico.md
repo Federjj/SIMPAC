@@ -1,8 +1,9 @@
 # SIMPAC — Documentación técnica (devs)
 
 > **SIMPAC** — Sistema de Información Meteorológica y Prevención de Anomalías de Cajamarca.
-> Plataforma web + app móvil que **centraliza datos hidrometeorológicos de Cajamarca** y
-> emite **alertas tempranas de lluvia/crecidas** geolocalizadas.
+> Plataforma web + app Android (la misma web empaquetada con Capacitor, `appmobile/README.md`) que
+> **centraliza datos hidrometeorológicos del Perú, con foco en Cajamarca**, y emite **alertas
+> tempranas de lluvia/crecidas** geolocalizadas, en lenguaje claro para gente sin formación técnica.
 >
 > Este documento es la referencia técnica: arquitectura, conectores de datos, los endpoints
 > reales de cada organismo y las partes "peludas" de la ingesta. Para el panorama general
@@ -54,7 +55,8 @@ VigiaFEN/
 │  │  ├─ senamhi_umbrales.py # lluvia de la última hora en ~216 estaciones (WFS) + fechas de prec_1
 │  │  ├─ senamhi_pronostico.py # pronóstico oficial por localidad (una página HTML, ~277 localidades)
 │  │  ├─ senamhi_nowcast.py  # nowcasting de lluvia (visor + WFS g_nowcasting), experimental
-│  │  ├─ senamhi_avisos_hidro.py # avisos hidrológicos (lista del país + detalle de un aviso, HTML)
+│  │  ├─ senamhi_avisos_hidro.py # avisos hidrológicos (lista del país + detalle de un aviso, HTML); sentido crecida/descenso/indeterminado
+│  │  ├─ ana_rios.py     # ANA - GeoSNIRH: trazo de los ríos (red hidrográfica RJ056 y Carta Nacional IGN), §5.6.8
 │  │  └─ idesep.py       # catálogo GeoNetwork de SENAMHI: shapefile -> GeoJSON (no lo importa __init__)
 │  ├─ ingesta/
 │  │  ├─ recolectar.py   # baja de todas las fuentes en paralelo -> Pasada (no toca la BD)
@@ -67,32 +69,59 @@ VigiaFEN/
 │  │  ├─ pronostico.py   # tarea 'pronostico' (cada hora): pronóstico por localidad
 │  │  ├─ lectura_pronostico.py # puro: qué dice cada día del pronóstico (lluvia, tormenta, "tendencia a")
 │  │  ├─ nowcast.py      # tarea 'nowcast' (cada 10 min): manchas de lluvia de las próximas 2 horas
-│  │  └─ rios.py         # tarea 'rios' (cada hora): avisos hidrológicos de SENAMHI para los ríos vigilados
+│  │  ├─ rios.py         # tarea 'rios' (cada hora): avisos hidrológicos de SENAMHI (lista del país + detalle de los vigentes)
+│  │  └─ titular.py      # tarea 'titular' (cada 30 min): titular en lenguaje claro por departamento (titular_zona), §5.6.10
 │  ├─ data/
 │  │  ├─ localidades_senamhi.json # coordenadas de las localidades del pronóstico (revisado a mano)
-│  │  └─ rios/mashcon/   # río vigilado (revisado a mano, §5.6.7): rio.json, cauce, cuenca, zonas,
-│  │                     # faja (.geojson) e incidentes.json
+│  │  ├─ rios/mashcon/   # río vigilado (revisado a mano, §5.6.7): rio.json, cauce, cuenca, zonas,
+│  │  │                  # faja (.geojson) e incidentes.json
+│  │  ├─ rios/cauces_alias.json # alias de nombres, capa forzada y radios para los ríos del país que no coinciden solos (§5.6.8)
+│  │  ├─ cauces/         # copias simplificadas de los cauces del país (105 GeoJSON, 2,98 MB; excepción en .gitignore y .dockerignore)
+│  │  └─ acudir/         # "A dónde acudir": RENIPRESS de Cajamarca, comisarías y bomberos (CENEPRED, CGBVP), Defensa Civil, números (§5.6.9)
 │  ├─ mapas/
 │  │  ├─ cargar_fen.py   # carga los mapas históricos de eventos El Niño a la tabla mapa
 │  │  ├─ cargar_rios.py  # carga un río vigilado (data/rios/<id>/) a rio_vigilado, rio_zona y rio_incidente
+│  │  ├─ cargar_cauces.py # carga el trazo de los ríos con estación de ANA o aviso de SENAMHI (GeoSNIRH) a rio_cauce
+│  │  ├─ cargar_acudir.py # carga salud, comisarías, bomberos y Defensa Civil a punto_acudir
 │  │  └─ semilla_localidades.py # arma localidades_senamhi.json (se corre una vez, §5.6.4)
 │  ├─ prototipo/         # versión sin dependencias (SQLite + http.server), congelada
-│  ├─ tests/             # pruebas sin red (unittest); muestras reales chicas en tests/muestras/
-│  ├─ app.py             # API FastAPI async (Docker)
+│  ├─ tests/             # 657 pruebas sin red (unittest; test_titular, test_cargar_cauces, test_cargar_acudir,
+│  │                     # test_app para el CORS...); muestras reales chicas en tests/muestras/
+│  ├─ app.py             # API FastAPI async (Docker); CORS solo para los orígenes de SIMPAC_CORS_ORIGENES
 │  ├─ celery_app.py      # worker + beat (tareas programadas, §7.1)
 │  ├─ config.py          # variables de entorno, en un solo lugar
 │  ├─ db.py              # conexión a Supabase para quien escribe (worker, cargadores)
 │  ├─ snapshot.py        # panorama cacheado en Redis que sirve la API
 │  ├─ alerts.py          # motor de umbrales (caudal ANA + referencia de lluvia SENAMHI)
 │  └─ requirements.txt   # + requirements-mapas.txt (geopandas, solo worker)
-├─ frontend/             # React + Vite + Leaflet (ver frontend/README.md)
+├─ frontend/             # React + Vite + Tailwind + shadcn + Leaflet + react-router (detalle en frontend/README.md)
+│  ├─ src/App.jsx        # marco: SesionProvider + ContextoApp + Sidebar + BarraInferior (< md) + <Routes> perezosas
+│  ├─ src/pages/         # Mapa (el mapa de siempre, nunca se desmonta), Alertas, Comunidad, ReporteNuevo,
+│  │                     # ReporteDetalle, Chat, Cuenta, Historico
+│  ├─ src/components/    # MapView, LayersPanel, StatusPanel (hoja de 4 alturas), TuZona, MedidorCaudal, BarrasLluvia,
+│  │                     # AcudirCercanos, OnboardingGps, PanelPagina, BarraInferior, EstadoCarga, TarjetaAlerta,
+│  │                     # TarjetaReporte, Votos, GraficoSerie, ElNinoPanel, CitySelector, DiaSelector, ui/ (shadcn)
+│  ├─ src/hooks/         # usePanorama, useRiosVigilados, useZonaAhora, useSesion, useGeolocation (Capacitor en la app),
+│  │                     # useLayerVisibility, usePronosticoLocal, useAltoHoja, useContador
+│  ├─ src/lib/           # queries (todas las consultas a Supabase), consultaCache, nivel, zonaRio, zonaAhora, cauces,
+│  │                     # acudir, alertas, comunidad, historico, sesion, lenguaje, medidor, serie24h... (*.test.js al lado)
+│  ├─ src/map/           # baseMap (Stadia + atribución propia), layers/ (15 capas: rios, zonasRio, acudir, avisos...),
+│  │                     # popups, marcadores, iconos, rotuloLinea, rotuloBusqueda, atribucion
+│  ├─ src/data/          # cities.js, emergencias.js (copia de backend/data/acudir/numeros.json)
+│  ├─ public/            # manifest.webmanifest, sw.js (solo cáscara), iconos/ (PWA)
+│  ├─ nginx.conf         # gzip + gzip_static, caché inmutable de /assets/, CSP y cabeceras (§8.2)
+│  ├─ capacitor.config.json # app Android: appId pe.simpac.app, esquema https (§8.3)
+│  └─ android/           # proyecto Android nativo generado por Capacitor (se versiona; build/ y assets/public/ no)
+├─ appmobile/README.md   # cómo se compila, firma y publica la app Android
 ├─ supabase/
-│  ├─ migrations/        # historia de la BD: un archivo por cambio, en orden
-│  └─ schema.sql         # foto consolidada del estado final
+│  ├─ migrations/        # historia de la BD: un archivo por cambio, en orden (32 al 20-10-2026)
+│  └─ schema.sql         # foto consolidada del estado final (secciones D a F: storage y realtime, rio_cauce, titular_zona)
 └─ docs/
    ├─ README-tecnico.md          (este archivo)
    ├─ ESTADO.md                  (dónde estamos)
+   ├─ guia-medicion.md           (cómo llenar las fichas ISO/IEC 25010 del curso con datos reales)
    ├─ catalogo-idesep.md         (catálogo de mapas de IDESEP)
+   ├─ frontend-brief.md, stack-tecnologico.md   (brief original de las pantallas y el stack)
    ├─ fuentes-y-endpoints.html   (catálogo visual de endpoints)
    └─ pre-documentacion-general.html
 ```
@@ -105,6 +134,14 @@ Principio: **un conector aislado por organismo** que normaliza su fuente a estru
 simples. La ingesta (Celery beat, cada hora) guarda en PostgreSQL/PostGIS (Supabase). La web
 (React + Leaflet) lee **Supabase directo** con la llave pública, protegida por RLS. La API
 (FastAPI) sirve un resumen cacheado en Redis para otros consumidores (app móvil, terceros).
+
+Desde el 14-10-2026 la web usa además tres servicios de Supabase fuera del Data API: **Auth** (cuentas
+por correo y contraseña, con confirmación por correo; las páginas Comunidad, Chat y Cuenta), **Storage**
+(bucket público `reportes` para la foto de un reporte) y **Realtime** (la tabla `message` del chat,
+publicación `supabase_realtime`). El worker suma una tarea que no baja datos sino que los resume: el
+titular en lenguaje claro por departamento (`titular_zona`, §5.6.10), con un modelo de lenguaje solo si
+hay clave de API y siempre validado por reglas. La app Android es la misma web dentro de un WebView
+(Capacitor, §8.3): lee Supabase igual que el navegador.
 
 ```mermaid
 flowchart LR
@@ -123,7 +160,7 @@ flowchart LR
   M[Motor de umbrales\npor estación]
   API[API FastAPI]
   W[Web React+Leaflet]
-  F[Firebase\npush geolocalizada]
+  F[Firebase\npush geolocalizada\n(pendiente, §10)]
 
   S & A & I & N & C --> K --> J --> DB
   J --> M --> DB
@@ -284,6 +321,9 @@ https://geosnirh.ana.gob.pe/server/rest/services/P%C3%BAblico/EventosEmergencias
   datos de tramos dan cifras distintas (3 frente a 67). Los modelos de inundación de la ANA (SSDH)
   no cubren la cuenca Crisnejas: **no hay una mancha de inundación oficial calculada para el
   Mashcón.**
+- **Trazo de los ríos del país** (capas `Público/Rios/MapServer/37`, red hidrográfica RJ056, y
+  `ONRH/Rios_Quebradas_Carta_Nacional_IGN/FeatureServer/0`): §5.6.8, conector `ana_rios.py` y
+  cargador `cargar_cauces`. También carga única.
 
 ### 5.3. IGP — ICEN (contexto El Niño Costero)
 
@@ -340,6 +380,34 @@ y gob.pe, ~17 MB), que se escribe en `indice` como `ICEN` e `ICEN_TMP` con orige
   queda en `fallas` y `avisos` del latido. Si fallan los dos, la tarea termina en error.
 
 Corrida suelta: `docker compose run --rm worker python -m backend.ingesta.enfen`.
+
+**Formato nuevo desde el CO 17-2026 (28-09-2026).** Ese comunicado cambió la plantilla y el conector
+(`parsear_texto`) lo rechazaba; se corrigió el 14-10-2026 con el texto completo del PDF como muestra
+(`backend/tests/muestras/comunicado_enfen_17_2026.txt`; `test_enfen.py` tiene 95 pruebas, 12 de ellas
+de este formato):
+- Ya no hay rótulo "Estado del sistema de alerta:" ni "RESUMEN EJECUTIVO". El **estado va en una línea
+  suelta bajo la fecha** ("Alerta de El Niño Costero1", con la llamada de nota al pie pegada), sigue un
+  **título en mayúsculas** ("EL NIÑO COSTERO SE PROLONGARÍA HASTA EL OTOÑO DE 2027") y luego el cuerpo.
+  `_estado()` busca, en orden: el rótulo (comunicados 2020 a CO 16-2026), el estado suelto en los 600
+  caracteres que siguen al encabezado (`_estado_suelto`, sin tomar una mención dentro de una frase como
+  'de "No Activo" a "Vigilancia..."') y, de respaldo, la frase del cuerpo con verbo ("mantiene el estado
+  de ..."). El rótulo sigue mandando si aparece.
+- **Errata del año:** la fecha dice "28 septiembre 2027". Una fecha de emisión más de un día en el
+  futuro (hora de Perú) se corrige con el año del encabezado si así deja de serlo (`_fecha_emision`,
+  con aviso en el log); si ni así cuadra, `ValueError` (nunca datos a medias). Un comunicado NN-2026
+  emitido en enero de 2027 no se toca.
+- **Resumen sin "RESUMEN EJECUTIVO":** las primeras 3 frases (480 caracteres) del cuerpo que sigue al
+  estado, saltando el título en mayúsculas (`_sin_titulo`: 3 o más palabras sin minúsculas; una sigla
+  que abre la primera frase, "ENFEN sostiene...", se queda en el cuerpo), cortando donde empieza la
+  leyenda de una figura ("Figura 1. Anomalía...") y quitando las llamadas de nota también tras un año
+  ("enero 20272" -> "enero 2027").
+- Resultado con la muestra: CO 17-2026, fecha 2026-09-28, "Alerta de El Niño Costero", próximo
+  2026-10-15, sin tabla del ICEN.
+
+Estado de la BD al 20-10-2026: `comunicado_enfen` tiene el CO 16-2026 (14-09) y el CO 18-2026 (16-10,
+"Alerta de El Niño Costero", próximo 30-10); **el CO 17 nunca se guardó**: el worker con el conector
+viejo lo rechazó mientras estuvo vigente y, cuando se reconstruyó el worker (19-10-2026), ya regía el CO
+18, y la tarea solo lee el último comunicado publicado (`ultimo_comunicado`). No se rellena a mano.
 
 ### 5.4. NOAA / CPC — RONI (contexto ENSO global)
 
@@ -817,8 +885,9 @@ worker.
 `supabase/schema.sql`):
 - Tablas `rio_vigilado`, `rio_zona` (`clave` como clave primaria; `tipo` en `estimada`, `estudio` o
   `faja`; MultiPolygon o MultiLineString), `rio_incidente` (CHECK de https, precisión y lat/lon) y
-  `aviso_hidrologico` (`ca` como clave primaria). RLS de lectura pública; escriben solo el cargador
-  y el worker (rol `postgres`).
+  `aviso_hidrologico` (`ca` como clave primaria; `sentido` con CHECK en `crecida`, `descenso`,
+  `indeterminado` y el trigger `aviso_hidrologico_sentido` que lo recalcula en cada escritura, migración
+  `20261020040341`). RLS de lectura pública; escriben solo el cargador y el worker (rol `postgres`).
 - Vistas (`security_invoker`, lectura para anon y authenticated): `rio_vigilado_mapa` y
   `rio_zona_mapa` (GeoJSON con 5 decimales); `aviso_hidrologico_vigente` (vigente en la última
   lectura de la lista, `fin_dia` de hoy o después en hora de Lima y `fin` nulo o futuro; un aviso con
@@ -875,21 +944,36 @@ GET https://www.senamhi.gob.pe/?p=avisos-detalle-hidrologicos&ca={ca}&ce={ce}  #
   registró la estación (`m3/s` en la sierra; `m.s.n.m` en la selva, p. ej. el Napo), el umbral rojo,
   las áreas literales y el significado del nivel rojo. **La leyenda trae el texto del rojo sea cual
   sea el nivel del aviso**: por eso la columna es `significado_rojo`. El nivel del aviso se lee del
-  encabezado ("Aviso N°1169 ROJO") y solo completa el de la lista si esta no lo trae. "DESCENSO ..."
-  es de estiaje (`sentido = 'descenso'`) y no enciende la zona.
+  encabezado ("Aviso N°1169 ROJO") y solo completa el de la lista si esta no lo trae.
+- **Sentido del aviso** (`crecida` | `descenso` | `indeterminado`; arreglo del 20-10-2026). El título
+  solo lo dice en "INCREMENTO DEL CAUDAL/NIVEL" (crecida) y "DESCENSO DEL NIVEL" (vaciante, estiaje);
+  los "SITUACIÓN ACTUAL DEL NIVEL ..." (unos 650 al año) no dicen si el río sube o baja, y hasta el
+  19-10-2026 se guardaban como crecida: los 8 vigentes de la selva (Amazonas, Marañón, Huallaga, Napo,
+  Ucayali, Nanay) pintaban 6 ríos de naranja en plena vaciante. Ahora `sentido_del_titulo` los deja
+  `indeterminado` y el sentido lo fija la **leyenda del nivel rojo del detalle** (`sentido_del_detalle`:
+  descenso, encallamiento, estiaje o vaciante -> `descenso`; desborde o inundación -> `crecida`; las dos
+  o ninguna -> nada). Un título explícito manda sobre la leyenda (si no coinciden, se anota). La BD
+  aplica la misma regla en un trigger (`aviso_hidrologico_sentido(titulo, significado_rojo)`, migración
+  `20261020040341`), así un worker con código viejo tampoco puede guardar `crecida` sin evidencia. El
+  frontend (`lib/zonaRio.js`, `lib/cauces.js`) y `titular.py` solo encienden un río con `crecida`; un
+  aviso `indeterminado` no pinta nada hasta que se lea su detalle. Verificado con los avisos 1649
+  (Enapu Perú) y 1654 (Lagarto), los dos "SITUACIÓN ACTUAL" y los dos de vaciante.
 - **Pasos de `actualizar()`:**
   1. Sin las tablas (`to_regclass`): latido con `fallas: ["migracion"]` y termina.
   2. Lee las estaciones vigiladas (`rio_vigilado.estacion_senamhi`) y qué avisos ya tienen detalle
-     (con su fin y su nivel).
+     (con su fin, su nivel y su sentido).
   3. Baja la lista (`_http.con_reintentos`: tope de 10 MB, 3 intentos solo ante fallas de red). Si
      falla: latido con `lista` y la tarea termina con la excepción.
   4. Con menos de 500 filas legibles (`MIN_FILAS`; la lista trae ~1680): latido con `lista_rara`,
      `ValueError` y **no escribe nada**. Si alguna fila es ambigua (el texto "(vigente)" y
      `class="vigente"` no coinciden), falla `vigente_ambiguo`: esas filas cuentan como vigentes y en
      esta corrida **no se apaga ningún aviso**.
-  5. Baja el detalle solo de los avisos vigentes de estaciones vigiladas que aún no lo tienen, o cuyo
-     fin o nivel cambió en la lista desde que se leyó (SENAMHI lo corrigió o lo extendió): 10 como
-     máximo, en serie con 1 s de pausa, y ninguno más pasados 100 s (la tarea tiene 240 s). Si uno
+  5. Baja el detalle de **todos los avisos vigentes del país** que aún no lo tienen, o cuyo fin o
+     nivel cambió en la lista desde que se leyó (SENAMHI lo corrigió o lo extendió), primero los de
+     las estaciones vigiladas y después los más nuevos (hasta el 19-10-2026 se pedían solo los de las
+     estaciones vigiladas, y por eso los demás no tenían leyenda): 10 como máximo por corrida (el
+     resto queda `indeterminado` hasta la próxima), en serie con 1 s de pausa, y ninguno más pasados
+     100 s (la tarea tiene 240 s). Si uno
      falla (o no es el aviso pedido, o no trae inicio, fin, valor ni umbral), queda como
      `detalle:<ca>` y sigue; un detalle sin inicio se vuelve a pedir en la próxima corrida. Lo que no
      cuadra con la lista no se guarda (mejor sin el dato que con uno equivocado): un fin que no es del
@@ -897,13 +981,16 @@ GET https://www.senamhi.gob.pe/?p=avisos-detalle-hidrologicos&ca={ca}&ce={ce}  #
      del Mashcón es 79,31 m³/s con umbral 18), que deja sin guardar el valor y el umbral.
   6. En una transacción, con `pg_advisory_xact_lock(hashtext('rios'))`: upsert de todas las filas
      sin pisar las columnas del detalle (`visto_en = now()`; una fila sin nivel no borra el que vino
-     del detalle), `vigente = false` para las que ya no figuran como vigentes (salvo con
-     `vigente_ambiguo`), guarda los detalles y borra los avisos con `fin_dia` de hace más de 400
-     días.
+     del detalle, y un título `indeterminado` no pisa el sentido que fijó la leyenda), `vigente =
+     false` para las que ya no figuran como vigentes (salvo con `vigente_ambiguo`), guarda los
+     detalles (con su sentido) y borra los avisos con `fin_dia` de hace más de 400 días.
 - **No crea filas en `alerta`:** el contador y el badge no cambian (decisión abierta, §10). Tampoco
   usa SILVIA (§5.6.3): es de movimientos en masa (huaycos), no de desbordes, y no tiene CORS.
-- **Hoy** el Mashcón no tiene aviso vigente (el último es el N.º 1233, amarillo, del 17 al
-  18-03-2026): la tarea solo baja la lista, unos 700 KB por hora.
+- **Hoy** (20-10-2026) el Mashcón no tiene aviso vigente (el último es el N.º 1233, amarillo, del 17 al
+  18-03-2026). En el país hay 9 vigentes (Napo, Huallaga, tres del Amazonas, dos del Marañón, Ucayali y
+  Nanay), los 9 con detalle y sentido `descenso`; la tabla tiene 1704 avisos: 983 `crecida`, 47
+  `descenso` y 674 `indeterminado` (viejos, sin detalle). La tarea baja la lista (~700 KB) cada hora y
+  un detalle solo cuando aparece un aviso vigente nuevo o uno cambia.
 
 Claves del latido `rios`:
 
@@ -912,6 +999,7 @@ Claves del latido `rios`:
 | `filas`, `vigentes` | avisos legibles de la lista y cuántos están vigentes (texto "(vigente)" o marca de la fila) en todo el país (`null` si la lista no se bajó) |
 | `vigilados` | `[{ce, numero, nivel, vigente, fin_dia}]` de las estaciones vigiladas: los vigentes y el último de cada estación |
 | `detalles` | `ca` de los detalles leídos y guardados en esta corrida |
+| `indeterminados` | `ca` de los avisos vigentes que siguen sin sentido conocido tras la corrida (sin detalle todavía, o con una leyenda que no lo aclara): no encienden ningún río |
 | `purgados` | avisos borrados por antigüedad |
 | `fallas` | `migracion`, `lista`, `lista_rara`, `vigente_ambiguo` (no se apagó ningún aviso) o `detalle:<ca>` |
 | `avisos` | detalle: errores, detalles que quedan para la próxima corrida o que se vuelven a leer, campos que no se encontraron o que no cuadran con la lista |
@@ -960,7 +1048,10 @@ tiene avisos).
 `rios_aviso_vigente_fuente_caida`; cargador en seco y con `--aplicar` (vuelto a correr con los datos
 corregidos: cuenca, nombres de las zonas y fuente del incidente de 2025); worker y backend reconstruidos (`rios` registrada en `celery_app.py` y en
 el arranque); después el frontend. El frontend tolera que falten las vistas: si
-`rio_vigilado_mapa` no existe, no pide las otras tres y la capa de zonas lo dice.
+`rio_vigilado_mapa` no existe, no pide las otras tres y la capa de zonas lo dice. El 20-10-2026 se aplicó
+`20261020040341_aviso_hidrologico_sentido_indeterminado` (CHECK, trigger y reclasificación de lo guardado)
+y se reconstruyeron worker y API (19-10 22:19 y 20-10 00:49, hora de Lima); la primera corrida dejó los 9
+vigentes como `descenso` con valor y umbral rojo, 0 `indeterminados`.
 
 Diagnóstico (solo lectura):
 ```sql
@@ -970,9 +1061,380 @@ select count(*), count(lat) from rio_incidente;
 -- señales de hoy del Mashcón y avisos hidrológicos vigentes del país
 select rio, json_array_length(avisos_lluvia), json_array_length(lluvia_cuenca), avisos_hidro from rio_senal;
 select ca, ce, numero, nivel, sentido, fin_dia, visto_en from aviso_hidrologico_vigente;
+-- sentido de lo guardado (20-10-2026: 983 crecida, 47 descenso, 674 indeterminado; vigentes: 9 descenso)
+select sentido, count(*) from aviso_hidrologico group by 1;
+select sentido, count(*) from aviso_hidrologico_vigente group by 1;
 -- última corrida de la tarea
-select ts, resumen->'filas', resumen->'vigilados', resumen->'fallas', resumen->'avisos'
+select ts, resumen->'filas', resumen->'vigentes', resumen->'indeterminados', resumen->'fallas', resumen->'avisos'
 from latido where servicio = 'rios';
+```
+
+### 5.6.8. Ríos del país: el trazo de los ríos con estación (cargador `cargar_cauces`)
+
+Desde el 14-10-2026 la web resalta, además del Mashcón, el cauce de los ríos que tienen estación de
+caudal de ANA (`caudal_actual`) o aviso hidrológico de SENAMHI (`aviso_hidrologico`): tabla `rio_cauce`,
+una fila por río (el Huallaga son 8 estaciones y una fila). Es una **carga única, a mano**, como los
+mapas FEN y el Mashcón: la web nunca consulta a ANA en vivo. Cómo se dibuja: `frontend/README.md`
+("Ríos vigilados") y `frontend/src/lib/cauces.js` (puro, 12 pruebas).
+
+**Fuente: ANA - GeoSNIRH**, dos capas ArcGIS REST de solo lectura (`backend/connectors/ana_rios.py`;
+verificadas el 14-10-2026, HTTP 200 en 0,2 a 4 s; CORS devuelve el `Origin` que recibe):
+```
+https://geosnirh.ana.gob.pe/server/rest/services/P%C3%BAblico/Rios/MapServer/37/query                          # RJ056
+https://geosnirh.ana.gob.pe/server/rest/services/ONRH/Rios_Quebradas_Carta_Nacional_IGN/FeatureServer/0/query  # IGN
+```
+- `ana_rj056`, "RiosQuebradas": red hidrográfica oficial R.J. N.º 056-2018-ANA, 1224 cursos con código
+  Pfafstetter, **una línea central por tramo** (el Huallaga son 10 tramos; el Marañón, 26). Campos
+  `NOMBRE_CA`, `CODIGO_CA`, `CATEGORIA`, `TIPO_CA`, `LONG_KM`, `NOMBRE_UH`, `CODIGO_UH`, `NOMBRE_RH`;
+  `maxRecordCount` 5000; elaborada el 30-01-2018 (DCERH-ANA).
+- `ana_ign`, "Ríos y Quebradas (Carta Nacional IGN)": 34 061 cursos de la Carta Nacional 1:100 000 del
+  IGN publicados por la ANA, un registro por río. Campos `NOMBRE_COMPLETO`, `IDE_CUERPO_AGUA`,
+  `TIPO_CUERPO_AGUA`, `NOM_CUENCA`, `NUM_LONGITUD`, `jerarquia`; `maxRecordCount` 2000; modificada en
+  abril de 2026. En los ríos anchos de la selva dibuja **las dos orillas** (el doble de km): por eso se
+  prefiere RJ056.
+- Las dos aceptan `f=geojson`, `outSR=4326`, `geometryPrecision=5`, `maxAllowableOffset` (se usa
+  0.00005, ~6 m), filtro por punto (`geometry=lon,lat&geometryType=esriGeometryPoint&distance=2000&units=esriSRUnit_Meter&spatialRel=esriSpatialRelIntersects`)
+  y paginación con `resultOffset` cuando `exceededTransferLimit`. Tope de 15 MB por respuesta,
+  `User-Agent` y reintentos de `_http.py`, pausa de 0,4 s entre pedidos.
+- **Licencia:** GeoSNIRH no publica texto de licencia (items con `licenseInfo` vacío, acceso público,
+  sin API key); datosabiertos.gob.pe e IGN/IDEP tampoco dan un texto útil. Se trata como información
+  pública del Estado con atribución obligatoria, igual que las capas 127 y 107 (§5.2). Atribución por
+  fila: "Autoridad Nacional del Agua (ANA) - GeoSNIRH. Red hidrográfica R.J. N.º 056-2018-ANA (DCERH,
+  2018)" o "Carta Nacional 1:100 000 del Instituto Geográfico Nacional (IGN), publicada por la ANA en
+  GeoSNIRH". El GeoJSON no se redistribuye como propio: cada fila lleva `fuente`, `fuente_url`,
+  `licencia`, `atribucion` y `url_consulta` (la consulta exacta que lo trajo).
+- **Trampa del nombre:** el servidor compara CON tilde y la BD de ANA la escribe a veces sí y a veces no
+  ("Río Rímac", "Rio Mashcon"). El LIKE lleva un comodín por letra acentuable (`[AEIOUN]` -> `_`,
+  anclado al final: `UPPER(NOMBRE_CA) LIKE '% R_M_C'`) y el nombre se confirma en el cliente sin tildes
+  (`nombre_normalizado`). Sin esto fallan Rímac, Marañón, Chillón, Cañete, Lurín, Camaná, Zaña, Perené,
+  Monzón, Azángaro y Huancané.
+
+**Método de emparejamiento** (`backend/mapas/cargar_cauces.py`; 24 pruebas en `test_cargar_cauces.py`):
+1. El nombre de `caudal_actual.rio` se normaliza (NFKD sin tildes, minúsculas, sin "Río"/"Quebrada"
+   delante): "Río Santiago" -> `santiago`; `rio_ana` es su slug (`chancay_lambayeque`).
+2. Solo cuentan los tramos con ese nombre que pasan a **2000 m** (`RADIO_M`) de alguna estación del río
+   (coordenadas de ANA y, para las de SENAMHI, de la tabla `estacion`). Así se separan los homónimos:
+   los dos "San Pedro" (Santa y Charanal), el Chancay de Lambayeque y el de Huaral, las seis quebradas
+   "Chonta".
+3. Con el tramo encontrado se baja el río completo (todos los tramos del país con ese nombre) y se queda
+   solo con los **conectados** al tramo de la estación (un extremo a menos de 200 m, `TOL_CONEXION_M`,
+   de un vértice de un tramo ya aceptado). El prefijo Pfafstetter no sirve para esto (los tramos del
+   Huallaga tienen `CODIGO_UH` distintos).
+4. Preferencia: RJ056 (oficial, línea central) y, si no tiene el río, IGN. Los ríos que ya están en
+   `rio_vigilado` (el Mashcón, OSM curado a mano) no se cargan aquí; la vista además marca `vigilado`.
+5. Se guarda el **río completo**: las capas no traen el sentido del flujo ni tramos anclados a la
+   estación, así que no se recorta aguas arriba/abajo por defecto. `--recorte KM` deja solo lo que está
+   a menos de KM km (en línea recta) de alguna estación del río, partiendo la línea. El peso lo
+   resuelven los dos niveles de detalle, no el recorte.
+6. Estaciones de SENAMHI: del título del aviso ("... DEL RÍO X - ESTACIÓN Y", el más frecuente por `ce`)
+   se une al río por el nombre de la estación (igual a una de ANA, p. ej. "RIO VERDE" -> río
+   Cabanillas) o por el nombre del río (alias `senamhi`: "BIAVO" -> `biabo`, "CAJAMARQUINO" ->
+   `cajamarca`); si queda a más de 5 km del trazo (`DIST_SENAMHI_M`) se suelta (homónimo). Un río solo
+   de SENAMHI (Chilete, Ocoña, Pampas, Bigote, Piura, San Juan, Biabo, Vichaycocha) necesita la
+   coordenada de su estación en `estacion`.
+7. Alias manual en `backend/data/rios/cauces_alias.json` (25 entradas en `rios`, clave `rio_ana`, y 2 en
+   `senamhi`): `nombre` en la capa ("Chancay Lambayeque" -> "Río Chancay"; "Palpa" -> "Río Llauta"; "El
+   Ingenio" -> "Quebrada Ingenio"; "Motupe" -> "Río Chiniama"; "Callazas" -> "Río Callazos"), `capa`
+   forzada, `radio_m` cuando la coordenada de ANA está desplazada (Amazonas, Socabaya, Llaucano,
+   Charanal, Lurín...; nunca se mueve el trazo), `mostrar` para la web ("Río Chancay (Lambayeque)") y
+   `sin_trazo` (Titicaca es el lago, Canopampa un canal/túnel, Chunchuca pasa a 6,8 km, Sumbay).
+
+**Validación** (la prueba en seco la muestra por río; una fila que no pasa no se crea): alguna estación
+a menos de **300 m** (`DIST_OK_M`) del trazo (si no, hace falta `radio_m` en el alias o `--forzar`; las
+demás estaciones lejos quedan en `nota`: "estación Jesús Túnel a 866 m del trazo", coordenada del
+túnel); km del trazo entre el 50 % y el 150 % de lo declarado por la capa (más del 150 %: doble orilla,
+no se guarda); ninguna coordenada fuera del Perú; IGN con varios registros unidos se avisa.
+
+**BD** (migración `20261014110044_rio_cauce`, `supabase/schema.sql` sección E): tabla `rio_cauce`
+(`rio_ana` PK, `rio` literal, `nombre`, `departamento`, `estaciones[]`, `estaciones_senamhi[]`, `capa`,
+`nombre_capa`, `codigos[]`, `tramos`, `km`, `km_declarado`, `dist_estacion_m`, `distancias` jsonb,
+`alias`, `nota`, `geom` MultiLineString ~6 m, `geom_lejos` ~50 m (`st_simplifypreservetopology
+0.00045`), `fuente`, `fuente_url`, `licencia`, `atribucion`, `fecha_fuente`, `url_consulta`, `bytes`,
+`ts_carga`); índices GIST en las dos geometrías; RLS con lectura pública (política `lectura publica rio
+cauce`), escribe solo el rol `postgres`. Vistas `security_invoker` con SELECT para `anon` y
+`authenticated`:
+- `rio_cauce_mapa`: GeoJSON con 5 decimales en dos niveles. `cauce_lejos` (~50 m; 729 kB para los 100
+  ríos) se pide para todo el país de una vez; `cauce` (~6 m; 2473 kB en total) se pide por río con
+  `.eq('rio_ana', ...)` al acercarse (PostgREST solo calcula las columnas pedidas); `vigilado` = ya está
+  en `rio_vigilado`.
+- `rio_cauce_senal`: por río, `lecturas` de `caudal_actual` de sus estaciones y `avisos_hidro` vigentes
+  de sus estaciones SENAMHI (con `sentido`). El nivel lo decide el frontend con la regla del Mashcón
+  (`lib/zonaRio.js estadoCauce`): la peor estación de ANA de crecida, o el aviso hidrológico vigente de
+  SENAMHI si es más alto y es de `crecida`; un umbral de nivel bajo cuenta como tranquilo.
+
+**Qué pide el frontend** (`lib/queries.js`): `getCaucesRios()` (todas las filas de `rio_cauce_mapa` con
+`cauce_lejos`, caché de 60 min), `getCauceRio(rio_ana)` (el `cauce` fino, por sesión, solo para los ríos
+a la vista desde zoom 13) y `getSenalesCauces()` (`rio_cauce_senal`, solo `rio_ana` y `avisos_hidro`,
+5 min). Las geometrías viven en un `Map` aparte (`lib/cauces.js GEOMETRIAS`) para que la huella JSON de
+`MapView` siga bajo 400 KB. Reglas de dibujo (capa `rio` y su aura en `zona`): halo blanco y cauce del
+color del estado; en vista país (zoom 6 o menos) los ríos sin alerta van en gris fino; nombres sobre la
+línea desde zoom 10, máximo 8 a la vez (primero alerta/emergencia); el Mashcón nunca se duplica y un río
+sin trazo no se inventa (queda el disco de la estación y la nota de la capa cuenta cuántos). Un aviso
+hidrológico tiñe solo la estación que nombra su título (`lib/zonaRio.js estacionDeAviso`,
+`avisoEsDeEstacion`; arreglo del 20-10-2026), no todas las estaciones del río.
+
+**Cargador:**
+```bash
+docker compose run --rm worker python -m backend.mapas.cargar_cauces                 # prueba en seco: consulta GeoSNIRH, valida, resume (~6 min)
+docker compose run --rm worker python -m backend.mapas.cargar_cauces --desde-copia   # igual, desde backend/data/cauces/ (sin red salvo ríos nuevos)
+docker compose run --rm worker python -m backend.mapas.cargar_cauces --desde-copia --aplicar   # escribe (una transacción, upsert por rio_ana)
+# opciones: --rio Jequetepeque (uno solo) · --forzar (acepta estación lejos o km fuera de rango, queda en nota)
+#           --recorte KM · --sin-copia · --copias DIR · --podar (con --aplicar: borra los ríos que ya no se buscan; no con --rio)
+```
+- La prueba en seco lee la BD (`caudal_actual`, `aviso_hidrologico` + `estacion`, `rio_vigilado`,
+  `rio_cauce`) y escribe una línea por río: `OK | AVISO | SIN TRAZO`, capa, nombre en la capa, tramos,
+  km (y declarados), distancia de las 3 estaciones más cercanas y los avisos. Al final: totales, los
+  ríos sin trazo, los que aún no tienen fila y los que están en la tabla pero ya no tienen estación ni
+  aviso (solo se borran con `--podar`). Nada se borra por una fuente caída: si GeoSNIRH falla en un río,
+  ese río queda "SIN TRAZO GeoSNIRH falló" y su fila anterior no se toca.
+- Copias: cada río consultado se guarda en `backend/data/cauces/<rio_ana>.geojson` (FeatureCollection
+  con los tramos elegidos, `url_consulta`, bytes y fecha). Hoy son 105 archivos, 2,98 MB, versionados
+  (excepción en `.gitignore` y `.dockerignore`), así la imagen del worker puede recargar la tabla sin
+  consultar a ANA.
+- Códigos de salida: 0 bien, 1 río pedido inexistente o `--podar` con `--rio`, 2 sin `SUPABASE_DB_URL`
+  o sin la tabla.
+- **Carga del 14-10-2026** (en seco y con `--aplicar`): 104 ríos buscados (96 de `caudal_actual` sin el
+  Mashcón + 8 solo con aviso de SENAMHI), **100 cargados** (79 RJ056, 21 IGN; 352 tramos; 18 636 km),
+  4 sin trazo (Titicaca, Canopampa, Chunchuca, Sumbay), 26 con nota. Tabla de 5,6 MB (verificado en la
+  BD el 20-10-2026: 100 filas, 92 con estaciones de ANA y 8 solo de SENAMHI; 27 valores distintos de
+  `departamento`, porque un río que cruza varios los lleva juntos, p. ej. "Loreto, Ucayali").
+- **Pendiente al 20-10-2026:** `caudal_actual` tiene hoy 96 ríos (127 estaciones) y 4 de ellos no
+  tienen fila (Quiroz, Sisa, Yauca y Acarí: estaciones intermitentes de ANA con lecturas desde
+  setiembre); sus copias ya están en `backend/data/cauces/` (junto con la del Mantaro), falta correr
+  `--desde-copia --aplicar`. Es lo esperado: la carga es única y se repite cuando `caudal_actual` gana
+  estaciones (la prueba en seco lista los ríos sin fila). No hay tarea Celery: RJ056 es de 2018 y la
+  capa IGN cambió por última vez en abril de 2026.
+
+**Honestidad del dato:** el trazo es la línea central de 2018 o la Carta Nacional, no la orilla de hoy
+(los ríos amazónicos migran: el Napo queda a 283 m de Bellavista, el Marañón a 2,4 km de Nauta, el
+Ucayali a 2,7 km de LPO Pucallpa); no se deriva de él ninguna zona inundable (la aura en alerta o
+emergencia marca el río a vigilar, no hasta dónde llega el agua); un río sin trazo no se inventa (la
+web dibuja el disco de la estación y dice "Trazo del río no disponible").
+
+Diagnóstico (solo lectura):
+```sql
+select count(*), count(*) filter (where capa = 'ana_rj056') rj056, round(sum(km)) km,
+       pg_size_pretty(pg_total_relation_size('rio_cauce')) from rio_cauce;          -- 100, 79, 18636, 5600 kB
+select rio_ana, nombre, capa, km, dist_estacion_m, nota from rio_cauce where nota is not null order by dist_estacion_m desc;
+select rio from caudal_actual except select rio from rio_cauce;   -- ríos de ANA sin fila (20-10: Mashcon (vigilado), Titicaca, Canopampa, Sumbay + Quiroz, Sisa, Yauca, Acarí pendientes)
+select rio_ana, json_array_length(lecturas), json_array_length(avisos_hidro) from rio_cauce_senal where json_array_length(avisos_hidro) > 0;
+select pg_size_pretty(sum(length(cauce_lejos::text))::bigint), pg_size_pretty(sum(length(cauce::text))::bigint) from rio_cauce_mapa;   -- 729 kB, 2473 kB
+```
+
+### 5.6.9. A dónde acudir: salud, comisarías, bomberos y Defensa Civil (cargador `cargar_acudir`)
+
+La capa "A dónde acudir" (grupo propio, apagada por defecto) y la tarjeta del mismo nombre en la hoja
+de inicio muestran, con fuente y fecha, los lugares a los que una persona puede ir o llamar:
+establecimientos de salud, comisarías, compañías de bomberos y oficinas de Defensa Civil. Todo sale de
+fuentes oficiales y nada se estima. **No hay albergues ni zonas seguras:** al 14-10-2026 ninguna fuente
+oficial abierta los publica georreferenciados para Cajamarca ni para el país (se revisaron el servicio
+ArcGIS de CENEPRED `sig.cenepred.gob.pe/arcgis_server`, SIGRID v3, el visor de INDECI y sus servidores
+`geoserver.indeci.gob.pe` (sin respuesta) y `geosinpad.indeci.gob.pe` (503), datosabiertos.gob.pe (0
+conjuntos de datos para "albergues" y "zonas seguras") y las resoluciones de los planes de contingencia
+del GORE Cajamarca, RER D267-2022 y D171-2023, sin anexos georreferenciados). Los tipos `albergue` y
+`zona_segura` quedan previstos en la tabla para cuando una municipalidad publique su lista. El texto
+"ve a terreno alto, lejos del cauce del río y de las quebradas; no cruces ríos crecidos; sigue las
+indicaciones de Defensa Civil de tu municipalidad (115)" es contenido fijo del frontend
+(`lib/acudir.js ZONA_SEGURA`), rotulado como recomendación general de INDECI y enlazado a la campaña
+"Preparados ante lluvias intensas" (https://www.gob.pe/institucion/indeci/campa%C3%B1as/6555-preparados-ante-lluvias-intensas)
+y a su nota de prensa. Nunca se dibuja un polígono de zona segura estimado ni se presentan colegios
+(ESCALE) como albergues.
+
+**Fuentes y licencias** (verificadas el 14-10-2026):
+
+| Dato | Fuente | URL | Licencia / atribución | Fecha del dato |
+|---|---|---|---|---|
+| Salud (IPRESS) | SUSALUD, RENIPRESS, vía datosabiertos.gob.pe | ficha https://www.datosabiertos.gob.pe/dataset/registro-nacional-de-entidades-prestadoras-de-servicios-de-salud-renipress ; CSV mensual `RENIPRESS_30-09-2026.csv` (`;`, UTF-8 con BOM, 31 columnas, 19,9 MB, 36 128 filas) | ODC-By (declarada en la ficha). "Fuente: SUSALUD, Registro Nacional de IPRESS (RENIPRESS), datosabiertos.gob.pe" | Last-Modified 30-09-2026 (un CSV por mes) |
+| Comisarías | MININTER (Observatorio Nacional de Seguridad Ciudadana), "comisarías básicas a noviembre de 2019", servidas por CENEPRED como puntos WGS84 | capa 12 `ComisariasBasicas` de https://sig.cenepred.gob.pe/arcgis_server/rest/services/sectores/COEN_FEN_2027/MapServer (`query`, `f=geojson`, `outSR=4326`, 1000 por página); ficha del padrón https://www.datosabiertos.gob.pe/dataset/comisar%C3%ADas-b%C3%A1sicas-de-la-polic%C3%ADa-nacional-del-per%C3%BA-mininter | ODC-By (ficha MININTER); el servicio CENEPRED no declara licencia. "Fuente: MININTER, comisarías básicas PNP (nov. 2019), servido por CENEPRED/COEN" | 2019-11-30 (fecha del padrón; el servicio no trae fecha). Sin dirección, teléfono ni horario |
+| Bomberos | CGBVP, directorio del portal (dirección y teléfono) + CENEPRED capa 14 `Bomberos` (ubicación) | https://portal.bomberosperu.gob.pe/api/Comandancia y `/api/Compania/{codidenest}` (API interna del sitio: responde 403 sin cabeceras de navegador; se piden con `User-Agent`, `Accept: application/json` y `Referer`); capa 14 del mismo MapServer | Información pública institucional sin licencia declarada. "Fuente: CGBVP, portal.bomberosperu.gob.pe; ubicación: CENEPRED/COEN, capa Bomberos" | fecha de descarga (directorio vivo); los puntos CENEPRED no traen fecha |
+| Defensa Civil (3 puntos) | gob.pe: INDECI sedes, Municipalidad Provincial de Cajamarca, Gobierno Regional | https://www.gob.pe/institucion/indeci/sedes , https://www.gob.pe/institucion/municajamarca/contacto-y-numeros-de-emergencias , https://www.gob.pe/institucion/regioncajamarca/contacto-y-numeros-de-emergencias | Contenido público del Estado. Coordenadas del enlace "Ver mapa" (`maps.google.com/maps?daddr=lat,lon`) de cada ficha | 14-10-2026 (`detalle.verificado_en`); revisar cada temporada |
+| Números de emergencia | gob.pe/547 (105, 116, 115, 106, 113, 110), fichas de contacto anteriores, DIRESA y RENIPRESS (hospitales 24 h) | `backend/data/acudir/numeros.json` y su copia `frontend/src/data/emergencias.js` (no van a la BD) | Contenido público del Estado. El 106 (SAMU) va con la salvedad de que gob.pe no lista a Cajamarca; el COER Cajamarca no tiene número publicado vigente | 14-10-2026 |
+
+**Método** (`backend/mapas/cargar_acudir.py`, 35 pruebas; datos en `backend/data/acudir/`, ver su README):
+- Salud: solo `ESTADO = ACTIVO`, con `NORTE`/`ESTE` dentro del Perú y cuya `CLASIFICACION` (primer
+  valor) sea hospital o clínica (general o especializada), instituto especializado, centro de salud
+  (con o sin camas), puesto de salud o policlínico; se descartan consultorios, laboratorios, ópticas,
+  odontológicos, hemodiálisis, etc. y los establecimientos INPE/penitenciarios. `categoria` = etiqueta +
+  nivel ("Hospital II-2", "Clínica II-1" si `INSTITUCION = PRIVADO`, "Puesto de salud I-1").
+  `atiende_24h` sale del texto libre `HORARIO` con expresiones regulares: `true` para "24 HORAS",
+  "24HRS", "00:00 - 24:00", "L-D 00 -24", "7:00 - 7:00", "07:00 a.m. a 7 a.m."; `false` para un rango
+  que no cubre el día ("8:00 - 20:00", "6:00 - 24:00") o "12 HORAS"; `null` si está vacío o no se
+  entiende. El horario crudo, la institución, la clasificación y el nivel quedan en `detalle`.
+- Comisarías: todos los puntos de la capa 12 con `cod_cpnp` (clave `comisarias:<cod_cpnp>`); nombre
+  "Comisaría <resto>" (de "CPNP ..."); `categoria` "Comisaría tipo A..E"; `atiende_24h`, dirección y
+  teléfono `null` porque la fuente no los trae; `detalle.nota` recuerda que el padrón es de 2019 (la
+  web lo dice: "Sin teléfono en la fuente", "padrón MININTER 2019").
+- Bomberos: cada punto de la capa 14 (`cia` "B-59") cruzado por número de compañía con el directorio
+  del CGBVP ("Cajamarca Nº59"): 213 de 247 compañías tienen punto; las 34 sin punto no se cargan (no
+  se geocodifica a mano). Clave `bomberos:<número>`; nombre "Compañía de Bomberos <nombre> Nº <n>";
+  dirección y teléfono del CGBVP; `detalle` con comandancia, `cia`, `codidenest` y la URL de donde
+  salen las coordenadas.
+- Normalización: `nombre_bonito()` pasa las mayúsculas de las fuentes a lenguaje claro (mayúscula
+  inicial, preposiciones en minúscula, artículos en minúscula solo tras preposición: "Clínica Los
+  Fresnos", "Baños del Inca"; siglas, números romanos y niveles I-1..III-2 en mayúscula; EsSalud;
+  tildes de las ~60 palabras más frecuentes). `telefono_limpio()` respeta el texto de la fuente,
+  normaliza espacios y separa números con " / "; si no hay 6 dígitos queda `null`.
+- Validación (igual que los CHECK de la BD, con error claro antes de escribir): clave `<fuente>:<id>`,
+  tipo permitido, nombre/fuente/fuente_url/atribucion/actualizado presentes, departamento canónico
+  (`backend/ingesta/departamentos.py`), lat/lon dentro del Perú (atrapa lat/lon invertidas),
+  `fuente_url` https, teléfono con dígitos, ubigeo de 6 dígitos, `detalle` objeto, claves sin repetir,
+  y cada fuente con al menos un punto (un archivo vacío no pasa).
+- Escritura: una transacción, upsert por clave (idempotente). Sin `--podar` nunca borra: avisa cuántas
+  claves de esa fuente y de los departamentos cargados ya no vienen. `--podar` borra solo esas (una
+  carga solo de Cajamarca no toca los demás departamentos; una fuente que no se cargó no se toca).
+- Descarga (`--descargar`): RENIPRESS se descubre leyendo la ficha (el `RENIPRESS_dd-mm-aaaa.csv` más
+  reciente) y en el repo se guarda solo el departamento de Cajamarca (`renipress_cajamarca.csv`,
+  1,1 MB; el CSV completo va a `<tmp>/simpac_acudir/` con `--pais`); CENEPRED se pagina de a 1000;
+  CGBVP son 29 llamadas (1 + 28 comandancias). Guardas: menos de 100 filas de Cajamarca, menos de 1000
+  comisarías, 150 bomberos o 150 compañías cancelan esa fuente. Si una fuente falla, su archivo
+  anterior se conserva y `fuentes.json` no la pisa (una fuente caída no borra datos).
+
+**BD** (migración `20261014105838_punto_acudir`, foto en `supabase/schema.sql`): tabla `punto_acudir`
+con `clave` text PK (`^[a-z_]+:[A-Za-z0-9_.-]+$`), `tipo` en `salud | comisaria | bomberos |
+zona_segura | albergue | otro`, `categoria`, `atiende_24h` (solo si la fuente lo dice), dirección,
+distrito/provincia/departamento canónico, `ubigeo`, `telefono`, `lat`/`lon` + `geom` Point 4326
+generada, `fuente`, `fuente_url` https, `fuente_id`, `licencia`, `atribucion`, `detalle` jsonb,
+`actualizado` date, `cargado_en`; CHECK dentro del Perú; índices GIST y `(tipo, departamento,
+atiende_24h)`; RLS con lectura pública para `anon` y `authenticated` (política `lectura publica punto
+acudir`), escribe solo el rol `postgres` (cargador). Sin vista: `lat` y `lon` ya son columnas; el
+frontend pide columnas explícitas (`COLUMNAS_ACUDIR`) para no traer `geom` en hexadecimal.
+
+**Qué pide el frontend:** nunca la tabla entera. La capa `acudir` (`map/layers/acudir.js`) y la
+tarjeta (`lib/acudir.js getPuntosAcudir`, `components/AcudirCercanos.jsx`) piden la caja a la vista
+redondeada a 0,1 grados con `.gte/.lte` por lat/lon (`lib/queries.js getPuntosAcudirCaja`, caché de 60
+min por caja, páginas de 1000). La capa no dibuja con zoom menor que 11, entre 11 y 12 omite los
+establecimientos de salud sin atención 24 h y desde 13 dibuja todo (Cajamarca ciudad a zoom 14: 87
+puntos); íconos `L.divIcon` compartidos por tipo con glifos lucide y colores fuera del semáforo. La
+tarjeta muestra los números 105 / 116 / 106 con `tel:`, y los 3 puntos más cercanos (el mejor de salud
+con la regla "hospital 24 h si está a menos de 15 km; si no, el establecimiento más cercano", la
+comisaría y los bomberos) con distancia en línea recta, teléfono, "24 h" solo si `atiende_24h = true`,
+"Cómo llegar" (Google Maps y `geo:` en Android) y "Ver en el mapa" (evento `simpac:acudir-ver`, que
+enciende la capa, encuadra y abre el popup después de que el mapa se asienta).
+
+**Cargador:**
+```bash
+docker compose run --rm worker python -m backend.mapas.cargar_acudir                       # en seco: valida y cuenta (no conecta a la BD)
+docker compose run --rm worker python -m backend.mapas.cargar_acudir --aplicar             # escribe (Cajamarca en salud, país en comisarías y bomberos)
+docker compose run --rm worker python -m backend.mapas.cargar_acudir --descargar           # rebaja las fuentes a backend/data/acudir/
+docker compose run --rm worker python -m backend.mapas.cargar_acudir --descargar --pais --aplicar   # salud de todo el país
+# opciones: --datos DIR · --podar (con --aplicar: borra lo que ya no viene, solo dentro de lo cargado)
+```
+Códigos de salida: 0 bien, 1 datos inválidos, 2 sin `SUPABASE_DB_URL` o sin la tabla.
+
+**Carga del 14-10-2026, verificada en la BD el 20-10-2026:** 12 915 puntos: salud 11 376 (999 de 24 h),
+comisarías 1323, bomberos 213, otro (Defensa Civil) 3; `actualizado` de 2019-11-30 (padrón de
+comisarías) a 2026-10-14. Cajamarca: 1126 (salud 1001, 42 de 24 h; comisarías 118; bomberos 4; Defensa
+Civil 3); según la prueba en seco, provincia de Cajamarca 134 y ciudad 87. Descartes de RENIPRESS en el
+país: 14 823 por clasificación, 9156 no activos, 723 sin coordenadas, 48 penitenciarios, 2 fuera del
+Perú. Los datos de pantalla se cotejaron con PostGIS el 19-10-2026 (Hospital II Cajamarca 24 h a 450 m
+del centro, Comisaría Central a 170 m, Bomberos N.º 59 a 450 m).
+
+**Consultas de control:**
+```sql
+select tipo, count(*), count(*) filter (where atiende_24h) from punto_acudir group by tipo;   -- 11376 (999) / 1323 / 213 / 3
+select departamento, count(*) from punto_acudir group by 1 order by 2 desc;                    -- Lima 1907, Cajamarca 1126...
+select tipo, count(*) from punto_acudir where departamento = 'Cajamarca' and provincia = 'Cajamarca' group by 1;
+select clave, nombre, categoria, atiende_24h, telefono, lat, lon, actualizado
+  from punto_acudir where clave in ('renipress:00007686', 'comisarias:5000', 'bomberos:59', 'manual:indeci_cajamarca');
+select count(*) from punto_acudir where tipo = 'salud' and atiende_24h is null;               -- horarios que no se entendieron
+select min(actualizado), max(actualizado) from punto_acudir where tipo = 'comisaria';         -- 2019-11-30: padrón viejo, decirlo en la web
+select clave, nombre, round(st_distance(geom::geography, st_setsrid(st_makepoint(-78.5127, -7.1617), 4326)::geography)) as m
+  from punto_acudir where tipo <> 'salud' order by geom <-> st_setsrid(st_makepoint(-78.5127, -7.1617), 4326) limit 6;
+select tablename, policyname from pg_policies where tablename = 'punto_acudir';              -- solo lectura pública
+```
+Pendientes: albergues y zonas seguras por mesa de partes de la municipalidad, número del COER por
+teléfono, servidores de INDECI caídos (§10).
+
+### 5.6.10. Titular interpretado por departamento (tarea `titular`, HU-16)
+
+`backend/ingesta/titular.py` (tarea Celery `titular`, cada 30 min, `soft_time_limit` 120 s / `time_limit`
+180 s; al arrancar se encola con 300 s de espera para leer lo que `avisos`, `lluvia_nacional` y `rios`
+acaban de escribir). Para cada uno de los 24 departamentos y el Callao escribe en **`titular_zona`** una
+frase en lenguaje claro que resume lo que dicen HOY las fuentes oficiales. No baja nada de internet
+salvo, con clave, el pedido al modelo. **No crea alertas** ni decide el nivel: el nivel es el mismo
+semáforo del frontend. 41 pruebas en `test_titular.py`.
+
+**Cómo se arma** (plan de seguridad del informe):
+1. Python calcula los **insumos** por departamento con las mismas reglas del frontend: nivel más alto
+   vigente de `alerta_actual` (la lluvia medida y un río muy bajo, `nivel_bajo`, valen como máximo
+   `aviso`, `_nivel_efectivo`, paridad con `lib/nivel.js`; `sin_dato` si no hay ríos con nivel de alerta
+   ni estaciones con lluvia reciente: nunca "normal" por lo que no se midió), cuántas alertas oficiales,
+   avisos de SENAMHI por color (`aviso_vigente`), ríos que pasaron su nivel y los muy bajos
+   (`caudal_actual`), lluvia de la última hora sobre la referencia (`lluvia_senamhi_actual`), señales del
+   río vigilado (`rio_senal`, como `lib/zonaRio.js`), estado ENFEN (`comunicado_enfen`, como
+   `lib/lenguaje.js`; pasados 16 días se da con su fecha) y la hora de cada fuente; más una **huella**
+   sha256 de los insumos sin las horas.
+2. Con clave de API (`SIMPAC_LLM_KEY` o, si no está, `ANTHROPIC_API_KEY`) se pide **una** redacción por
+   departamento a `POST https://api.anthropic.com/v1/messages` con `urllib` (cabeceras `x-api-key`,
+   `anthropic-version: 2023-06-01`), modelo `SIMPAC_LLM_MODELO` (por defecto
+   `claude-haiku-4-5-20251001`, el Haiku vigente que acepta `temperature = 0`; Haiku 5.5 es más barato
+   pero rechaza con 400 cualquier `temperature` distinta de la de fábrica, así que pasar a él exige
+   quitar el parámetro y perder la salida determinista), `max_tokens` 200, 20 s de tiempo de espera, y
+   **solo si cambió la huella** desde el titular guardado. Pasados 90 s (`PLAZO_S`) no se pide otro, y
+   tras 3 fallas seguidas de la API (red, clave inválida, 429) no se insiste en la corrida.
+3. La respuesta se **valida** (`validar`): texto plano de una línea, 240 caracteres como mucho, sin URL
+   ni dominios, sin emojis ni marcas de formato, empieza con el nombre del departamento, **cada número
+   que trae aparece en los insumos**, no afirma emergencia, desborde, inundación, evacuación, huaico ni
+   víctimas si el nivel calculado no es `emergencia`, no habla de peligro o riesgo sin alertas, nunca
+   dice normal/tranquilo/sin alertas cuando no hay datos (`sin_dato`) ni "sin avisos" cuando los hay.
+   Si falla una regla se descarta (motivo en el latido y en `insumos.llm_descartado`; un texto
+   descartado no se vuelve a pedir hasta que cambien los insumos) y se escribe el de reglas.
+4. **Respaldo determinista** (origen `reglas`, lo que sale sin clave): `titular_reglas` arma la frase
+   con las mismas frases del frontend (nivel más alto vigente, cuántas alertas, el río vigilado si tiene
+   señales, la lluvia medida como "atentos", El Niño en una frase corta). `titular_corto` (columna
+   `titular_corto`, 110 caracteres como mucho, migración `20261020040343`) sale **siempre** por reglas:
+   solo la frase principal (qué hay vigente y de quién: SENAMHI, ANA), sin El Niño, río vigilado ni
+   fuentes; con alertas, lo más grave primero y si no cabe se sueltan las partes de menor nivel desde el
+   final; sin alertas dice qué se revisó ("N ríos de ANA y M estaciones de SENAMHI"). Se escribe en
+   cada corrida, también cuando los insumos no cambiaron (`SQL_SIN_CAMBIO`).
+
+**Garantías:** el modelo no calcula ni decide, solo redacta cifras ya calculadas; `temperature` 0;
+salida validada antes de guardarse; **nunca se borra**: sin clave, o si la API falla, con los mismos
+insumos el titular anterior se conserva intacto (solo se refrescan `detalle`, `insumos` y `revisado_en`)
+y con insumos nuevos se escribe el de reglas (un titular viejo con datos nuevos sería mentir); cada fila
+guarda en `insumos` las cifras, el nivel, la hora de cada fuente y la huella, y en `detalle` la frase
+"Fuentes (hora de Perú): ..."; escrituras en una sola transacción con `pg_advisory_xact_lock(hashtext('titular'))`,
+después de todas las llamadas; la tabla es de lectura pública (datos públicos) y solo escribe el worker.
+
+**Tabla `titular_zona`** (migraciones `20261014154702_titular_zona` y `20261020040343_titular_zona_titular_corto`):
+`departamento` PK (canónico, incluye Callao), `titular` (<= 240), `titular_corto` (<= 110), `detalle`,
+`nivel` (`normal | aviso | alerta | emergencia | sin_dato`), `generado_en` (cuándo se escribió ESTE
+titular), `revisado_en` (última corrida que confirmó que sus insumos siguen iguales), `modelo`, `origen`
+(`llm | reglas`), `insumos` jsonb. RLS, política `lectura publica titular`, SELECT para `anon` y
+`authenticated`.
+
+**Costo estimado con clave** (precios de lista de Haiku 4.5: USD 1 por millón de tokens de entrada y 5
+por millón de salida): cada pedido lleva ~900 a 1200 tokens de entrada (instrucciones + hechos del
+departamento + titular de referencia) y devuelve ~60 a 120 (tope 200): ~USD 0,0015 por pedido. Peor
+caso teórico (los 25 cambian en cada una de las 48 corridas del día): 1200 pedidos, ~USD 1,80 al día
+(~54 al mes). Realista en temporada de lluvias (la lluvia de la última hora cambia los insumos de los
+departamentos lluviosos casi cada corrida; los demás solo cuando entra o sale un aviso o un río cambia
+de estado): 150 a 500 pedidos al día, USD 0,25 a 0,75. En época seca, decenas de pedidos al día
+(centavos). Sin clave el costo es cero y no sale ningún pedido a internet.
+
+**Activar el modelo:** en `.env` de la raíz poner `SIMPAC_LLM_KEY=sk-ant-...` (y opcionalmente
+`SIMPAC_LLM_MODELO`), recrear el worker (`docker compose up -d worker`). Hoy (20-10-2026) está apagado:
+la BD tiene 25 filas, todas origen `reglas`, `titular` de 119 a 234 caracteres y `titular_corto` de 43 a
+100 (p. ej. "Cajamarca: 2 avisos de SENAMHI por lluvias (el más alto, naranja).", "Loreto: aviso
+amarillo de SENAMHI por lluvias y 5 ríos muy bajos según ANA."), niveles 6 alerta, 16 aviso, 2 normal,
+1 sin_dato; última corrida 2026-10-20 00:54 (hora de Lima): 25 departamentos, 20 por reglas, 5 sin
+cambio, 0 fallas, aviso "sin clave de API (SIMPAC_LLM_KEY): titulares por reglas".
+
+**Qué hace el frontend con él** (`lib/queries.js getTitular`, caché de 5 min; `hooks/useZonaAhora.js`):
+el titular de la BD es **opcional**: el semáforo y la instrucción nunca dependen de él. La tarjeta "Tu
+zona ahora" lo usaría en lugar de su frase determinista (`lib/zonaAhora.js titularCorto`) solo si está
+fresco (menos de 90 min desde `revisado_en`), coincide en nivel con el calculado en el navegador, no es
+alerta ni emergencia y mide 110 caracteres o menos. **Pendiente:** `getTitular` todavía pide
+`titular` (no `titular_corto`), así que hoy esa condición nunca se cumple y la tarjeta usa siempre su
+frase determinista; el texto de la BD se ve en la altura completa de la hoja ("Qué dicen las fuentes
+hoy", con la marca "resumen del servidor de SIMPAC" o "redactado automáticamente con las cifras
+oficiales" según `origen`).
+
+Corrida suelta: `docker compose run --rm worker python -m backend.ingesta.titular`. Control:
+```sql
+select departamento, nivel, origen, modelo, generado_en, revisado_en, titular_corto, titular from titular_zona order by nivel desc;
+select ts, resumen->'llm', resumen->'reglas', resumen->'sin_cambio', resumen->'conservados', resumen->'descartados',
+       resumen->'modelo', resumen->'fallas', resumen->'avisos' from latido where servicio = 'titular';
 ```
 
 ### 5.7. IDESEP (SENAMHI) — mapas históricos de eventos El Niño
@@ -1053,6 +1515,12 @@ lectura, estación por estación y en todo el país, con el umbral que da la pro
   "Atentos a la lluvia". **No es un aviso oficial**: es lo que midió una estación. Lo evalúa la
   tarea `lluvia_nacional`.
 - **Aviso oficial** (SENAMHI): eleva el nivel cuando el aviso aplica a la zona.
+- **Río muy bajo** (`nivel_bajo`, vaciante de ANA): sigue en la lista con el rótulo "Río muy bajo",
+  pero en el semáforo vale como máximo `aviso`, igual que la lluvia medida: no enciende el chip, la
+  barra lateral, el modo emergencia ni la instrucción de alejarse de la orilla. Misma regla en
+  `frontend/src/lib/nivel.js` (`nivelEfectivo`) y en `backend/ingesta/titular.py` (`_nivel_efectivo`),
+  desde el 20-10-2026 (hallazgo: Loreto salía en "alerta" por 5 vaciantes y la tarjeta decía "un río
+  pasó su nivel de alerta").
 
 Se retiraron los umbrales provisionales de SIMPAC para la lluvia (20 y 40 mm en 24 h, 15 mm en
 1 h): eran los mismos en todo el país y no se ajustaban a cada lugar (20 mm en 24 h es lluvia
@@ -1060,12 +1528,13 @@ normal en la selva).
 
 Los avisos de SENAMHI llegan como alertas tipo `aviso` (§5.6.1): amarillo = `aviso`, naranja =
 `alerta`, rojo = `emergencia`. El nivel resultante (normal/aviso/alerta/emergencia) alimenta el
-titular, el mapa y la push (Firebase). La lluvia medida va aparte de lo oficial:
+titular y el mapa (y alimentará la push por FCM cuando exista, §10). La lluvia medida va aparte de lo
+oficial:
 - Si la zona está en `aviso` solo por lluvia medida, el rótulo es "Atentos a la lluvia"; con un
   aviso amarillo de SENAMHI además, "Aviso amarillo".
 - No cuenta en la insignia ni en la métrica "alertas y avisos" (en temporada de lluvias serían
   decenas de estaciones).
-- **No dispara una push como alerta**: el snapshot la marca `oficial: false` (§8).
+- **No deberá disparar una push como alerta** cuando haya push: el snapshot la marca `oficial: false` (§8).
 
 En fase 2 se **cruza con los reportes ciudadanos** para ponderar su confianza (un reporte en zona
 con alerta oficial pesa más).
@@ -1100,8 +1569,13 @@ acumulación propia en la BD) se puede:
    ríos), `icen_serie`, `fallas`, `avisos`. Corrida suelta: `docker compose run --rm worker python -m backend.ingesta`.
 
 **Tareas del worker** (`backend/celery_app.py`; todas menos `refresh_cache` también corren al
-arrancar, porque el beat pierde su programación al recrear el contenedor). Cada una deja su latido
-en la tabla `latido` (servicio = nombre de la tarea) con lo que escribió, `fallas` y `avisos`:
+arrancar, porque el beat pierde su programación al recrear el contenedor; `titular` arranca con 300 s
+de espera). Cada una deja su latido en la tabla `latido` (servicio = nombre de la tarea) con lo que
+escribió, `fallas` y `avisos`. Corrida del 20-10-2026 al reconstruir (celery 5.6.3, 9 tareas
+registradas, sin ningún Traceback): nowcast 2,7 s, pronostico 2,9 s (277 localidades, 831 filas), rios
+4,3 s (1695 filas, 9 vigentes, 0 indeterminados), lluvia_nacional 4,9 s (154 estaciones, 6 lloviendo),
+enfen 5,7 s (CO 18-2026), avisos 7,1 s (4 vigentes, 38 alertas), ingesta 11,2 s (973 estaciones, 720
+de lluvia, 127 caudales, 5 alertas), refresh_cache 1,2 s, titular a los 5 min (25 departamentos):
 
 | Tarea | Cada | Qué hace |
 |---|---|---|
@@ -1111,7 +1585,8 @@ en la tabla `latido` (servicio = nombre de la tarea) con lo que escribió, `fall
 | `lluvia_nacional` | 30 min | lluvia de la última hora en ~216 estaciones del país + alertas de lluvia con la referencia de SENAMHI (§5.6.2) |
 | `pronostico` | 1 h | pronóstico oficial de SENAMHI en ~277 localidades, 3 a 5 días (§5.6.4); límite de 300 s |
 | `nowcast` | 10 min | nowcasting de SENAMHI para ahora, +1 h y +2 h (§5.6.5); límite de 240 s y `expires` de 540 s |
-| `rios` | 1 h | avisos hidrológicos de SENAMHI: la lista del país y el detalle de los avisos vigentes de los ríos vigilados (hoy el Mashcón), para las señales de la zona que un río podría afectar (§5.6.7); límite de 240 s. No crea alertas |
+| `rios` | 1 h | avisos hidrológicos de SENAMHI: la lista del país y el detalle de todos los avisos vigentes (los de los ríos vigilados primero, 10 por corrida), con su sentido crecida/descenso, para las señales del Mashcón (`rio_senal`) y de los ríos del país (`rio_cauce_senal`) (§5.6.7); límite de 240 s. No crea alertas |
+| `titular` | 30 min | titular en lenguaje claro por departamento (tabla `titular_zona`, 24 + Callao) a partir de `alerta_actual`, `caudal_actual`, `lluvia_senamhi_actual`, `aviso_vigente`, `rio_senal` y `comunicado_enfen`; con `SIMPAC_LLM_KEY` lo redacta un modelo de lenguaje a partir de cifras ya calculadas y se valida, si no, reglas fijas (origen `reglas`); `titular_corto` siempre por reglas (§5.6.10); límite de 120 s (deja de pedir al modelo a los 90 s). No crea alertas |
 | `refresh_cache` | 5 min | snapshot en Redis para la API |
 
 **Despliegue de avisos con ícono, pronóstico y nowcasting**, en este orden (todo es aditivo: si
@@ -1128,15 +1603,42 @@ algo sale mal, el worker y el frontend anteriores siguen funcionando):
 4. El frontend, **solo después** del paso 1: pide las columnas nuevas de `aviso_vigente` (si no
    existen, vuelve a las de antes una vez por sesión y el mapa va sin insignias) y las vistas nuevas.
 
-**BD:** la estructura está en `supabase/migrations/` (historia) y `supabase/schema.sql` (foto).
-`lectura_caudal` es el historial; la vista **`caudal_actual`** da la última lectura de ayer u
+**BD:** la estructura está en `supabase/migrations/` (historia, 32 archivos) y `supabase/schema.sql`
+(foto). `lectura_caudal` es el historial; la vista **`caudal_actual`** da la última lectura de ayer u
 hoy de cada estación (es la que usan el mapa y el snapshot). La vista **`alerta_actual`** da las
 alertas que se muestran: las vigentes, y la lluvia medida solo con 3 h o menos (§5.6.2); la leen el
-frontend y el snapshot, no la tabla `alerta`. El frontend lee también `aviso_vigente` (con ícono y
-anclas), `pronostico_vigente` (hoy, mañana y pasado), `nowcast_estado` / `nowcast_vigente` (el
-umbral de 30 min está en la vista) y, para los ríos vigilados (§5.6.7), `rio_vigilado_mapa`,
-`rio_zona_mapa`, `rio_senal` y la tabla `rio_incidente`; con sesión, `preferencia_mapa`. Todo
-cambio de BD va como migración nueva.
+frontend y el snapshot, no la tabla `alerta`. Todo cambio de BD va como migración nueva.
+
+Qué lee el frontend (`frontend/src/lib/queries.js`, columnas siempre explícitas; en la primera carga
+del inicio son 19 consultas REST a 17 vistas o tablas, ninguna repetida, medidas el 20-10-2026):
+- Mapa e inicio: `estacion`, `caudal_actual`, `indice`, `icen_serie`, `comunicado_enfen`, `latido`,
+  `alerta_actual`, `aviso_vigente` (con ícono y anclas), `pronostico_vigente` (hoy, mañana y pasado),
+  `nowcast_estado` / `nowcast_vigente` (el umbral de 30 min está en la vista), `lluvia_senamhi_actual`,
+  `lectura_lluvia` (24 h de Cajamarca), `mapa` (FEN y mensual), `report` (reportes vigentes).
+- Ríos vigilados (§5.6.7): `rio_vigilado_mapa`, `rio_zona_mapa`, `rio_senal` y la tabla
+  `rio_incidente`. Ríos del país (§5.6.8): `rio_cauce_mapa` (todo con `cauce_lejos`; `cauce` por río)
+  y `rio_cauce_senal`. A dónde acudir (§5.6.9): tabla `punto_acudir` por caja de la vista. Titular
+  (§5.6.10): tabla `titular_zona` por departamento.
+- Páginas: Alertas = `alerta_actual` + `aviso_vigente` + ríos vigilados; "Pasadas" = la tabla `alerta`
+  entre dos fechas de Perú (máximo 30 días, hasta 500 filas; **no existe** una vista `alerta_historial`);
+  Histórico = `lectura_caudal` (por estación y río, umbrales de `caudal_actual`) y `lectura_lluvia`
+  (por `cod`); Comunidad = `report`, `voto` (los propios), `comentario`; Chat = `message` por zona
+  (= departamento) con Realtime (`postgres_changes` sobre la publicación `supabase_realtime`, que
+  respeta la RLS) más un sondeo cada 10 s para los vencimientos; Cuenta = `perfil` (nombre,
+  reputación, `zona` como punto de la ciudad) y `rpc('mis_reportes')`; con sesión, `preferencia_mapa`.
+- Storage: la foto opcional de un reporte va al bucket público **`reportes`** en `<uid>/<archivo>.jpg`
+  (reducida a 1280 px en el navegador; límite 3 MB; solo `image/jpeg`, `image/png`, `image/webp`) y
+  su URL pública queda en `report.foto_url`.
+
+**Despliegue del 14-10-2026 y del 20-10-2026** (todo aditivo; registrado en
+`supabase_migrations.schema_migrations`): `20261014105232_comunidad_fotos_y_chat_realtime` (bucket
+`reportes` y `message` en Realtime), `20261014105838_punto_acudir`, `20261014110044_rio_cauce`,
+`20261014154702_titular_zona`; cargas únicas `cargar_acudir --aplicar` y `cargar_cauces --aplicar`;
+y, tras la verificación adversarial del 19/20-10-2026, `20261020035127_report_foto_solo_bucket`,
+`20261020040341_aviso_hidrologico_sentido_indeterminado` y `20261020040343_titular_zona_titular_corto`.
+La BD de Supabase estuvo pausada del 15 al 19-10-2026 (plan gratuito) y se reanudó el 19-10 a las
+22:10; worker y API se reconstruyeron el 19-10 a las 22:19 y los tres contenedores (con el frontend)
+el 20-10 a las 00:49, hora de Lima.
 
 ### 7.2. Prototipo (sin dependencias, congelado)
 
@@ -1185,9 +1687,9 @@ Stack completo en `docker-compose.yml` (4 servicios):
 
 | Servicio | Qué es | Puerto |
 |---|---|---|
-| `frontend` | React build servido por **nginx** | 8080 |
-| `backend` | API **FastAPI async** (`backend/app.py`) | 8000 |
-| `worker` | **Celery + beat**: ingesta horaria, ENFEN cada 6 h, avisos SENAMHI, lluvia nacional, pronóstico por localidad, nowcasting, avisos hidrológicos de los ríos vigilados, refresco de caché | — |
+| `frontend` | React build servido por **nginx** (gzip precomprimido, caché inmutable de `/assets/`, CSP; §8.2) | 8080 |
+| `backend` | API **FastAPI async** (`backend/app.py`), CORS solo para los orígenes de SIMPAC | 8000 |
+| `worker` | **Celery + beat**: ingesta horaria, ENFEN cada 6 h, avisos SENAMHI, lluvia nacional, pronóstico por localidad, nowcasting, avisos hidrológicos, titular por departamento cada 30 min, refresco de caché | — |
 | `redis` | caché (snapshot) + cola/broker de Celery | 6379 |
 
 ### ¿Por qué esta arquitectura? (van a entrar varias personas a la vez)
@@ -1236,6 +1738,17 @@ docker compose up --build
 - **Async / rendimiento:** la API es async (`httpx.AsyncClient` + `redis.asyncio`, consultas en
   paralelo con `asyncio.gather`) y sirve el snapshot **cacheado en Redis**: sus clientes no golpean
   Supabase en cada request (la web, en cambio, lee Supabase directo).
+- **CORS** (desde el 14-10-2026; `backend/config.py origenes_cors`, 6 pruebas en `test_app.py`): la
+  API responde solo a los orígenes de `SIMPAC_CORS_ORIGENES` (lista separada por comas; vacío = `http://localhost:8080`,
+  `http://localhost:5173`, `https://localhost` y `capacitor://localhost`, la web de Docker, Vite y la app
+  Android; un `*` se ignora) y solo `GET`. En producción poner el dominio de la web. Comprobación:
+  `curl -sI -H 'Origin: https://ejemplo.com' http://localhost:8000/health` no trae
+  `Access-Control-Allow-Origin` y con `-H 'Origin: http://localhost:8080'` sí (`/health` responde
+  `{"ok":true,"service":"simpac-api"}` con `Vary: Origin`; `/api/snapshot`, 46 KB en 0,03 s el
+  20-10-2026).
+- **Imagen del frontend:** `frontend/Dockerfile` compila con `node:20-alpine`; `@supabase/supabase-js`
+  2.116 declara `node >= 22` y npm lo avisa (`EBADENGINE`), pero compila y corre igual. Conviene subir
+  a `node:22-alpine` (pendiente, §10). La app Android pide Node 22 (`appmobile/README.md`).
 - El frontend recibe las llaves públicas por *build-args*; `SUPABASE_DB_URL` (secreto) solo lo usa
   el worker vía `.env` (nunca en git, ni en la imagen, ni en el contenedor de la API).
 - **`SUPABASE_DB_URL` debe ser la del pooler** (`...pooler.supabase.com:5432`, usuario
@@ -1256,10 +1769,17 @@ sin `--aplicar`, los cargadores solo validan y muestran el resumen):
 docker compose run --rm worker python -m backend.mapas.cargar_fen --aplicar    # mapas El Niño (§5.7)
 docker compose run --rm worker python -m backend.mapas.cargar_rios             # río vigilado, en seco (§5.6.7)
 docker compose run --rm worker python -m backend.mapas.cargar_rios --aplicar   # río vigilado, escribe
+docker compose run --rm worker python -m backend.mapas.cargar_cauces --desde-copia           # ríos del país, en seco (§5.6.8)
+docker compose run --rm worker python -m backend.mapas.cargar_cauces --desde-copia --aplicar # ríos del país, escribe
+docker compose run --rm worker python -m backend.mapas.cargar_acudir                         # a dónde acudir, en seco (§5.6.9)
+docker compose run --rm worker python -m backend.mapas.cargar_acudir --aplicar               # a dónde acudir, escribe
 docker compose run --rm worker python -m backend.ingesta.rios                  # una corrida de la tarea 'rios'
+docker compose run --rm worker python -m backend.ingesta.titular               # una corrida de la tarea 'titular' (§5.6.10)
 ```
 Las demás tareas se corren igual (`python -m backend.ingesta`, `.enfen`, `.avisos`,
-`.lluvia_nacional`, `.pronostico`, `.nowcast`); la tabla está en el `README.md` de la raíz.
+`.lluvia_nacional`, `.pronostico`, `.nowcast`); la tabla está en el `README.md` de la raíz. Los datos
+de `backend/data/` (cauces, acudir, ríos vigilados, localidades) viajan en la imagen del worker: tras
+cambiarlos, reconstruirla.
 
 > **Gotcha (worker + Redis):** un cliente `redis.asyncio` ata su pool al event loop donde se usa
 > primero. El worker corre cada tarea con `asyncio.run()` (loop nuevo y cerrado en cada corrida),
@@ -1293,6 +1813,115 @@ Las demás tareas se corren igual (`python -m backend.ingesta`, `.enfen`, `.avis
   rechaza esas escrituras. También quedan la extensión en `public` y `st_estimatedextent`.
 - **La ingesta escribe con el rol `postgres`** (dueño de las tablas) vía `SUPABASE_DB_URL`;
   `service_role` no tiene permisos de escritura en estas tablas.
+- **Tablas nuevas del 14-10-2026** (`rio_cauce`, `punto_acudir`, `titular_zona`): RLS activo, `revoke
+  all` para `anon` y `authenticated` y una sola política de SELECT público (`lectura publica rio
+  cauce`, `lectura publica punto acudir`, `lectura publica titular`); escriben solo los cargadores y el
+  worker con el rol `postgres`. Las vistas `rio_cauce_mapa` y `rio_cauce_senal` son `security_invoker`
+  con SELECT para los dos roles. Verificado en `pg_policies` e `information_schema.role_table_grants`
+  el 20-10-2026.
+- **Cuentas (Supabase Auth):** correo y contraseña, con confirmación por correo (`signUp` devuelve
+  `confirmar` cuando no hay sesión hasta abrir el enlace; la página lo dice y también cuando el correo
+  ya tenía cuenta, sin revelar cuál), "olvidé mi contraseña" por `resetPasswordForEmail` y contraseña
+  nueva al volver del correo (`lib/sesion.js`). El perfil (`perfil`) lo crea un trigger al registrarse y
+  solo lo lee y edita su dueño (`perfil propio select/update`). Al 20-10-2026 no hay ninguna cuenta
+  creada (0 filas en `auth.users`, `perfil`, `report` y `message`). Pendiente: registrar las Redirect
+  URLs de producción y de la app en el panel de Auth (hoy solo funcionan las de localhost).
+- **Foto de un reporte** (migración `20261020035127_report_foto_solo_bucket`, hallazgo de la
+  verificación del 19-10-2026: `report.foto_url` aceptaba cualquier URL https y la tarjeta la pintaba
+  como enlace e imagen): ahora el CHECK `report_foto_url_check` exige la URL pública del bucket
+  `reportes` de este proyecto con carpeta `<uuid>` y extensión jpg/jpeg/png/webp, y el trigger
+  `report_foto_validar` (función en el esquema `privado`, `security definer`) comprueba que la carpeta
+  sea el autor del reporte y que el archivo exista en `storage.objects`. Probado con 12 casos en una
+  transacción revertida. El bucket es público de lectura, sube solo `authenticated` dentro de su propia
+  carpeta (`reportes foto sube autor`), y no hay políticas de update ni delete: una foto no se cambia
+  ni se borra desde el cliente.
+- **Chat en tiempo real:** `message` está en la publicación `supabase_realtime`; `postgres_changes`
+  respeta la RLS (solo con sesión y solo los mensajes vigentes, `msg lectura vigente`) y la tabla no
+  expone su posición.
+- **API y nginx:** CORS cerrado a los orígenes de SIMPAC (§8); nginx manda CSP (`default-src 'self'`,
+  scripts solo propios, estilos propios e inline más Google Fonts, imágenes y conexiones solo a
+  Supabase, también `wss:` para la sesión y el chat, Stadia, NASA GIBS e IDESEP, `data:`/`blob:` para
+  los glifos; `frame-ancestors 'self'`, `object-src 'none'`), `X-Content-Type-Options: nosniff`,
+  `X-Frame-Options: SAMEORIGIN`, `Referrer-Policy: strict-origin-when-cross-origin` y `access_log off`
+  (no se guardan direcciones IP). Si se suma un dominio externo nuevo hay que agregarlo a la CSP en
+  los tres bloques del `nginx.conf`.
+- **Service worker** (`public/sw.js`, registrado por `src/pwa.js` solo en producción y fuera de
+  Capacitor): guarda la cáscara de la app (`/assets/`, `index.html`, manifest), nunca datos de Supabase
+  ni tiles; sin red la app lo dice. Nota: en el navegador integrado del asistente el registro falló
+  ("An unknown error occurred when fetching the script") aunque nginx sirve `/sw.js` con 200; no se
+  pudo confirmar en Chrome (pendiente).
+
+### 8.2. Entrega del frontend: nginx, PWA y mapa base
+
+`frontend/nginx.conf` (desde el 14-10-2026; validar sin reconstruir con
+`docker run --rm -v "$PWD/frontend/nginx.conf:/etc/nginx/conf.d/default.conf:ro" nginx:alpine nginx -t`):
+- **Compresión:** `gzip on` + `gzip_static on`. El build deja un `.gz` al lado de cada `.js`, `.css`,
+  `.svg`, `.json`, `.html` y `.webmanifest` de 1 KB o más (plugin `precomprimir` de `vite.config.js`,
+  `zlib` de Node, sin dependencias), así nginx lo sirve sin comprimir en cada visita. Medido el
+  20-10-2026 con `curl -sI -H "Accept-Encoding: gzip, br"`: `index-*.js` 445 544 -> 154 838 bytes
+  (34,8 %), `supabase-*.js` 58 855, `react-*.js` 45 378, `leaflet-*.js` 43 143, `index-*.css` 19 666,
+  iguales a los `.gz` del build. Brotli no se sirve (nginx:alpine no trae el módulo).
+- **Caché:** `/assets/` (nombres con hash) un año, `public, max-age=31536000, immutable`; `index.html`,
+  `manifest.webmanifest` y `sw.js` siempre `no-cache`; `/assets/noexiste.js` da 404 (nunca `index.html`
+  con tipo de script); cualquier ruta de la SPA (`/alertas`, `/cuenta`...) cae en `index.html`.
+- **Chunks:** `react`, `leaflet` y `supabase` van en archivos propios (`manualChunks`): un cambio en el
+  código de SIMPAC invalida solo `index-*.js` (155 KB gzip) y no los ~148 KB gzip de los vendors. Build
+  del 20-10-2026: 1801 módulos en 9,4 s; páginas perezosas Alertas 16,3 kB, Historico 15,1, Cuenta
+  11,8, ReporteNuevo 7,1, Chat 6,0, Comunidad 2,8 kB.
+- `index.html` lleva `preconnect` a Supabase (la URL la inyecta Vite con `%VITE_SUPABASE_URL%`),
+  Stadia y Google Fonts, las fuentes por `<link>`, el manifest y `theme-color`. PWA:
+  `public/manifest.webmanifest`, `public/iconos/` (192, 512 y 512 maskable) y `public/sw.js`.
+- **Mapa base: Stadia Maps**, estilo Alidade Smooth (`https://tiles.stadiamaps.com/tiles/alidade_smooth/{z}/{x}/{y}{r}.png`,
+  `src/map/baseMap.js`). Sirve sin llave a `localhost` (la web de Docker y la app Android, que corre en
+  `https://localhost`); en un dominio real hace falta su API key gratuita (`?api_key=...`) o cambiar la
+  base a OpenStreetMap/CARTO con su atribución. La atribución es un control propio (`Atribucion`,
+  `src/map/atribucion.js`): en pantallas más angostas que `lg` una sola línea "© Stadia Maps ·
+  OpenMapTiles · OSM · Datos: SENAMHI, ANA" con un botón "más" que despliega el texto completo con sus
+  enlaces (arreglo del 20-10-2026: antes ocupaba 2 o 3 líneas a todo el ancho sobre la hoja); desde
+  `lg`, el texto completo de siempre.
+
+### 8.3. App Android (Capacitor)
+
+La app Android es la misma web empaquetada con **Capacitor 8.5.3**: un proyecto Android nativo
+(`frontend/android/`, generado por Capacitor y versionado) que abre la build de Vite dentro de un
+WebView del sistema. El detalle de requisitos, firma y publicación está en `appmobile/README.md`; aquí
+lo que un desarrollador necesita saber:
+- **Configuración:** `frontend/capacitor.config.json`: `appId` `pe.simpac.app`, `appName` `SIMPAC`,
+  `webDir` `dist`, `androidScheme: https` (la web corre en `https://localhost`, por eso Stadia sirve sin
+  llave y `capacitor://localhost` y `https://localhost` están en el CORS de la API), `allowMixedContent`
+  false, pantalla de inicio y barra de estado en `#0f172a`. Versiones de Android en
+  `frontend/android/variables.gradle`: `minSdk 24` (Android 7.0, el mínimo de Capacitor 8),
+  `targetSdk 36`, `compileSdk 36`. Plugins: `@capacitor/geolocation` (el GPS; `hooks/useGeolocation.js`
+  lo usa por import dinámico y en la web usa `navigator.geolocation`), `app`, `splash-screen`,
+  `status-bar`. Permisos: `INTERNET`, `ACCESS_COARSE_LOCATION`, `ACCESS_FINE_LOCATION` (solo en primer
+  plano). El service worker no se registra dentro de la app.
+- **Comandos** (desde `frontend/`, `package.json`): `npm run android:sync` (build + `npx cap sync
+  android`; hay que correrlo cada vez que cambia la web), `android:apk` (`gradlew assembleDebug`, APK de
+  prueba), `android:aab` (`gradlew bundleRelease`, para Play Console), `android:apk:release`,
+  `android:open` (Android Studio), `android:run`. Requisitos: Node 22, JDK 21, Android SDK con
+  `platforms;android-36` y `build-tools;36.0.0`, `JAVA_HOME` y `ANDROID_HOME`; `frontend/.env` con las
+  llaves públicas de Supabase (Vite las mete en el bundle). Desde Git Bash `cmd //c gradlew.bat` no
+  encuentra el script (conversión de rutas de MSYS): usar PowerShell o `./gradlew.bat`.
+- **Compilación verificada el 20-10-2026** (Windows, PowerShell): `npm run build` 9,4 s, `npx cap sync
+  android` 1,7 s, `gradlew assembleDebug` 9 s con el daemon caliente (214 tareas) ->
+  `frontend/android/app/build/outputs/apk/debug/app-debug.apk`, 5 304 253 bytes (5,06 MiB). El primer
+  intento falló en `:app:mergeDebugAssets` con "Duplicate resources": los `.gz` que deja el plugin
+  `precomprimir` de Vite los copia `cap sync` a `assets/public/` y AAPT los toma como duplicados; se
+  excluyen con `!*.gz` en `ignoreAssetsPattern` de `frontend/android/app/build.gradle` (el WebView no
+  los necesita). Probada en el emulador `Pixel_7a` (Google Play x86_64) sin ventana: con los 2 GB por
+  defecto Android mata la app por memoria; con `-memory 3072` carga el mapa con sus tiles, el chip de
+  nivel, el río Mashcón y la barra inferior.
+- **Firma:** la release se firma con un keystore propio que no va al repo (`key.properties`, `*.jks` y
+  `*.keystore` en `.gitignore`); `build.gradle` lee `frontend/android/key.properties` o, si no existe,
+  las variables `SIMPAC_KEYSTORE_FILE`, `SIMPAC_KEYSTORE_PASSWORD`, `SIMPAC_KEY_ALIAS`,
+  `SIMPAC_KEY_PASSWORD`; sin ninguna de las dos el release se compila sin firmar (el debug usa la llave
+  de depuración). `versionCode 1`, `versionName "1.0"`: subirlos antes de cada publicación.
+- **Límites:** es un WebView, no una interfaz nativa (el rendimiento del mapa es el del navegador del
+  teléfono). Sin notificaciones push todavía (`@capacitor/push-notifications` + FCM; el
+  `google-services.json` no está y queda fuera del repo). Sin conexión no hay datos, igual que la web.
+  Ícono adaptable propio (gota blanca sobre azul oscuro) para Android 8+; la pantalla de inicio sigue
+  siendo la de Capacitor. No publicada en Google Play (requiere cuenta de desarrollador, política de
+  privacidad pública y cuestionarios de contenido; pasos en `appmobile/README.md`).
 
 ---
 
@@ -1311,10 +1940,17 @@ scraping HTML/PDF.**
 | SENAMHI avisos | scraping de tabla + WFS de la GeoServer | polígonos por WFS; párrafos de la página de vigentes (§5.6.1) |
 | SENAMHI pronóstico por localidad | scraping de una página HTML | una petición por hora; coordenadas de un catálogo propio (§5.6.4) |
 | SENAMHI nowcasting | visor HTML + WFS de la GeoServer | en serie y con pausas; experimental (§5.6.5) |
-| SENAMHI avisos hidrológicos | scraping de una página HTML | la lista una vez por hora; el detalle solo de los avisos vigentes de los ríos vigilados (§5.6.7) |
+| SENAMHI avisos hidrológicos | scraping de una página HTML | la lista una vez por hora; el detalle de los avisos vigentes del país (los de los ríos vigilados primero, 10 por corrida) (§5.6.7) |
 | ANA faja marginal y emergencias hídricas | ArcGIS REST (GeoSNIRH) | carga única de un río vigilado, no en la ingesta (§5.2) |
 | OpenStreetMap (trazo de un río) | API 0.6 por way | carga única; Overpass no se usa en vivo (§5.6.7) |
+| ANA ríos del país (GeoSNIRH, RJ056 e IGN) | ArcGIS REST `f=geojson`, filtro por punto y paginación | carga única de los cauces con `cargar_cauces` (§5.6.8), copias en `backend/data/cauces/` |
+| SUSALUD RENIPRESS | CSV mensual abierto (datosabiertos.gob.pe, ODC-By) | carga única de los establecimientos de salud con `cargar_acudir` (§5.6.9) |
+| CENEPRED COEN_FEN_2027 (comisarías y bomberos) | ArcGIS REST `f=geojson`, público y sin token | puntos del padrón MININTER 2019 y de las compañías de bomberos (§5.6.9) |
+| CGBVP directorio | API interna del portal (JSON; exige cabeceras de navegador) | dirección y teléfono de cada compañía (§5.6.9) |
+| gob.pe (INDECI, municipalidad, GORE, números de emergencia) | fichas HTML, capturadas a mano con fecha de verificación | Defensa Civil y `numeros.json` (§5.6.9) |
 | CENEPRED | ArcGIS REST | referencia; SIGRID pide token (§5.5) |
+| Stadia Maps (mapa base) | tiles raster, sin llave en `localhost` | API key gratuita en un dominio real (§8.2) |
+| API de Anthropic (titular, opcional) | `POST /v1/messages` con `urllib`, solo con `SIMPAC_LLM_KEY` | no es una fuente de datos: redacta cifras ya calculadas y se valida (§5.6.10) |
 
 Reglas:
 - **Backend como proxy** siempre (evita CORS y mixed-content; obligatorio para IGP).
@@ -1368,7 +2004,10 @@ Reglas:
       el navegador (`preferencia_mapa` lista para cuando haya sesión).
 - [ ] **Otros ríos vigilados:** el Chonta, el San Lucas y el Namora (estación SENAMHI 220206, también con
       avisos hidrológicos). Es sumar una carpeta en `backend/data/rios/` y cargarla.
-- [ ] **Inicio de sesión** (Supabase Auth): sin él no se usa `preferencia_mapa` (ni los reportes).
+- [x] **Inicio de sesión** (Supabase Auth, 14-10-2026): páginas Cuenta (entrar, crear cuenta con
+      confirmación por correo, contraseña olvidada), Comunidad (reportes con foto al bucket `reportes`,
+      votos, comentarios), Chat por departamento (Realtime) e Histórico; `preferencia_mapa` ya se usa con
+      sesión.
 - [ ] **Decisiones abiertas de los ríos vigilados** (del usuario):
   - ODbL: el trazo de OSM y lo derivado de él se leen por la API pública, así que hay que ofrecerlos
     bajo ODbL con atribución, o pasar a un cauce derivado de Copernicus (mediana de 17 m de OSM).
@@ -1377,8 +2016,43 @@ Reglas:
     señales) debe verse siempre desde zoom 13.
 - [ ] **Tramos críticos de ANA** junto a los ríos vigilados: hoy fuera (están en los afluentes y los
       conjuntos de datos no coinciden, §5.2).
+- [x] **Ríos del país con trazo** (§5.6.8, 14-10-2026): 100 ríos de ANA - GeoSNIRH en `rio_cauce`, capa
+      `rio` con detalle por zoom, rótulos y aura en alerta; sentido crecida/descenso de los avisos
+      hidrológicos con detalle de todos los vigentes y trigger en la BD (20-10-2026).
+- [x] **A dónde acudir** (§5.6.9, 14-10-2026): 12 915 puntos de salud, comisarías, bomberos y Defensa
+      Civil en `punto_acudir`, capa por caja de la vista y tarjeta con los 3 más cercanos.
+- [x] **Titular interpretado por departamento** (§5.6.10, HU-16, 14-10-2026): tarea `titular`, tabla
+      `titular_zona` con `titular_corto` (20-10-2026); el modelo de lenguaje queda apagado hasta poner
+      `SIMPAC_LLM_KEY`.
+- [x] **Inicio "Tu zona ahora"** (14-10-2026): hoja inferior de 4 alturas (plegada en celular desde el
+      20-10), semáforo, titular corto, chips de distancia al río, medidor de caudal, lluvia de 24 h,
+      modo emergencia con 105/116, onboarding del GPS.
+- [x] **Rendimiento y entrega** (14-10-2026): nginx con gzip precomprimido, caché inmutable y CSP (§8.2),
+      chunks de vendors, PWA, consultas del inicio en una sola ola (19 REST, titular visible a los 468 ms
+      con assets en caché el 20-10-2026).
+- [x] **App Android** (§8.3, 14-10-2026): Capacitor, APK de prueba compilado y probado en emulador el
+      20-10-2026; falta firmar y publicar.
+- [ ] **Cargar los 4 ríos nuevos de ANA** (Quiroz, Sisa, Yauca, Acarí; copias ya en
+      `backend/data/cauces/`): `cargar_cauces --desde-copia --aplicar` (§5.6.8).
+- [ ] **`titular_corto` en la tarjeta:** `lib/queries.js getTitular` debe pedir `titular_corto` para que la
+      tarjeta "Tu zona ahora" use el texto de la BD (hoy ninguno de los 25 `titular` cabe en 110
+      caracteres y siempre se muestra la frase determinista, §5.6.10).
+- [ ] **Activar el modelo del titular** (`SIMPAC_LLM_KEY`) si el equipo lo decide; costo estimado en
+      §5.6.10.
+- [ ] **Auth en producción:** Redirect URLs del dominio real y de la app en el panel de Supabase Auth;
+      política de privacidad pública (también la pide Google Play).
+- [ ] **Push** (web y app): `@capacitor/push-notifications` + FCM y una tarea del worker que avise cuando
+      entra un aviso de nivel 3 o 4 del departamento elegido, solo con lo oficial.
+- [ ] **Firmar y publicar la app** en Google Play (upload key, AAB, ficha, cuestionarios; `appmobile/README.md`).
+- [ ] `frontend/Dockerfile` a `node:22-alpine` (supabase-js 2.116 pide Node 22; hoy solo es un aviso de npm).
+- [ ] **A dónde acudir:** albergues y zonas seguras oficiales (mesa de partes de la municipalidad), número
+      del COER Cajamarca, servidores de INDECI caídos; refrescar RENIPRESS cada mes (`--descargar`).
+- [ ] Confirmar en Chrome el registro del service worker (en el navegador integrado del asistente falló).
+- [ ] **Recargar cauces y acudir en la imagen del worker** cada vez que cambien los datos de `backend/data/`.
 
 ---
 
-*Endpoints capturados por inspección de red de sitios públicos el 2026-09-06. Sujetos a
-cambios del lado de cada organismo; por eso cada fuente vive en su propio conector con tests.*
+*Endpoints capturados por inspección de red de sitios públicos el 2026-09-06; GeoSNIRH, RENIPRESS,
+CENEPRED, CGBVP y gob.pe verificados el 2026-10-14. Documento actualizado el 2026-10-14 con la
+verificación y los arreglos del 19 y 20-10-2026. Sujetos a cambios del lado de cada organismo; por eso
+cada fuente vive en su propio conector con tests.*

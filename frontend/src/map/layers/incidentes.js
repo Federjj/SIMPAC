@@ -3,7 +3,7 @@ import { TriangleAlert } from "lucide-react";
 import { getReportesVigentes } from "@/lib/queries";
 import { REPORT_TYPE, REPORT_TYPES } from "@/lib/reportTypes";
 import { horaPeru } from "@/lib/tiempo";
-import { SVG, markerIcon, popupHtml } from "../markers";
+import { SVG, escapeHtml, markerIcon, popupHtml } from "../markers";
 
 const ESTADO = { sin_confirmar: "Sin confirmar", confirmado: "Confirmado", descartado: "Descartado" };
 
@@ -37,7 +37,10 @@ export default {
               ["Vence", horaPeru(r.expira_en)],
             ],
             nota: r.descripcion,
-          })
+          }) +
+            // detalle del reporte (/comunidad/:id, votos y comentarios); Mapa.jsx navega los
+            // <a data-ruta> de los popups sin recargar la página
+            `<div class="pop"><p class="enl"><a data-ruta href="/comunidad/${escapeHtml(encodeURIComponent(r.id))}">Ver detalle, votar y comentar</a></p></div>`
         )
         .addTo(group);
     }

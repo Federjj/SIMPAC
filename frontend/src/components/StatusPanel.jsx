@@ -1,42 +1,39 @@
-import { useEffect, useRef, useState } from "react";
-import { ChevronDown, ChevronRight, ChevronUp, Droplets, Megaphone, Plus, ShieldAlert, TriangleAlert, Waves } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { ChevronDown, ChevronRight, ChevronUp, Droplets, LifeBuoy, Megaphone, Plus, ShieldAlert, TriangleAlert, Waves } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { NIVEL } from "@/lib/nivel";
-import { ENFEN_HEX, NIVEL_HEX, ZONA_HEX } from "@/map/palette";
-import { horaPeru } from "@/lib/tiempo";
+import { NIVEL_HEX, ZONA_HEX, ENFEN_HEX } from "@/map/palette";
 import { fraseCorta } from "@/lib/zonaRio";
 import { ATRIBUCION_SENAMHI } from "@/map/senamhi";
-import FranjaPronostico, { FranjaMini } from "@/components/FranjaPronostico";
+import FranjaPronostico from "@/components/FranjaPronostico";
+import DiaSelector from "@/components/DiaSelector";
+import TuZona from "@/components/TuZona";
+import MedidorCaudal from "@/components/MedidorCaudal";
+import BarrasLluvia from "@/components/BarrasLluvia";
+import AcudirCercanos from "@/components/AcudirCercanos";
+import { useAltoHoja } from "@/hooks/useAltoHoja";
 
 const COLOR_AVISO = { aviso: "amarillo", alerta: "naranja", emergencia: "rojo" };
-// el río en una línea, con el panel plegado
-const RIO_CORTO = { atentos: "atentos, hay señales en su cuenca", alerta: "en alerta", emergencia: "en emergencia" };
 const URL_AVISO = (referencia) =>
   referencia === "SENAMHI lluvia 24h"
     ? "https://www.senamhi.gob.pe/?p=aviso-24H"
     : "https://www.senamhi.gob.pe/?p=aviso-meteorologico";
 
-function Metric({ Icon, color, value, label, title }) {
-  return (
-    <div
-      title={title}
-      className="flex min-w-0 flex-1 flex-col gap-1.5 rounded-xl border border-border bg-card p-2.5 sm:flex-row sm:items-center sm:gap-3 sm:p-3.5"
-    >
-      <div
-        className="grid h-8 w-8 shrink-0 place-items-center rounded-lg text-white sm:h-9 sm:w-9"
-        style={{ background: color }}
-      >
-        <Icon className="h-4 w-4 sm:h-[18px] sm:w-[18px]" />
-      </div>
-      <div className="min-w-0 leading-tight">
-        <div className="break-words text-sm font-semibold sm:text-base">{value}</div>
-        <div className="line-clamp-2 text-[0.68rem] text-muted-foreground sm:text-[0.72rem]">{label}</div>
-      </div>
-    </div>
-  );
-}
+// Las cuatro alturas de la hoja (Material: hoja estándar expansible; el mapa sigue vivo detrás):
+//   plegado   lo mínimo para leer en 5 segundos: semáforo, titular, instrucción (en alerta o
+//             emergencia), fuente y hora y el botón del nivel (~200-280 px: el mapa queda a la vista)
+//   vistazo   + chips de distancia al río y a la zona, cómo activar el GPS y el pie
+//   media     + los gráficos vivos: medidor del río, lluvia cerca de ti, a dónde acudir, pronóstico
+//   completa  + avisos de SENAMHI, ríos con señales, resto del país, El Niño, "Qué significa esto",
+//             Reportar, Ver alertas y la atribución literal de SENAMHI
+// En el celular la hoja arranca plegada y el modo emergencia y "ver en el mapa" la pliegan (antes el
+// "vistazo" ocupaba el 61 % de la pantalla y el mapa quedaba casi invisible); desde lg es una tarjeta
+// a la izquierda que no tapa el mapa y arranca en "vistazo".
+export const ALTURAS = ["plegado", "vistazo", "media", "completa"];
+const ARRASTRE_PX = 40; // cuánto hay que arrastrar el asa para cambiar de altura
+const esEscritorio = () => typeof window !== "undefined" && Boolean(window.matchMedia?.("(min-width: 1024px)").matches);
+// la altura más chica que tiene sentido en esta pantalla
+const minima = () => (esEscritorio() ? "vistazo" : "plegado");
 
 function Explica({ titulo, children, pie, aviso }) {
   return (
@@ -48,313 +45,417 @@ function Explica({ titulo, children, pie, aviso }) {
   );
 }
 
+function Titulo({ children }) {
+  return <h3 className="text-[0.68rem] uppercase tracking-wider text-muted-foreground">{children}</h3>;
+}
+
 export default function StatusPanel({
+  p, // usePanorama(depto)
+  zona, // useZonaAhora
   depto,
-  porGps,
-  local,
-  pais,
-  nivelLocal = "normal",
-  etiqueta,
-  cuantasAqui = 0,
-  cuantasFuera = 0,
-  cuantasTotal = 0,
-  enfen,
-  mar,
-  pacifico,
-  lluvia,
-  avisos = [],
-  avisosZona = [],
-  lluviaZona = [],
-  nivelOficialAqui = "normal",
-  alertasCargadas = true,
-  actualizado,
-  desactualizado,
-  lluviaActualizada,
-  lluviaDesactualizada,
+  ciudad, // la ciudad elegida (data/cities)
+  gps, // { status, geolocate }
   pron,
   fechaMapa,
   rios = [], // ríos vigilados de la zona con el nivel de su zona: [{rio, estado}] (useRiosVigilados)
+  dia,
+  elegir,
+  conDia = false, // si las capas de avisos o pronóstico están prendidas (el selector de día tiene sentido)
+  onElNino, // () -> abre el panel de El Niño en gráficos
   onVerRio, // (rio) -> prende las capas del río y de sus zonas y lleva el mapa hasta él
-  tope, // clase de alto máximo en pantallas bajas (App: no tapar el día ni el chip del nowcasting)
+  onAccion, // (accion) -> el botón del nivel (zona | pasar | acudir | avisos)
+  verPunto, // ({lat, lon, clave}) -> centra el mapa en un punto de "A dónde acudir"
+  pedido, // { vez, altura, forzar, seccion } desde Mapa (modo emergencia, botón del nivel)
+  onAltura, // (altura) -> Mapa se entera (para el encuadre)
+  tope, // clase de alto máximo en pantallas bajas (no tapar el chip del nowcasting)
+  onReportar,
+  onVerAlertas,
+  onReintentar,
 }) {
-  const [abierto, setAbierto] = useState(false);
-  // plegado deja el titular y el pronóstico en una línea. En el celular va plegado (abierto tapa
-  // casi todo el mapa y sus íconos) y sigue al ancho de la pantalla (girar el celular, achicar la
-  // ventana) hasta que la persona lo abre o lo pliega a mano.
-  const [plegado, setPlegado] = useState(false);
-  const aMano = useRef(false);
+  const [altura, setAltura] = useState(minima);
+  const [abierto, setAbierto] = useState(false); // "Qué significa esto"
+  const aMano = useRef(false); // la persona cambió la altura: una alerta no la vuelve a abrir
+  const hojaRef = useRef(null);
+  const acudirRef = useRef(null);
+  useAltoHoja(hojaRef);
+
+  const cambiar = useCallback(
+    (a, { mano = false } = {}) => {
+      if (mano) aMano.current = true;
+      setAltura(a);
+      onAltura?.(a);
+    },
+    [onAltura]
+  );
+  const subir = () => cambiar(ALTURAS[Math.min(ALTURAS.length - 1, ALTURAS.indexOf(altura) + 1)], { mano: true });
+  const bajar = () => cambiar(ALTURAS[Math.max(0, ALTURAS.indexOf(altura) - 1)], { mano: true });
+
+  // pedidos desde Mapa: el modo emergencia pliega la hoja (forzado) una vez por cambio de nivel;
+  // en alerta solo si la persona no la movió a mano; el botón "A dónde acudir" abre a "media".
+  // Un pedido de "plegado" en escritorio vale "vistazo" (ahí la tarjeta no tapa el mapa).
   useEffect(() => {
-    let mq;
-    try {
-      mq = window.matchMedia("(max-width: 639px)");
-    } catch {
-      return undefined;
+    if (!pedido?.vez) return;
+    const a = pedido.altura ?? "plegado";
+    if (pedido.forzar || !aMano.current) setAltura(a === "plegado" ? minima() : a);
+    if (pedido.seccion === "acudir") {
+      setAltura("media");
+      // la tarjeta recién se monta: se baja hasta ella en el cuadro siguiente
+      requestAnimationFrame(() => acudirRef.current?.scrollIntoView({ block: "start", behavior: "smooth" }));
     }
-    const seguir = () => !aMano.current && setPlegado(mq.matches);
-    seguir();
-    mq.addEventListener?.("change", seguir);
-    return () => mq.removeEventListener?.("change", seguir);
-  }, []);
-  const nv = NIVEL[nivelLocal];
-  const total = cuantasTotal;
-  // estaciones de la zona que pasaron la referencia de SENAMHI: las 3 primeras con su detalle
-  const masLluvia = lluviaZona.length - 3;
-  // ríos vigilados de la zona con señales (la zona que podrían afectar está en el mapa)
-  const riosConSenales = rios.filter((r) => r.estado.nivel !== "sin_senales");
-  // "Ver en el mapa" pliega el panel (abierto tapa el río) y lleva el mapa hasta el río
+  }, [pedido]);
+
+  // "Ver en el mapa" pliega la hoja (abierta tapa el río) y lleva el mapa hasta el río
   const verRio = (rio) => {
-    aMano.current = true;
-    setPlegado(true);
+    cambiar(minima(), { mano: true });
     onVerRio?.(rio);
   };
+  // "Ver en el mapa" de un punto de "A dónde acudir": igual, primero se pliega
+  const verPuntoPlegando = verPunto
+    ? (punto) => {
+        cambiar(minima(), { mano: true });
+        verPunto(punto);
+      }
+    : undefined;
+
+  // arrastre del asa con el puntero: la hoja sigue al dedo (transform) y al soltar sube o baja
+  // una altura; las flechas hacen lo mismo con teclado
+  const arrastre = useRef(null);
+  const alBajarPuntero = (e) => {
+    if (e.button != null && e.button !== 0) return;
+    arrastre.current = { y0: e.clientY, dy: 0, id: e.pointerId };
+    e.currentTarget.setPointerCapture?.(e.pointerId);
+    hojaRef.current?.classList.add("arrastrando");
+  };
+  const alMoverPuntero = (e) => {
+    const a = arrastre.current;
+    if (!a || a.id !== e.pointerId) return;
+    a.dy = e.clientY - a.y0;
+    const dy = Math.max(-48, Math.min(96, a.dy));
+    if (hojaRef.current) hojaRef.current.style.transform = `translateY(${dy}px)`;
+  };
+  const alSoltarPuntero = (e) => {
+    const a = arrastre.current;
+    if (!a || a.id !== e.pointerId) return;
+    arrastre.current = null;
+    if (hojaRef.current) {
+      hojaRef.current.style.transform = "";
+      hojaRef.current.classList.remove("arrastrando");
+    }
+    if (a.dy <= -ARRASTRE_PX) subir();
+    else if (a.dy >= ARRASTRE_PX) bajar();
+  };
+
+  const nivel = zona?.nivel ?? "sin_dato";
+  const fuerte = zona?.fuerte;
+  const principal = zona?.principal ?? null;
+  const riosConSenales = rios.filter((r) => r.estado.nivel !== "sin_senales");
+  const avisosZona = p.avisosAqui ?? [];
+  const lluviaZona = p.lluviaAqui ?? [];
+  const masLluvia = lluviaZona.length - 3;
+  const alertasCargadas = p.alertas != null;
+  const total = p.cuantasTotal ?? 0;
+  const origen = zona?.origen ?? null;
+  const desdeTxt = zona?.porGps ? "desde tu ubicación" : `desde el centro de ${ciudad?.name ?? "la ciudad"} (activa tu ubicación para afinar)`;
   const botonVer = (rio) =>
     onVerRio && (
-      <button
-        type="button"
-        onClick={() => verRio(rio)}
-        className="whitespace-nowrap text-xs text-muted-foreground underline hover:text-foreground"
-      >
+      <button type="button" onClick={() => verRio(rio)} className="whitespace-nowrap text-xs text-muted-foreground underline hover:text-foreground">
         Ver en el mapa
       </button>
     );
 
+  const acudir = origen && (
+    <section ref={acudirRef} className="scroll-mt-2 px-4 pt-3" aria-label="A dónde acudir">
+      <Titulo>
+        <span className="inline-flex items-center gap-1.5">
+          <LifeBuoy className="h-3.5 w-3.5" aria-hidden="true" />
+          A dónde acudir
+        </span>
+      </Titulo>
+      <AcudirCercanos lat={origen[0]} lon={origen[1]} desde={desdeTxt} compacto onVerEnMapa={verPuntoPlegando} className="mt-1" />
+    </section>
+  );
+
   return (
-    <div className="pointer-events-none absolute inset-x-0 bottom-0 z-[600] p-3 md:p-4">
+    <div className="pointer-events-none absolute inset-x-0 bottom-0 z-[600] lg:bottom-4 lg:left-4 lg:right-auto lg:w-[420px] lg:max-w-[calc(100%-2rem)]">
       <div
+        ref={hojaRef}
         data-tapa-mapa="abajo"
+        data-altura={altura}
         className={cn(
-          "pointer-events-auto mx-auto max-h-[70vh] max-w-3xl overflow-y-auto rounded-2xl border border-border bg-card/95 shadow-2xl backdrop-blur",
-          tope
+          "hoja hoja-entra pointer-events-auto relative flex flex-col overflow-hidden rounded-t-2xl border border-border bg-card/95 shadow-2xl backdrop-blur lg:rounded-2xl",
+          `tz-${nivel}`,
+          fuerte && "tz-suave",
+          nivel === "emergencia" && "es-emergencia",
+          // plegado cabe sin desplazar (~200-280 px); vistazo deja al menos la mitad del mapa libre
+          altura === "plegado" && "max-h-[min(44vh,calc(100vh-9rem))]",
+          altura === "vistazo" && "max-h-[min(50vh,calc(100vh-8rem))]",
+          altura === "media" && "max-h-[min(66vh,calc(100vh-7rem))]",
+          altura === "completa" && "max-h-[88vh]",
+          "lg:max-h-[80vh]",
+          // el tope por el chip del nowcasting solo importa abierta: plegada y en vistazo ya es más baja
+          (altura === "media" || altura === "completa") && tope
         )}
       >
-        <div className={cn("h-1 w-full", nv.strip)} />
-        {/* la insignia va en la línea de "Estado" y el titular debajo, a todo el ancho (si comparten
-            fila, en el celular el titular queda en una columna angosta) */}
-        <div className="px-4 pt-3.5">
-          <div className="flex items-start gap-3">
-            <div className="min-w-0 pt-1 text-[0.68rem] uppercase tracking-wider text-muted-foreground">
-              Estado · {depto}
-              {porGps && <span className="normal-case tracking-normal"> (tu ubicación)</span>}
-              {actualizado && (
-                <span className={cn("ml-1 normal-case tracking-normal", desactualizado && "text-nivel-alerta")}>
-                  · ríos: {desactualizado ? "sin actualizar desde" : "actualizado"} {horaPeru(actualizado)}
-                </span>
-              )}
-              {lluviaActualizada && (
-                <span className={cn("ml-1 normal-case tracking-normal", lluviaDesactualizada && "text-nivel-alerta")}>
-                  · lluvia: {lluviaDesactualizada ? "sin actualizar desde" : "actualizada"} {horaPeru(lluviaActualizada)}
-                </span>
-              )}
-            </div>
-            <div className="ml-auto flex shrink-0 items-center gap-1">
-              <Badge variant="outline" className={cn("gap-1.5", nv.border, nv.text)}>
-                <TriangleAlert className="h-3.5 w-3.5" />
-                {etiqueta ?? nv.label}
-              </Badge>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-7 w-7"
-                onClick={() => {
-                  aMano.current = true;
-                  setPlegado((p) => !p);
-                }}
-                aria-expanded={!plegado}
-                aria-label={plegado ? "Mostrar el detalle" : "Plegar el panel"}
-              >
-                {plegado ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-              </Button>
-            </div>
+        <div className="hoja-franja shrink-0" aria-hidden="true" />
+        {/* asa: arrastrar o tocar para cambiar de altura; las flechas son la versión con teclado */}
+        <div className="flex shrink-0 items-center px-2">
+          <div
+            role="button"
+            tabIndex={0}
+            aria-label={`Cambiar el tamaño del panel (ahora: ${altura})`}
+            className="hoja-arrastre flex flex-1 justify-center py-2"
+            onPointerDown={alBajarPuntero}
+            onPointerMove={alMoverPuntero}
+            onPointerUp={alSoltarPuntero}
+            onPointerCancel={alSoltarPuntero}
+            onClick={() => (altura === "completa" ? cambiar(minima(), { mano: true }) : subir())}
+            onKeyDown={(e) => {
+              if (e.key === "ArrowUp") subir();
+              else if (e.key === "ArrowDown") bajar();
+              else if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                altura === "completa" ? cambiar(minima(), { mano: true }) : subir();
+              }
+            }}
+          >
+            <span className="hoja-asa" />
           </div>
-          <h3 className="mt-1 text-base font-semibold leading-snug md:text-lg">{local}</h3>
+          <div className="absolute right-2 top-2.5 flex items-center gap-0.5">
+            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={bajar} disabled={altura === ALTURAS[0]} aria-label="Achicar el panel">
+              <ChevronDown className="h-4 w-4" />
+            </Button>
+            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={subir} disabled={altura === "completa"} aria-label="Agrandar el panel">
+              <ChevronUp className="h-4 w-4" />
+            </Button>
+          </div>
         </div>
 
-        {plegado ? (
-          // plegado: bajo el título, el pronóstico de tu localidad en una línea y, si un río
-          // vigilado de la zona tiene señales, una línea que lleva a él
-          <div className="px-4 pb-2">
-            <FranjaMini pron={pron} />
-            {riosConSenales.map(({ rio, estado }) => (
-              <p key={rio.id} className="mt-1 flex items-center gap-1.5 text-sm text-foreground">
-                <Waves className="h-4 w-4 shrink-0" style={{ color: ZONA_HEX[estado.nivel] }} />
-                <span className="min-w-0">
-                  <span className="font-semibold">
-                    {rio.nombre}: {RIO_CORTO[estado.nivel]}
-                  </span>{" "}
-                  · {botonVer(rio)}
-                </span>
-              </p>
-            ))}
-          </div>
-        ) : (
-          <>
-            <div className="space-y-1 px-4 pt-1 text-sm text-muted-foreground">
-              {avisos.map((a) => (
-                <p key={a} className="text-nivel-alerta">
-                  {a}
-                </p>
-              ))}
-              {avisosZona.map((a) => (
-                <p key={a.referencia} className="flex gap-1.5 text-foreground">
-                  <Megaphone className="mt-0.5 h-4 w-4 shrink-0" style={{ color: NIVEL_HEX[a.nivel] }} />
-                  <span>
-                    <span className="font-semibold">Aviso {COLOR_AVISO[a.nivel]} (según SENAMHI):</span> {a.detalle}.{" "}
-                    <a
-                      href={URL_AVISO(a.referencia)}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="whitespace-nowrap text-xs text-muted-foreground underline"
-                    >
-                      Ver el aviso oficial
-                    </a>
-                  </span>
-                </p>
-              ))}
-              {riosConSenales.map(({ rio, estado }) => {
-                const f = fraseCorta(rio, estado);
-                return (
-                  <p key={rio.id} className="flex gap-1.5 text-foreground">
-                    <Waves className="mt-0.5 h-4 w-4 shrink-0" style={{ color: ZONA_HEX[estado.nivel] }} />
-                    <span>
-                      <span className="font-semibold">{f.texto}</span>
-                      {f.accion ? ` ${f.accion}` : ""} {botonVer(rio)}
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain pb-2">
+          {zona && (
+            <TuZona zona={zona} depto={depto} gps={gps} plegado={altura === "plegado"} onAccion={onAccion} onVerRio={onVerRio ? verRio : null} />
+          )}
+          {!alertasCargadas && onReintentar && /^No se pudo/.test(p.local ?? "") && (
+            <div className="px-4 pt-1">
+              <button type="button" onClick={onReintentar} className="text-sm font-medium text-muted-foreground underline hover:text-foreground">
+                Reintentar
+              </button>
+            </div>
+          )}
+
+          {altura !== "plegado" && altura !== "vistazo" && (
+            <>
+              {/* en alerta o emergencia, a dónde acudir va primero */}
+              {fuerte && acudir}
+              {principal && (zona.caudal || principal.rio) && (
+                <MedidorCaudal c={zona.caudal} rio={principal.rio} viejo={p.desactualizado} />
+              )}
+              <BarrasLluvia
+                origen={origen}
+                porGps={zona?.porGps}
+                ciudad={ciudad?.name}
+                depto={depto}
+                revisada={Boolean(p.lluviaActualizada)}
+                hora={p.lluviaActualizada}
+                vieja={p.lluviaDesactualizada}
+              />
+              {!fuerte && acudir}
+              <FranjaPronostico pron={pron} fechaMapa={fechaMapa} />
+              {conDia && dia && elegir && (
+                <div className="px-4 pt-3 lg:hidden">
+                  <Titulo>Día de los avisos y del pronóstico en el mapa</Titulo>
+                  <DiaSelector valor={dia} onCambiar={(v) => elegir("avisos", v)} className="mt-1 shadow-none" />
+                </div>
+              )}
+            </>
+          )}
+
+          {altura === "completa" && (
+            <>
+              <div className="space-y-1.5 px-4 pt-4 text-sm text-muted-foreground">
+                <Titulo>Qué dicen las fuentes hoy</Titulo>
+                <p className="text-foreground">{p.local}</p>
+                {zona?.resumenBd && !zona.titular.interpretado && (
+                  <p className="text-foreground">
+                    {zona.resumenBd.titular}{" "}
+                    <span className="text-xs text-muted-foreground">
+                      (resumen {zona.resumenBd.origen === "llm" ? "redactado automáticamente con las cifras oficiales" : "del servidor de SIMPAC"})
                     </span>
                   </p>
-                );
-              })}
-              {/* lluvia medida sobre la referencia: no es un aviso oficial, no lleva enlace a uno */}
-              {lluviaZona.slice(0, 3).map((a) => (
-                <p key={a.referencia} className="flex gap-1.5 text-foreground">
-                  <Droplets className="mt-0.5 h-4 w-4 shrink-0" style={{ color: NIVEL_HEX.aviso }} />
-                  <span>
-                    <span className="font-semibold">Lluvia medida:</span> {a.detalle}
-                  </span>
-                </p>
-              ))}
-              {masLluvia > 0 && (
-                <p className="pl-[22px] text-foreground">
-                  {masLluvia === 1
-                    ? `Y 1 estación más en ${depto} pasó la referencia de SENAMHI.`
-                    : `Y ${masLluvia} estaciones más en ${depto} pasaron la referencia de SENAMHI.`}
-                </p>
-              )}
-              {pais && <p>{pais}</p>}
-              {lluvia && (
-                <p className="flex gap-1.5">
-                  <Droplets className="mt-0.5 h-4 w-4 shrink-0 text-met" />
-                  <span>{lluvia.frase}</span>
-                </p>
-              )}
-            </div>
-
-            <FranjaPronostico pron={pron} fechaMapa={fechaMapa} />
-
-            <div className="grid grid-cols-3 gap-2 px-4 py-3 sm:flex">
-              <Metric
-                Icon={ShieldAlert}
-                color={ENFEN_HEX[enfen?.corto] ?? "#9CA3AF"}
-                value={enfen?.corto ?? "Sin dato"}
-                label={enfen ? `${enfen.quien} (ENFEN)` : "Sistema de alerta ENFEN"}
-                title={enfen ? `${enfen.explica} ${enfen.fuente}` : undefined}
-              />
-              <Metric
-                Icon={Waves}
-                color="#3B3BEB"
-                value={mar?.corto ?? "Sin dato"}
-                label="Mar frente a la costa norte"
-                title={mar ? `${mar.frase} ${mar.detalle}` : undefined}
-              />
-              <Metric
-                Icon={TriangleAlert}
-                color={NIVEL_HEX[nivelOficialAqui] ?? "#9CA3AF"}
-                value={alertasCargadas ? cuantasAqui : "Sin dato"}
-                label={alertasCargadas ? `alertas y avisos en ${depto} · ${cuantasFuera} en el resto del país` : "alertas"}
-              />
-            </div>
-
-            <button
-              type="button"
-              onClick={() => setAbierto((a) => !a)}
-              className="flex w-full items-center gap-1.5 px-4 pb-2 text-left text-xs font-medium text-muted-foreground hover:text-foreground"
-              aria-expanded={abierto}
-            >
-              {abierto ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
-              Qué significa esto
-            </button>
-            {abierto && (
-              <div className="space-y-2.5 px-4 pb-3">
-                {enfen && (
-                  <Explica titulo={enfen.titulo + "."} pie={enfen.fuente} aviso={enfen.atrasado ? "Puede haber un comunicado más nuevo." : null}>
-                    {enfen.explica} {enfen.accion}
-                  </Explica>
                 )}
-                {mar && (
-                  <Explica titulo="Mar frente a la costa norte:" pie={mar.detalle} aviso={mar.atrasado}>
-                    {mar.frase} Un mar más caliente suele traer lluvias fuertes a la costa norte y a las partes altas
-                    que miran al mar (como el oeste de Cajamarca), sobre todo de diciembre a abril.
-                  </Explica>
+                {(p.avisos ?? []).map((a) => (
+                  <p key={a} className="text-nivel-alerta">
+                    {a}
+                  </p>
+                ))}
+                {avisosZona.map((a) => (
+                  <p key={a.referencia} className="flex gap-1.5 text-foreground">
+                    <Megaphone className="mt-0.5 h-4 w-4 shrink-0" style={{ color: NIVEL_HEX[a.nivel] }} />
+                    <span>
+                      <span className="font-semibold">Aviso {COLOR_AVISO[a.nivel]} (según SENAMHI):</span> {a.detalle}.{" "}
+                      <a href={URL_AVISO(a.referencia)} target="_blank" rel="noopener noreferrer" className="whitespace-nowrap text-xs text-muted-foreground underline">
+                        Ver el aviso oficial
+                      </a>
+                    </span>
+                  </p>
+                ))}
+                {riosConSenales.map(({ rio, estado }) => {
+                  const f = fraseCorta(rio, estado);
+                  return (
+                    <p key={rio.id} className="flex gap-1.5 text-foreground">
+                      <Waves className="mt-0.5 h-4 w-4 shrink-0" style={{ color: ZONA_HEX[estado.nivel] }} />
+                      <span>
+                        <span className="font-semibold">{f.texto}</span>
+                        {f.accion ? ` ${f.accion}` : ""} {botonVer(rio)}
+                      </span>
+                    </p>
+                  );
+                })}
+                {/* lluvia medida sobre la referencia: no es un aviso oficial, no lleva enlace a uno */}
+                {lluviaZona.slice(0, 3).map((a) => (
+                  <p key={a.referencia} className="flex gap-1.5 text-foreground">
+                    <Droplets className="mt-0.5 h-4 w-4 shrink-0" style={{ color: NIVEL_HEX.aviso }} />
+                    <span>
+                      <span className="font-semibold">Lluvia medida:</span> {a.detalle}
+                    </span>
+                  </p>
+                ))}
+                {masLluvia > 0 && (
+                  <p className="pl-[22px] text-foreground">
+                    {masLluvia === 1
+                      ? `Y 1 estación más en ${depto} pasó la referencia de SENAMHI.`
+                      : `Y ${masLluvia} estaciones más en ${depto} pasaron la referencia de SENAMHI.`}
+                  </p>
                 )}
-                {pacifico && (
-                  <Explica titulo={pacifico.frase} pie={pacifico.detalle}>
-                    Es el índice mundial de El Niño; para las lluvias del norte del Perú pesa más el mar frente a nuestra costa.
-                  </Explica>
-                )}
-                <p className="text-xs text-muted-foreground">
-                  Las alertas de ríos usan los niveles de ANA. Los avisos (amarillo, naranja y rojo) vienen de
-                  SENAMHI, y SIMPAC los resume en palabras simples: el aviso oficial es el que publica SENAMHI.
-                  “Atentos a la lluvia” es otra cosa: una estación automática de SENAMHI midió más lluvia que la
-                  referencia que SENAMHI usa para ese lugar, en la última hora o sumando las últimas 6 horas. Esa
-                  referencia cambia de un lugar a otro: es baja donde casi no llueve (1 mm en una hora en partes de
-                  la costa) y alta en la selva (hasta 25 mm). No es un aviso oficial, es la lectura de una sola
-                  estación (que puede fallar) y en temporada de lluvias puede pasar varias veces. Ante una
-                  emergencia, sigue las indicaciones de SENAMHI, INDECI y Defensa Civil.
-                </p>
-                <p className="text-xs text-muted-foreground">
-                  En el mapa, un círculo con borde amarillo, naranja o rojo marca una zona con aviso de SENAMHI: la gota
-                  quiere decir que puede llover en algún momento dentro de esa zona, no en toda ni todo el día. Los
-                  círculos blancos son el pronóstico de SENAMHI para cada localidad (hoy, mañana y pasado); con borde
-                  punteado, SENAMHI escribe «tendencia a»: es posible, no seguro. Las manchas azules con borde punteado
-                  son el nowcasting de SENAMHI: una estimación experimental de las próximas 2 horas, no un aviso.
-                </p>
-                {rios.length > 0 && (
-                  <p className="text-xs text-muted-foreground">
-                    Las franjas junto al río Mashcón marcan la zona que podría inundarse si el río se desborda. Las
-                    rayadas son una estimación de SIMPAC hecha con el relieve; las lisas vienen del estudio de INDECI de
-                    2005 para la ciudad; ninguna es un mapa oficial vigente. Se pintan de ámbar cuando hay señales en la
-                    cuenca (lluvia fuerte medida, aviso naranja o rojo de SENAMHI por lluvias, el río cerca de su nivel
-                    de alerta o un aviso hidrológico amarillo), de naranja o rojo solo cuando ANA mide el río sobre su
-                    nivel de alerta o de emergencia o SENAMHI emite un aviso hidrológico naranja o rojo, y de azul
-                    cuando no hay señales (siguen siendo zonas que podrían inundarse). Los rombos con un año son
-                    desbordes y daños pasados documentados.
+                {p.pais && <p>{p.pais}</p>}
+                {p.lluvia && (
+                  <p className="flex gap-1.5">
+                    <Droplets className="mt-0.5 h-4 w-4 shrink-0 text-met" />
+                    <span>{p.lluvia.frase}</span>
                   </p>
                 )}
               </div>
-            )}
 
-            {/* Reportar dentro del panel (en pantallas anchas es el botón flotante) */}
-            <div className="px-4 pb-3 2xl:hidden">
-              <Button variant="destructive" className="w-full">
-                <Plus className="h-[18px] w-[18px]" />
-                Reportar incidente
+              {/* El Niño: contexto de meses, no de hoy (en escritorio ya está en la barra lateral) */}
+              <div className="px-4 pt-3">
+                <button
+                  type="button"
+                  onClick={onElNino}
+                  className="flex w-full items-center gap-2.5 rounded-xl border border-border bg-card px-3 py-2 text-left hover:bg-accent"
+                >
+                  <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full text-white" style={{ background: ENFEN_HEX[p.enfen?.corto] ?? "#9CA3AF" }}>
+                    <ShieldAlert className="h-4 w-4" />
+                  </span>
+                  <span className="min-w-0 flex-1 leading-tight">
+                    <span className="block text-[0.62rem] uppercase tracking-wider text-muted-foreground">{p.enfen?.quien ?? "El Niño costero"} (ENFEN)</span>
+                    <span className="font-semibold">{p.enfen?.corto ?? "Sin dato"}</span>
+                    {p.mar && <span className="block text-xs text-muted-foreground">Mar frente a la costa norte: {p.mar.corto}</span>}
+                  </span>
+                  <span className="text-xs text-muted-foreground">Ver gráficos</span>
+                  <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                </button>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setAbierto((a) => !a)}
+                className="flex w-full items-center gap-1.5 px-4 pb-2 pt-3 text-left text-xs font-medium text-muted-foreground hover:text-foreground"
+                aria-expanded={abierto}
+              >
+                {abierto ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
+                Qué significa esto
+              </button>
+              {abierto && (
+                <div className="space-y-2.5 px-4 pb-3">
+                  {p.enfen && (
+                    <Explica titulo={p.enfen.titulo + "."} pie={p.enfen.fuente} aviso={p.enfen.atrasado ? "Puede haber un comunicado más nuevo." : null}>
+                      {p.enfen.explica} {p.enfen.accion}
+                    </Explica>
+                  )}
+                  {p.mar && (
+                    <Explica titulo="Mar frente a la costa norte:" pie={p.mar.detalle} aviso={p.mar.atrasado}>
+                      {p.mar.frase} Un mar más caliente suele traer lluvias fuertes a la costa norte y a las partes altas que miran
+                      al mar (como el oeste de Cajamarca), sobre todo de diciembre a abril.
+                    </Explica>
+                  )}
+                  {p.pacifico && (
+                    <Explica titulo={p.pacifico.frase} pie={p.pacifico.detalle}>
+                      Es el índice mundial de El Niño; para las lluvias del norte del Perú pesa más el mar frente a nuestra costa.
+                    </Explica>
+                  )}
+                  <p className="text-xs text-muted-foreground">
+                    Las alertas de ríos usan los niveles de ANA. Los avisos (amarillo, naranja y rojo) vienen de SENAMHI, y SIMPAC
+                    los resume en palabras simples: el aviso oficial es el que publica SENAMHI. “Atentos a la lluvia” es otra cosa:
+                    una estación automática de SENAMHI midió más lluvia que la referencia que SENAMHI usa para ese lugar, en la
+                    última hora o sumando las últimas 6 horas. Esa referencia cambia de un lugar a otro: es baja donde casi no
+                    llueve (1 mm en una hora en partes de la costa) y alta en la selva (hasta 25 mm). No es un aviso oficial, es la
+                    lectura de una sola estación (que puede fallar) y en temporada de lluvias puede pasar varias veces. Ante una
+                    emergencia, sigue las indicaciones de SENAMHI, INDECI y Defensa Civil.
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    En el mapa, un círculo con borde amarillo, naranja o rojo marca una zona con aviso de SENAMHI: la gota quiere
+                    decir que puede llover en algún momento dentro de esa zona, no en toda ni todo el día. Los círculos blancos son
+                    el pronóstico de SENAMHI para cada localidad (hoy, mañana y pasado); con borde punteado, SENAMHI escribe
+                    «tendencia a»: es posible, no seguro. Las manchas azules con borde punteado son el nowcasting de SENAMHI: una
+                    estimación experimental de las próximas 2 horas, no un aviso.
+                  </p>
+                  {rios.length > 0 && (
+                    <p className="text-xs text-muted-foreground">
+                      Las franjas junto al río Mashcón marcan la zona que podría inundarse si el río se desborda. Las rayadas son
+                      una estimación de SIMPAC hecha con el relieve; las lisas vienen del estudio de INDECI de 2005 para la ciudad;
+                      ninguna es un mapa oficial vigente. Se pintan de ámbar cuando hay señales en la cuenca (lluvia fuerte medida,
+                      aviso naranja o rojo de SENAMHI por lluvias, el río cerca de su nivel de alerta o un aviso hidrológico
+                      amarillo), de naranja o rojo solo cuando ANA mide el río sobre su nivel de alerta o de emergencia o SENAMHI
+                      emite un aviso hidrológico naranja o rojo, y de azul cuando no hay señales (siguen siendo zonas que podrían
+                      inundarse). Los rombos con un año son desbordes y daños pasados documentados.
+                    </p>
+                  )}
+                  <p className="text-xs text-muted-foreground">
+                    El medidor del río compara la última lectura de ANA con los niveles de alerta y emergencia que ANA publica para
+                    esa estación; “cerca” (80 % del caudal de alerta) es un criterio de SIMPAC. Las distancias al río y a la zona
+                    son en línea recta desde tu ubicación o desde el centro de la ciudad elegida.
+                  </p>
+                </div>
+              )}
+
+              {/* Reportar dentro de la hoja (desde lg es el botón flotante) */}
+              <div className="px-4 pb-3 lg:hidden">
+                <Button variant="destructive" className="w-full" onClick={onReportar}>
+                  <Plus className="h-[18px] w-[18px]" />
+                  Reportar incidente
+                </Button>
+              </div>
+
+              <Button
+                variant="ghost"
+                disabled={!alertasCargadas || total === 0}
+                onClick={onVerAlertas}
+                className={cn("h-auto w-full justify-start gap-2 rounded-none border-t border-border py-3", `tz-${nivel}`, "tz-tinta")}
+              >
+                <TriangleAlert className="h-4 w-4" />
+                {!alertasCargadas ? "Alertas: sin datos todavía" : total === 0 ? "No hay alertas ahora" : `Ver alertas (${total})`}
+                {alertasCargadas && total > 0 && <ChevronRight className="ml-auto h-4 w-4" />}
               </Button>
-            </div>
+            </>
+          )}
+        </div>
 
-            <Button
-              variant="ghost"
-              disabled={!alertasCargadas || total === 0}
-              className={cn("h-auto w-full justify-start gap-2 rounded-none border-t border-border py-3", nv.text)}
-            >
-              <TriangleAlert className="h-4 w-4" />
-              {!alertasCargadas ? "Alertas: sin datos todavía" : total === 0 ? "No hay alertas ahora" : `Ver alertas (${total})`}
-              {alertasCargadas && total > 0 && <ChevronRight className="ml-auto h-4 w-4" />}
-            </Button>
-          </>
+        {/* Fuentes: una línea en vistazo y media (plegada ya va la fuente y la hora de cada dato en la
+            tarjeta); la leyenda literal que exigen los términos de SENAMHI en la altura completa (y en
+            el panel de capas) */}
+        {altura !== "plegado" && (
+          <p className="shrink-0 border-t border-border px-4 py-1.5 text-[0.6rem] leading-snug text-muted-foreground">
+            {altura === "completa" ? (
+              <>Fuentes: SENAMHI, ANA, ENFEN, IGP, NOAA y NASA. {ATRIBUCION_SENAMHI}</>
+            ) : (
+              <>
+                Fuentes: SENAMHI, ANA, ENFEN ·{" "}
+                <button type="button" onClick={() => cambiar("completa", { mano: true })} className="underline hover:text-foreground">
+                  ver atribución
+                </button>
+              </>
+            )}
+          </p>
         )}
-
-        {/* Fuentes y la leyenda literal que exigen los términos de SENAMHI, siempre a la vista */}
-        <p className="border-t border-border px-4 py-1.5 text-[0.6rem] leading-snug text-muted-foreground">
-          Fuentes: SENAMHI, ANA, ENFEN, IGP, NOAA y NASA. {ATRIBUCION_SENAMHI}
-        </p>
       </div>
     </div>
   );

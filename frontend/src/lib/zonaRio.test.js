@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
-  agruparIncidentes, anioCorto, caudalDelRio, distanciaAZona, estadoCauce, estadoZona, fraseCorta, metrosEntre, notaZonas,
+  agruparIncidentes, anioCorto, avisoEsDeEstacion, caudalDelRio, distanciaAZona, estacionDeAviso, estadoCauce, estadoZona, fraseCorta, metrosEntre, notaZonas,
   pasoAntes, simular,
 } from "./zonaRio.js";
 import { textoRio } from "./lenguaje.js";
@@ -201,4 +201,22 @@ test("estadoCauce: el aviso hidrológico de SENAMHI pinta el río si es más alt
   // sin medición: el aviso igual se ve
   assert.equal(estadoCauce(null, { nivel: 3 }).estado, "alerta");
   assert.equal(estadoCauce(null, null).estado, "sd");
+});
+
+test("avisoEsDeEstacion: el aviso hidrológico es de la estación que nombra su título, no de todo el río", () => {
+  // aviso real del 19-10-2026 (aviso_hidrologico_vigente): San Regis, en Loreto
+  const sanRegis = { ce: "220105", numero: 1647, nivel: 3, sentido: "crecida", titulo: "SITUACIÓN ACTUAL DEL NIVEL DEL RÍO MARAÑÓN - ESTACIÓN SAN REGIS" };
+  assert.equal(estacionDeAviso(sanRegis), "san regis");
+  assert.equal(avisoEsDeEstacion(sanRegis, "San Regis"), true);
+  // las otras estaciones de ANA del Marañón (Balsas y Corral Quemado están en Cajamarca) no lo heredan
+  for (const e of ["Balsas", "Corral Quemado", "Borja", "Nauta"]) assert.equal(avisoEsDeEstacion(sanRegis, e), false, e);
+  // tildes, mayúsculas y espacios de más no cuentan ("Tingo Maria" en ANA, "TINGO MARÍA" en SENAMHI)
+  assert.equal(avisoEsDeEstacion({ titulo: "SITUACIÓN ACTUAL DEL NIVEL DEL RÍO HUALLAGA - ESTACIÓN TINGO MARÍA " }, "Tingo Maria"), true);
+  assert.equal(avisoEsDeEstacion({ titulo: "SITUACIÓN ACTUAL DEL NIVEL DEL RÍO NANAY - ESTACIÓN SANTA MARÍA DE NANAY" }, "Santa María de Nanay"), true);
+  // nombres distintos en SENAMHI y ANA (Lagarto IRD / Lagarto LRD): no se adivina, es de ninguna
+  assert.equal(avisoEsDeEstacion({ titulo: "SITUACIÓN ACTUAL DEL NIVEL DEL RÍO UCAYALI - ESTACIÓN LAGARTO IRD" }, "Lagarto LRD"), false);
+  // sin estación en el título, de ninguna
+  assert.equal(estacionDeAviso({ titulo: "AVISO HIDROLÓGICO" }), null);
+  assert.equal(avisoEsDeEstacion({ titulo: "AVISO HIDROLÓGICO" }, "San Regis"), false);
+  assert.equal(avisoEsDeEstacion(null, "San Regis"), false);
 });

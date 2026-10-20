@@ -3,7 +3,8 @@ Tarea 'rios' (backend/ingesta/rios.py): avisos hidrológicos de SENAMHI con la w
 simuladas. Sin red ni psycopg: solo librería estándar.
 
 Usa las muestras reales de test_avisos_hidro.py (lista del 03-10-2026 y los detalles 67552 del
-Mashcón y 70483 del Napo) y listas chicas armadas aquí para los casos raros.
+Mashcón, 70483 del Napo y 70615 del Amazonas en Enapu Perú) y listas chicas armadas aquí para
+los casos raros.
 """
 import gzip
 import json
@@ -31,24 +32,31 @@ def _leer(nombre: str) -> bytes:
 LISTA = _leer("avisos_hidrologicos_lista_20261003.html.gz")
 MASHCON_ROJO = _leer("aviso_hidrologico_67552_mashcon_rojo.html.gz")
 NAPO_DESCENSO = _leer("aviso_hidrologico_70483_napo_descenso.html.gz")
+ENAPU_SITUACION = _leer("aviso_hidrologico_70615_enapu_situacion.html.gz")
 
 AHORA = datetime(2026, 10, 3, 6, 30, tzinfo=timezone.utc)      # 01:30 del 03-10 en Lima
 HOY = date(2026, 10, 3)
-MASHCON, NAPO = "220213", "240111"
+MASHCON, NAPO, ENAPU = "220213", "240111", "240102"
 VIGENTES_MUESTRA = [70483, 70487, 70481, 70482, 70485, 70486, 70488]
+# los 7 vigentes de la muestra, en el orden en que la tarea pide su detalle (ninguno es de una
+# estación vigilada: los más nuevos primero, y a igual inicio el ca mayor)
+ORDEN_MUESTRA = [70487, 70483, 70488, 70486, 70485, 70482, 70481]
+TITULO_SITUACION = "SITUACIÓN ACTUAL DEL NIVEL DEL RÍO AMAZONAS - ESTACIÓN ENAPU PERÚ"
+MESES_ES = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre",
+            "Noviembre", "Diciembre"]
 
 
 def _url(ca, ce):
     return sh.DETALLE_URL.format(ca=ca, ce=ce)
 
 
-def _fila(ca, ce=MASHCON, numero=None, vigente=False, ini="2026-10-02", fin="2026-10-03", nivel="dos", clase=None):
+def _fila(ca, ce=MASHCON, numero=None, vigente=False, ini="2026-10-02", fin="2026-10-03", nivel="dos", clase=None,
+          titulo="INCREMENTO DEL CAUDAL DEL RÍO MASHCÓN - ESTACIÓN MASHCÓN"):
     """Una fila como las de SENAMHI: los vigentes llevan "(vigente)" y class="vigente" en sus celdas."""
     enlace = f'<a href="./?p=avisos-detalle-hidrologicos&ca={ca}&ce={ce}">'
     nro = f"{numero or ca}{' (vigente)' if vigente else ''}"
     nivel = f'<span class="{nivel}">AMARILLO</span>' if nivel else ""
-    celdas = [f"{enlace}INCREMENTO DEL CAUDAL DEL RÍO MASHCÓN - ESTACIÓN MASHCÓN</a>", f"{enlace}{nro}</a>",
-              ini, fin, "24", nivel]
+    celdas = [f"{enlace}{titulo}</a>", f"{enlace}{nro}</a>", ini, fin, "24", nivel]
     atributo = ' class="vigente"' if (vigente if clase is None else clase) else ""
     return "<tr>" + "".join(f"<td{atributo}>{c}</td>" for c in celdas) + "</tr>"
 
@@ -58,6 +66,19 @@ def _lista(*filas, relleno=None) -> bytes:
     relleno = tarea.MIN_FILAS + 10 if relleno is None else relleno
     viejos = [_fila(900000 + i, ce="999999", ini="2026-01-01", fin="2026-01-02") for i in range(relleno)]
     return ("<table><tbody>" + "".join(viejos + list(filas)) + "</tbody></table>").encode("utf-8")
+
+
+def _detalle_napo(f: sh.FilaAviso) -> bytes:
+    """El detalle real del Napo (aviso 1624, leyenda de vaciante), como si fuera del aviso de la fila `f`."""
+    d = f.fin_dia
+    return (NAPO_DESCENSO.replace("Aviso N&deg;1624".encode(), f"Aviso N&deg;{f.numero}".encode())
+            .replace("Domingo, 04 de Octubre de 2026 - 18:00".encode(),
+                     f"Lunes, {d.day:02d} de {MESES_ES[d.month - 1]} de {d.year} - 18:00".encode()))
+
+
+def _paginas_muestra() -> dict:
+    """{url: detalle} de los 7 vigentes de la lista de la muestra (la tarea ahora pide todos)."""
+    return {_url(f.ca, f.ce): _detalle_napo(f) for f in sh.parsear_lista(LISTA.decode()) if f.vigente}
 
 
 def _detalle(numero: int, nivel: str = "ROJO") -> bytes:
@@ -113,16 +134,18 @@ class _Cursor:
     def executemany(self, sql, filas):
         filas = list(filas)
         self.conn.registro.append((sql, filas))
-        if sql == tarea.SQL_AVISO:          # upsert: solo las columnas de la lista; nivel = coalesce(nuevo, viejo)
-            for p in filas:
+        if sql == tarea.SQL_AVISO:          # upsert: solo las columnas de la lista; nivel = coalesce(nuevo, viejo);
+            for p in filas:                 # un sentido 'indeterminado' no pisa el que fijó el detalle
                 a = self.conn.avisos.setdefault(p["ca"], {"inicio": None, "nivel": None})
-                a.update({k: v for k, v in p.items() if not (k == "nivel" and v is None)})
-        elif sql == tarea.SQL_DETALLE:      # nivel = coalesce(el de la lista, el del detalle)
+                a.update({k: v for k, v in p.items() if not (k == "nivel" and v is None)
+                          and not (k == "sentido" and v == "indeterminado" and a.get("sentido"))})
+        elif sql == tarea.SQL_DETALLE:      # nivel = coalesce(el de la lista, el del detalle); sentido = coalesce(nuevo, viejo)
             for p in filas:
                 a = self.conn.avisos[p["ca"]]
                 nivel = a["nivel"] if a.get("nivel") is not None else p["nivel"]
+                sentido = p["sentido"] if p["sentido"] is not None else a.get("sentido")
                 a.update(p)
-                a["nivel"] = nivel
+                a["nivel"], a["sentido"] = nivel, sentido
 
     def fetchone(self):
         assert self.ultima == tarea.SQL_HAY_TABLA, self.ultima
@@ -132,7 +155,7 @@ class _Cursor:
         if self.ultima == tarea.SQL_VIGILADAS:
             return [(ce,) for ce in self.conn.vigiladas]
         assert self.ultima == tarea.SQL_CON_DETALLE, self.ultima
-        return [(ca, a["fin"].astimezone(HORA_PERU).date() if a.get("fin") else None, a.get("nivel"))
+        return [(ca, a["fin"].astimezone(HORA_PERU).date() if a.get("fin") else None, a.get("nivel"), a.get("sentido"))
                 for ca, a in self.conn.avisos.items() if a.get("inicio") is not None]
 
 
@@ -193,15 +216,17 @@ class TestTarea(unittest.TestCase):
         return conn, resumen
 
     def test_corrida_con_la_muestra(self):
-        conn, resumen = self.correr()
+        conn, resumen = self.correr(detalles=_paginas_muestra())
         self.assertIsNone(self.excepcion)
-        # ningún aviso del Mashcón está vigente: solo se pide la lista
-        self.assertEqual(self.web.pedidos, [sh.LISTA_URL])
-        self.assertEqual(self.pausas, 0)
+        # ningún aviso del Mashcón está vigente; se pide el detalle de los 7 vigentes del país
+        # (los más nuevos primero), en serie y con pausa
+        self.assertEqual(self.web.pedidos, [sh.LISTA_URL] + [_url(ca, next(f.ce for f in sh.parsear_lista(LISTA.decode())
+                                                                            if f.ca == ca)) for ca in ORDEN_MUESTRA])
+        self.assertEqual(self.pausas, 7)
         s = conn.sentencias()
         self.assertEqual(s[:3], [tarea.SQL_HAY_TABLA, tarea.SQL_VIGILADAS, tarea.SQL_CON_DETALLE])
-        self.assertEqual(s[3:], [tarea.SQL_CANDADO, tarea.SQL_AVISO, tarea.SQL_NO_VIGENTES, tarea.SQL_PURGA,
-                                 SQL_LATIDO])   # el candado primero; sin detalles no hay SQL_DETALLE
+        self.assertEqual(s[3:], [tarea.SQL_CANDADO, tarea.SQL_AVISO, tarea.SQL_NO_VIGENTES, tarea.SQL_DETALLE,
+                                 tarea.SQL_PURGA, SQL_LATIDO])   # el candado primero
         [filas] = conn.params(tarea.SQL_AVISO)
         self.assertEqual(len(filas), 1680)        # upsert de todas las filas
         f = next(p for p in filas if p["ca"] == 67739)
@@ -209,27 +234,40 @@ class TestTarea(unittest.TestCase):
                              "titulo": "INCREMENTO DEL CAUDAL DEL RÍO MASHCÓN - ESTACIÓN MASHCÓN", "nivel": 2,
                              "sentido": "crecida", "inicio_dia": date(2026, 3, 17), "fin_dia": date(2026, 3, 18),
                              "duracion_h": 24, "vigente": False, "url": _url(67739, MASHCON)})
+        # "SITUACIÓN ACTUAL ..." entra como indeterminado y el detalle (leyenda de vaciante) lo fija en descenso
+        self.assertEqual(next(p for p in filas if p["ca"] == 70487)["sentido"], "indeterminado")
+        self.assertEqual(conn.avisos[70487]["sentido"], "descenso")
+        self.assertEqual(conn.avisos[70483]["sentido"], "descenso")
         [(vigentes,)] = conn.params(tarea.SQL_NO_VIGENTES)
         self.assertEqual(sorted(vigentes), sorted(VIGENTES_MUESTRA))
         self.assertEqual(conn.params(tarea.SQL_PURGA), [(HOY - timedelta(days=400),)])
         self.assertEqual(resumen, {
             "filas": 1680, "vigentes": 7,
             "vigilados": [{"ce": MASHCON, "numero": 1233, "nivel": 2, "vigente": False, "fin_dia": "2026-03-18"}],
-            "detalles": [], "purgados": 0, "fallas": [], "avisos": [], "atribucion": ATRIBUCION,
+            "detalles": ORDEN_MUESTRA, "indeterminados": [], "purgados": 0, "fallas": [], "avisos": [],
+            "atribucion": ATRIBUCION,
         })
+        # la corrida siguiente no vuelve a pedir ningún detalle ni pisa el sentido con el de la lista
+        _, resumen = self.correr(conn)
+        self.assertEqual(self.web.pedidos, [sh.LISTA_URL])
+        self.assertEqual((resumen["detalles"], resumen["indeterminados"]), ([], []))
+        self.assertEqual(conn.avisos[70487]["sentido"], "descenso")
 
     def test_detalle_de_un_vigilado_vigente(self):
+        # el Napo es vigilado: su aviso vigente se pide primero, antes que los más nuevos del resto del país
         conn = _Conexion(vigiladas=[MASHCON, NAPO])
-        conn, resumen = self.correr(conn, detalles={_url(70483, NAPO): NAPO_DESCENSO})
+        conn, resumen = self.correr(conn, detalles={**_paginas_muestra(), _url(70483, NAPO): NAPO_DESCENSO})
         self.assertIsNone(self.excepcion)
-        self.assertEqual(self.web.pedidos, [sh.LISTA_URL, _url(70483, NAPO)])
-        self.assertEqual(self.pausas, 1)         # en serie y con pausa
-        [[d]] = conn.params(tarea.SQL_DETALLE)
+        self.assertEqual(self.web.pedidos[:2], [sh.LISTA_URL, _url(70483, NAPO)])
+        self.assertEqual(self.pausas, 7)         # en serie y con pausa
+        [ds] = conn.params(tarea.SQL_DETALLE)
+        d = next(x for x in ds if x["ca"] == 70483)
         self.assertEqual((d["ca"], d["valor"], d["unidad"], d["umbral_rojo"]), (70483, 87.0, "m.s.n.m", 85.81))
         self.assertEqual(d["fin"].isoformat(), "2026-10-04T18:00:00-05:00")
         self.assertEqual(d["nivel"], 2)          # "Aviso N°1624 AMARILLO" (solo completa una lista sin nivel)
+        self.assertEqual(d["sentido"], "descenso")
         self.assertNotIn("numero", d)            # no es una columna
-        self.assertEqual(resumen["detalles"], [70483])
+        self.assertEqual(resumen["detalles"][0], 70483)
         self.assertEqual(resumen["vigilados"], [
             {"ce": MASHCON, "numero": 1233, "nivel": 2, "vigente": False, "fin_dia": "2026-03-18"},
             {"ce": NAPO, "numero": 1624, "nivel": 2, "vigente": True, "fin_dia": "2026-10-04"},
@@ -240,25 +278,86 @@ class TestTarea(unittest.TestCase):
         self.assertEqual(resumen["detalles"], [])
         self.assertEqual(conn.avisos[70483]["valor"], 87.0)   # el upsert de la lista no pisa el detalle
 
-    def test_solo_vigilados_vigentes_sin_detalle_y_como_maximo_10(self):
+    def test_todos_los_vigentes_vigilados_primero_y_como_maximo_10(self):
         vigentes = [_fila(1000 + i, vigente=True, ini=f"2026-09-{10 + i:02d}") for i in range(13)]
-        otros = [_fila(2000, ini="2026-08-01", fin="2026-08-02"), _fila(3000, ce=NAPO, vigente=True)]
+        # 3000 (Napo, no vigilado) es el más nuevo de todos, pero va después de los vigilados
+        otros = [_fila(2000, ini="2026-08-01", fin="2026-08-02"), _fila(3000, ce=NAPO, vigente=True, ini="2026-10-02")]
         ya = {1012: {"vigente": True, "inicio": datetime(2026, 9, 22, 6, tzinfo=timezone.utc),
                      "fin_dia": date(2026, 10, 3)}}   # ya tiene detalle
         conn = _Conexion(avisos=ya)
         detalles = {_url(1000 + i, MASHCON): _detalle(1000 + i) for i in range(13)}
         conn, resumen = self.correr(conn, lista=_lista(*vigentes, *otros), detalles=detalles)
         self.assertIsNone(self.excepcion)
-        # los más nuevos primero; el 1012 ya tenía detalle; 1000 y 1001 quedan para la próxima
+        # los vigilados más nuevos primero; el 1012 ya tenía detalle; 1001, 1000 y 3000 quedan para la próxima
         pedidos = list(range(1011, 1001, -1))
         self.assertEqual(self.web.pedidos, [sh.LISTA_URL] + [_url(ca, MASHCON) for ca in pedidos])
         self.assertEqual(self.pausas, 10)
         self.assertEqual(resumen["detalles"], pedidos)
         self.assertEqual([d["ca"] for d in conn.params(tarea.SQL_DETALLE)[0]], pedidos)
-        self.assertEqual(resumen["avisos"], ["2 avisos vigilados sin detalle quedan para la próxima corrida "
+        self.assertEqual(resumen["avisos"], ["3 avisos vigentes sin detalle quedan para la próxima corrida "
                                              "(máximo 10 por corrida)"])
         self.assertEqual(resumen["fallas"], [])
+        self.assertEqual(resumen["indeterminados"], [])   # todos son "INCREMENTO ...": el título ya dice crecida
         self.assertEqual(len(resumen["vigilados"]), 13)    # los 13 vigentes (el último ya es uno de ellos)
+        # sin estaciones vigiladas mandan solo las fechas: 3000 es el primero
+        conn, resumen = self.correr(_Conexion(vigiladas=[]), lista=_lista(*vigentes, *otros),
+                                    detalles={**detalles, _url(3000, NAPO): _detalle(3000)})
+        self.assertEqual(self.web.pedidos[:2], [sh.LISTA_URL, _url(3000, NAPO)])
+
+    def test_situacion_actual_toma_el_sentido_de_la_leyenda(self):
+        # la fila dice "SITUACIÓN ACTUAL DEL NIVEL ..." (indeterminado); el detalle real de Enapu Perú
+        # (aviso 1649) tiene la leyenda de vaciante: queda 'descenso' y no enciende ningún río
+        fila = _fila(70615, ce=ENAPU, numero=1649, vigente=True, ini="2026-10-13", fin="2026-10-20", nivel="tres",
+                     titulo=TITULO_SITUACION)
+        conn, resumen = self.correr(lista=_lista(fila), detalles={_url(70615, ENAPU): ENAPU_SITUACION},
+                                    ahora=datetime(2026, 10, 19, 23, 0, tzinfo=timezone.utc))
+        self.assertIsNone(self.excepcion)
+        self.assertEqual(self.web.pedidos, [sh.LISTA_URL, _url(70615, ENAPU)])
+        [filas] = conn.params(tarea.SQL_AVISO)
+        self.assertEqual(next(p for p in filas if p["ca"] == 70615)["sentido"], "indeterminado")
+        [[d]] = conn.params(tarea.SQL_DETALLE)
+        self.assertEqual((d["ca"], d["sentido"], d["valor"], d["unidad"], d["umbral_rojo"]),
+                         (70615, "descenso", 108.66, "m.s.n.m", 107.96))
+        self.assertIn("encallamiento", d["significado_rojo"])
+        a = conn.avisos[70615]
+        self.assertEqual((a["sentido"], a["nivel"], a["vigente"]), ("descenso", 3, True))
+        self.assertEqual((resumen["detalles"], resumen["indeterminados"], resumen["avisos"], resumen["fallas"]),
+                         ([70615], [], [], []))
+        # la lista de la hora siguiente (mismo título) no devuelve el sentido a 'indeterminado'
+        self.correr(conn, lista=_lista(fila), ahora=datetime(2026, 10, 20, 0, 0, tzinfo=timezone.utc))
+        self.assertEqual(self.web.pedidos, [sh.LISTA_URL])
+        self.assertEqual(conn.avisos[70615]["sentido"], "descenso")
+
+    def test_sin_detalle_o_sin_leyenda_clara_queda_indeterminado(self):
+        fila = _fila(70615, ce=ENAPU, numero=1649, vigente=True, ini="2026-10-13", fin="2026-10-20", nivel="tres",
+                     titulo=TITULO_SITUACION)
+        # sin tiempo para el detalle: el latido lo cuenta como indeterminado (no enciende nada)
+        with mock.patch.object(tarea, "PLAZO_S", -1):
+            conn, resumen = self.correr(lista=_lista(fila), ahora=datetime(2026, 10, 19, 23, 0, tzinfo=timezone.utc))
+        self.assertEqual(resumen["indeterminados"], [70615])
+        self.assertEqual(conn.avisos[70615]["sentido"], "indeterminado")
+        # con detalle pero una leyenda que no habla ni de desborde ni de descenso: igual, y se anota
+        neutra = ENAPU_SITUACION.replace("mayor descenso en el".encode(), "cambio en el".encode()) \
+                                .replace("encallamiento".encode(), "problemas".encode())
+        conn, resumen = self.correr(lista=_lista(fila), detalles={_url(70615, ENAPU): neutra},
+                                    ahora=datetime(2026, 10, 19, 23, 0, tzinfo=timezone.utc))
+        self.assertEqual(resumen["detalles"], [70615])
+        self.assertEqual(resumen["indeterminados"], [70615])
+        self.assertEqual(resumen["avisos"], ["detalle 70615 (aviso 1649): la leyenda no dice si es crecida o vaciante; "
+                                             "queda indeterminado (no enciende ningún río)"])
+        [[d]] = conn.params(tarea.SQL_DETALLE)
+        self.assertIsNone(d["sentido"])                     # coalesce(null, sentido): no se toca
+        self.assertEqual(conn.avisos[70615]["sentido"], "indeterminado")
+        self.assertEqual(conn.avisos[70615]["valor"], 108.66)   # el resto del detalle sí se guarda
+
+    def test_titulo_explicito_manda_sobre_la_leyenda(self):
+        # "INCREMENTO ..." con la página del Napo (leyenda de vaciante): se deja crecida y se anota
+        conn, resumen = self.correr(lista=_lista(_fila(7000, vigente=True)), detalles={_url(7000, MASHCON): _detalle_napo(
+            next(f for f in sh.parsear_lista(_lista(_fila(7000, vigente=True)).decode()) if f.ca == 7000))})
+        self.assertEqual(conn.avisos[7000]["sentido"], "crecida")
+        self.assertEqual(resumen["avisos"], ["detalle 7000 (aviso 7000): el título dice crecida y la leyenda del detalle, "
+                                             "descenso; se deja crecida"])
+        self.assertEqual(resumen["indeterminados"], [])
 
     def test_vigente_false_para_los_demas(self):
         previos = {
@@ -305,7 +404,7 @@ class TestTarea(unittest.TestCase):
         self.assertIsInstance(self.excepcion, OSError)        # se relanza la del pedido
         self.assertEqual(len(self.web.pedidos), _http.INTENTOS)
         self.assertNotIn(tarea.SQL_CANDADO, conn.sentencias())
-        self.assertEqual(resumen, {"filas": None, "vigentes": None, "vigilados": [], "detalles": [],
+        self.assertEqual(resumen, {"filas": None, "vigentes": None, "vigilados": [], "detalles": [], "indeterminados": [],
                                    "purgados": None, "fallas": ["lista"], "avisos": ["lista: OSError: timed out"],
                                    "atribucion": ATRIBUCION})
 
@@ -360,11 +459,12 @@ class TestTarea(unittest.TestCase):
         self.assertEqual(len(conn.params(tarea.SQL_AVISO)[0]), tarea.MIN_FILAS + 11)
 
     def test_sin_estaciones_vigiladas(self):
-        conn, resumen = self.correr(_Conexion(vigiladas=[]))
+        conn, resumen = self.correr(_Conexion(vigiladas=[]), lista=_lista())
         self.assertIsNone(self.excepcion)
         self.assertEqual(self.web.pedidos, [sh.LISTA_URL])
         self.assertEqual(resumen["vigilados"], [])
-        self.assertEqual(resumen["avisos"], ["rio_vigilado no tiene estaciones SENAMHI: no se lee ningún detalle"])
+        self.assertEqual(resumen["avisos"], ["rio_vigilado no tiene estaciones SENAMHI: ningún aviso tiene prioridad "
+                                             "para el detalle"])
 
     def test_vigencia_ambigua_no_apaga_ningun_aviso(self):
         # SENAMHI quita la marca de la fila (o el texto): el aviso se toma como vigente y no se apaga
@@ -455,12 +555,12 @@ class TestTarea(unittest.TestCase):
         self.assertEqual(conn.params(tarea.SQL_PURGA), [(date(2026, 10, 3) - timedelta(days=400),)])
 
     def test_latido_tiene_sus_claves(self):
-        _, resumen = self.correr()
-        self.assertEqual(list(resumen), ["filas", "vigentes", "vigilados", "detalles", "purgados", "fallas",
-                                         "avisos", "atribucion"])
+        claves = ["filas", "vigentes", "vigilados", "detalles", "indeterminados", "purgados", "fallas", "avisos",
+                  "atribucion"]
+        _, resumen = self.correr(detalles=_paginas_muestra())
+        self.assertEqual(list(resumen), claves)
         _, resumen = self.correr(_Conexion(migrada=False))
-        self.assertEqual(list(resumen), ["filas", "vigentes", "vigilados", "detalles", "purgados", "fallas",
-                                         "avisos", "atribucion"])
+        self.assertEqual(list(resumen), claves)
 
 
 class TestSql(unittest.TestCase):
@@ -486,7 +586,15 @@ class TestSql(unittest.TestCase):
         self.assertIn("nivel = coalesce(excluded.nivel, aviso_hidrologico.nivel)", aviso)
         detalle = " ".join(tarea.SQL_DETALLE.split())
         self.assertIn("nivel = coalesce(nivel, %(nivel)s)", detalle)
-        self.assertIn("(fin at time zone 'America/Lima')::date, nivel", tarea.SQL_CON_DETALLE)
+        self.assertIn("(fin at time zone 'America/Lima')::date, nivel, sentido", tarea.SQL_CON_DETALLE)
+
+    def test_sentido_sin_pisar(self):
+        # la lista no devuelve a 'indeterminado' un sentido que fijó el detalle; el detalle solo lo escribe si lo sabe
+        aviso = " ".join(tarea.SQL_AVISO.split())
+        self.assertIn("sentido = case when excluded.sentido = 'indeterminado' then aviso_hidrologico.sentido "
+                      "else excluded.sentido end", aviso)
+        detalle = " ".join(tarea.SQL_DETALLE.split())
+        self.assertIn("sentido = coalesce(%(sentido)s, sentido)", detalle)
 
 
 if __name__ == "__main__":

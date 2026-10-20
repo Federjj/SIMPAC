@@ -1,0 +1,153 @@
+{
+ "type": "FeatureCollection",
+ "features": [
+  {
+   "type": "Feature",
+   "id": 571,
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     -78.51291169799998,
+     -7.160194582999964
+    ]
+   },
+   "properties": {
+    "objectid": 1892,
+    "id_dpto": "06",
+    "departamen": "CAJAMARCA",
+    "id_prov": "0601",
+    "provincia": "CAJAMARCA",
+    "id_dist": "060101",
+    "distrito": "CAJAMARCA",
+    "comisaria": "CPNP CENTRAL CAJAMARCA",
+    "tipo_comi": "A",
+    "clas_muni": "A",
+    "cod_inei": "1027",
+    "cod_cpnp": "5000",
+    "cod_uni": "223198",
+    "categoria": "CAJAMARCA",
+    "cod_macror": "05",
+    "macroregpo": "CAJAMARCA",
+    "cod_regpol": "05R1",
+    "regionpol": "CAJAMARCA",
+    "cod_divpol": "05R1B",
+    "divpol_div": "DIVOPUS CAJAMARCA",
+    "resolucion": "Aprobado con Resolución de Comandancia General de la Policía Nacional N° 149-2020-CG  PNP/ SCG del 30MAY2020",
+    "zona_utm": "UTM / 17 SUR / WGS84",
+    "objectid_12": 571,
+    "objectid_1": 570
+   }
+  },
+  {
+   "type": "Feature",
+   "id": 572,
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     -78.51976383999994,
+     -7.150109949999944
+    ]
+   },
+   "properties": {
+    "objectid": 1893,
+    "id_dpto": "06",
+    "departamen": "CAJAMARCA",
+    "id_prov": "0601",
+    "provincia": "CAJAMARCA",
+    "id_dist": "060101",
+    "distrito": "CAJAMARCA",
+    "comisaria": "CPNP SAN JOSE",
+    "tipo_comi": "B",
+    "clas_muni": "A",
+    "cod_inei": "1028",
+    "cod_cpnp": "5006",
+    "cod_uni": "223201",
+    "categoria": "CAJAMARCA",
+    "cod_macror": "05",
+    "macroregpo": "CAJAMARCA",
+    "cod_regpol": "05R1",
+    "regionpol": "CAJAMARCA",
+    "cod_divpol": "05R1B",
+    "divpol_div": "DIVOPUS CAJAMARCA",
+    "resolucion": "Aprobado con Resolución de Comandancia General de la Policía Nacional N° 149-2020-CG  PNP/ SCG del 30MAY2020",
+    "zona_utm": "UTM / 17 SUR / WGS84",
+    "objectid_12": 572,
+    "objectid_1": 571
+   }
+  },
+  {
+   "type": "Feature",
+   "id": 577,
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     -78.46311481999999,
+     -7.164232929999969
+    ]
+   },
+   "properties": {
+    "objectid": 1898,
+    "id_dpto": "06",
+    "departamen": "CAJAMARCA",
+    "id_prov": "0601",
+    "provincia": "CAJAMARCA",
+    "id_dist": "060108",
+    "distrito": "LOS BAÑOS DEL INCA",
+    "comisaria": "CPNP BAÑOS DEL INCA",
+    "tipo_comi": "B",
+    "clas_muni": "D",
+    "cod_inei": "1034",
+    "cod_cpnp": "5010",
+    "cod_uni": "223204",
+    "categoria": "CAJAMARCA",
+    "cod_macror": "05",
+    "macroregpo": "CAJAMARCA",
+    "cod_regpol": "05R1",
+    "regionpol": "CAJAMARCA",
+    "cod_divpol": "05R1B",
+    "divpol_div": "DIVOPUS CAJAMARCA",
+    "resolucion": "Aprobado con Resolución de Comandancia General de la Policía Nacional N° 149-2020-CG  PNP/ SCG del 30MAY2020",
+    "zona_utm": "UTM / 17 SUR / WGS84",
+    "objectid_12": 577,
+    "objectid_1": 576
+   }
+  },
+  {
+   "type": "Feature",
+   "id": 1,
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     -77.12539506999997,
+     -12.061190129999943
+    ]
+   },
+   "properties": {
+    "objectid": 1323,
+    "id_dpto": "07",
+    "departamen": "CALLAO",
+    "id_prov": "0701",
+    "provincia": "CALLAO",
+    "id_dist": "070102",
+    "distrito": "BELLAVISTA",
+    "comisaria": "CPNP BELLAVISTA",
+    "tipo_comi": "A",
+    "clas_muni": "D",
+    "cod_inei": "1237",
+    "cod_cpnp": "6024",
+    "cod_uni": "220518",
+    "categoria": "CALLAO",
+    "cod_macror": "06",
+    "macroregpo": "CALLAO",
+    "cod_regpol": "06R1",
+    "regionpol": "CALLAO",
+    "cod_divpol": "06R1C",
+    "divpol_div": "DIVOPUS 01",
+    "resolucion": "Aprobado con Resolución de Direccion General de la Policía Nacional N° 276-2018-DIRGEN/SUB.DG-PNP 23JUL2018",
+    "zona_utm": "UTM / 18 SUR / WGS84",
+    "objectid_12": 1,
+    "objectid_1": 1
+   }
+  }
+ ]
+}

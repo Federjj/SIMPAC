@@ -1,5 +1,5 @@
 import L from "leaflet";
-import { glifoSvg } from "./iconos";
+import { glifoClave, svgDataUri } from "./iconos";
 import { escapeHtml } from "./markers";
 import { AVISO_ARO, AVISO_HALO, PRONOSTICO_HEX, RIO_HEX } from "./palette";
 
@@ -7,14 +7,18 @@ import { AVISO_ARO, AVISO_HALO, PRONOSTICO_HEX, RIO_HEX } from "./palette";
 // rombos de los desbordes pasados y los lugares de los avisos hidrológicos). El ícono de Leaflet
 // mide 0x0 y el CSS (index.css, .mkr) dibuja alrededor del punto: así un cambio de tamaño por
 // escala o un corrimiento del acomodo (--dx, --dy) no descuadra el anclaje.
+// El glifo va como imagen (<i class="glifo-img" data-g="lluvia">, map/iconos.js ESTILO_GLIFOS), no
+// como SVG en línea: con ~380 marcadores a la vez, el navegador decodifica cada glifo una vez y lo
+// reusa, en vez de volver a pintar cientos de degradados y sombras en cada zoom.
 const icono = (html) => L.divIcon({ className: "", iconSize: [0, 0], iconAnchor: [0, 0], popupAnchor: [0, -24], html });
+const glifoImg = (glifo) => `<i class="glifo-img" data-g="${glifoClave(glifo)}"></i>`;
 
 // Insignia: disco blanco con aro del color del nivel, halo suave y el glifo del fenómeno; el chip
 // ("24 h" o "2 avisos") lo pone map/acomodo.js.
 export function iconoInsignia({ glifo, nivel, chip = "" }) {
   return icono(
     `<div class="mkr mk-ins" style="--aro:${AVISO_ARO[nivel]};--halo:${AVISO_HALO[nivel]}">` +
-      `<div class="ins-cuerpo">${glifoSvg(glifo)}</div><span class="ins-chip">${escapeHtml(chip)}</span></div>`
+      `<div class="ins-cuerpo">${glifoImg(glifo)}</div><span class="ins-chip">${escapeHtml(chip)}</span></div>`
   );
 }
 
@@ -23,7 +27,7 @@ export function iconoInsignia({ glifo, nivel, chip = "" }) {
 export function iconoLocalidad({ glifo, clase, tono = clase, posible = false, nombre, temps }) {
   return icono(
     `<div class="mkr mk-loc loc-${clase}${posible ? " posible" : ""}" style="--c:${PRONOSTICO_HEX[tono] ?? PRONOSTICO_HEX.seco}">` +
-      `<div class="loc-cuerpo">${glifoSvg(glifo)}</div>` +
+      `<div class="loc-cuerpo">${glifoImg(glifo)}</div>` +
       `<span class="loc-rot">${escapeHtml(nombre)}<span class="t">${escapeHtml(temps)}</span></span></div>`
   );
 }
@@ -34,11 +38,16 @@ export function iconoLocalidad({ glifo, clase, tono = clase, posible = false, no
 // alrededor del punto y el acomodo lo corre (--dx, --dy), lo deja como punto o le pone el rótulo.
 // ---------------------------------------------------------------------------
 
-const OLA =
-  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true">' +
-  '<path d="M3 9c3 3 5-2 9 0s5 2 9 0"/><path d="M3 15c3 3 5-2 9 0s5 2 9 0"/></svg>';
 // color de la ola sobre blanco (el verde y el amarillo de la paleta no se leen sobre blanco)
 const GLIFO_RIO = { normal: "#15803D", atento: "#A16207", alerta: "#C2410C", emergencia: "#B91C1C", sd: "#64748B" };
+// la ola doble como imagen, una por color de estado (una imagen no puede usar currentColor): la
+// comparten los ~130 discos de río en vez de llevar cada uno sus dos <path>
+const ola = (color) =>
+  svgDataUri(
+    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="${color}" stroke-width="2.4" stroke-linecap="round">` +
+      '<path d="M3 9c3 3 5-2 9 0s5 2 9 0"/><path d="M3 15c3 3 5-2 9 0s5 2 9 0"/></svg>'
+  );
+export const OLA_URI = Object.fromEntries(Object.entries(GLIFO_RIO).map(([k, c]) => [k, ola(c)]));
 // etiqueta corta del rótulo (lib/lenguaje.js textoRio da `estado`, `bajo` y `etiqueta`)
 export const CORTA = { normal: "Tranquilo", atento: "Cerca de alerta", alerta: "En alerta", emergencia: "En emergencia", sd: "Sin nivel de alerta" };
 
@@ -66,7 +75,7 @@ export function iconoRio({ estado, fuerte, rotulo }) {
   const c = RIO_HEX[estado] ?? RIO_HEX.sd;
   return icono(
     `<div class="mkr mk-rio${fuerte ? " fuerte" : ""}" style="--c:${c};--g:${GLIFO_RIO[estado] ?? GLIFO_RIO.sd}">` +
-      `<div class="rio-cuerpo">${OLA}</div>` +
+      `<div class="rio-cuerpo"><i class="glifo-img ola-img" style="background-image:url('${OLA_URI[estado] ?? OLA_URI.sd}')"></i></div>` +
       `<span class="rio-rot"><span class="pt"></span>${escapeHtml(rotulo.nombre)} · ${escapeHtml(rotulo.estado)}` +
       (rotulo.valor ? ` <span class="v">${escapeHtml(rotulo.valor)}</span>` : "") +
       `</span></div>`

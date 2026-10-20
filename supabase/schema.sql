@@ -5,6 +5,53 @@
 -- La historia real (lo que se aplicó y en qué orden) está en supabase/migrations/:
 -- cualquier cambio nuevo va como un archivo de migración nuevo, y luego se
 -- refleja aquí. Para una BD desde cero, aplicar las migraciones en orden.
+--
+-- Estado al 2026-10-14 (comparado con la BD real el 2026-10-20, solo lectura):
+-- 27 tablas y 13 vistas propias en el esquema public (más spatial_ref_sys,
+-- geometry_columns y geography_columns, que son de PostGIS), 7 funciones de
+-- trigger en el esquema privado (que el Data API no expone) y 2 en public,
+-- 1 función rpc (mis_reportes), 1 bucket de storage (reportes) y la tabla
+-- message en la publicación supabase_realtime. Secciones de este archivo:
+--   A) datos oficiales (solo lectura; escribe el worker o un cargador manual)
+--   B) comunidad (reportes, votos, comentarios, chat, perfil, preferencias)
+--   C) seguridad: RLS y permisos por columna
+--   D) storage y realtime de la comunidad
+--   E) ríos del país (rio_cauce y sus vistas)
+--   F) titular interpretado por departamento (titular_zona)
+--
+-- Migraciones aplicadas (supabase_migrations.schema_migrations, 32), en orden:
+--   20260910225207 init_simpac_schema                 estacion, lectura_lluvia, lectura_caudal, indice, alerta, comunidad v1
+--   20260914212945 add_latlon_generated_columns       lat/lon generadas desde geom
+--   20260914220902 add_mapa_table                     mapa (shapefiles de IDESEP como GeoJSON)
+--   20260915200807 community_votes_comments           voto y comentario
+--   20260922181302 mapa_uuid_unique                   índice único mapa.uuid
+--   20260922191827 datos_oficiales_caudal_actual_y_horas   vista caudal_actual, fecha/hora de ANA
+--   20260922191903 comunidad_uuid_y_permisos          ids uuid, esquema privado, triggers de votos y perfil
+--   20260922191913 permisos_api_endurecidos           permisos por columna para anon/authenticated
+--   20260922192118 report_lat_lon                     lat/lon generadas en report
+--   20260922193246 normalizar_departamento_caudal     departamento canónico en lectura_caudal
+--   20260922195016 comunidad_privacidad_y_limites     autor no legible, límites por hora, mis_reportes()
+--   20260922195018 caudal_actual_reciente             caudal_actual solo de ayer u hoy
+--   20260922195518 caudal_clave_con_rio               clave (estacion, rio, fecha, hora)
+--   20260922214433 indices_enfen_y_latido             comunicado_enfen, latido, índices
+--   20260922221220 comunicado_enfen_extraordinario    comunicados extraordinarios en la clave
+--   20260923012354 icen_serie                         ICEN mes a mes
+--   20260923012407 avisos_senamhi                     aviso_senamhi y aviso_vigente
+--   20260923012412 lluvia_senamhi_nacional            lluvia_senamhi y lluvia_senamhi_actual
+--   20260923033244 alerta_lluvia_referencia_senamhi   alertas de lluvia con la referencia por estación
+--   20260923074725 avisos_iconos                      texto_dia, icono, lectura y anclas de los avisos
+--   20260923074739 pronostico_localidad               pronostico_localidad y pronostico_vigente
+--   20260923074746 nowcast_senamhi                    nowcast_producto, nowcast_mancha y sus vistas
+--   20261003071600 rios_vigilados                     rio_vigilado, rio_zona, rio_incidente, aviso_hidrologico y vistas
+--   20261003071606 preferencia_mapa                   preferencias del mapa por usuario
+--   20261003083105 rios_aviso_vigente_fuente_caida    aviso_hidrologico_vigente aguanta una fuente caída
+--   20261014105232 comunidad_fotos_y_chat_realtime    bucket reportes y message en supabase_realtime
+--   20261014105838 punto_acudir                       "A dónde acudir" (salud, comisarías, bomberos, Defensa Civil)
+--   20261014110044 rio_cauce                          trazo de los ríos del país y vistas rio_cauce_mapa / rio_cauce_senal
+--   20261014154702 titular_zona                       titular interpretado por departamento
+--   20261020035127 report_foto_solo_bucket            report.foto_url solo del bucket reportes (CHECK + trigger)
+--   20261020040341 aviso_hidrologico_sentido_indeterminado   sentido 'indeterminado', función y trigger del sentido
+--   20261020040343 titular_zona_titular_corto         titular_zona.titular_corto (<= 110)
 -- ============================================================================
 
 create extension if not exists postgis;
@@ -108,6 +155,10 @@ create table icen_serie (
   origen     text not null check (origen in ('IGP', 'ENFEN')),
   ts_captura timestamptz not null default now()
 );
+comment on table icen_serie is
+  'ICEN mensual (IGP y Tabla del Informe Técnico ENFEN; el ENFEN tiene precedencia). Lo escribe el worker.';
+comment on column icen_serie.categoria is
+  'ENFEN: la oficial de la tabla de su informe. IGP: calculada por SIMPAC con los cortes de la Nota Técnica ENFEN 01-2024 (en los meses fríos solo dice Fría).';
 
 -- Avisos oficiales de SENAMHI como áreas (tarea 'avisos', cada hora): una fila por aviso,
 -- día (mapa) y nivel (2 amarillo, 3 naranja, 4 rojo), con los polígonos unidos y
@@ -273,8 +324,9 @@ from nowcast_mancha m join nowcast_producto p using (horizonte_min)
 where p.emision >= now() - interval '30 minutes'
 order by m.horizonte_min, m.nivel;
 
--- Cuándo corrió de verdad cada tarea del worker ('ingesta', 'enfen', 'avisos',
--- 'lluvia_nacional', 'pronostico', 'nowcast', 'rios'), con su resumen (fallas, avisos y lo que escribió).
+-- Cuándo corrió de verdad cada tarea del worker ('ingesta', 'enfen', 'avisos', 'lluvia_nacional',
+-- 'pronostico', 'nowcast', 'rios', 'titular'), con su resumen (fallas, avisos y lo que escribió).
+-- refresh_cache no deja latido (solo refresca Redis).
 create table latido (
   servicio text primary key,
   ts       timestamptz not null default now(),
@@ -316,6 +368,16 @@ create index alerta_vigente_idx on alerta (vigente, nivel);
 -- saber si la migración ya se aplicó).
 create unique index alerta_lluvia_referencia_key on alerta (referencia)
   where tipo = 'lluvia' and ventana_h is not null;
+comment on column alerta.tipo is
+  'caudal | nivel_bajo (niveles de ANA) | aviso (aviso oficial de SENAMHI) | lluvia (una estación midió más que la referencia de SENAMHI; no es aviso oficial)';
+comment on column alerta.nivel is
+  'aviso | alerta | emergencia. aviso SENAMHI: 2 aviso, 3 alerta, 4 emergencia. lluvia: siempre aviso';
+comment on column alerta.referencia is
+  'caudal y nivel_bajo: "Estación (río)"; aviso: "SENAMHI aviso N" o "SENAMHI lluvia 24h"; lluvia: lluvia_senamhi.clave';
+comment on column alerta.ventana_h is
+  'Solo lluvia: 1 = la lluvia de la última hora pasó umbral_1h; 6 = la de las últimas 6 h pasó umbral_6h (y la de 1 h no). valor y umbral son los de esa ventana';
+comment on column alerta.ts is
+  'lluvia: hora de la medición (caduca a las 3 h); los demás tipos: hora en que se escribió';
 
 -- Lo que se muestra: las vigentes; la lluvia medida, solo mientras su lectura tenga 3 h o
 -- menos (igual que lluvia_senamhi_actual); las de lluvia sin ventana_h (formato viejo), nunca.
@@ -421,19 +483,24 @@ comment on table rio_incidente is
 
 -- Avisos hidrológicos de SENAMHI (https://www.senamhi.gob.pe/?p=avisos-hidrologicos): la lista de
 -- los últimos 12 meses de todo el país, una fila por aviso. El detalle (hora, caudal, áreas que
--- podrían verse afectadas, umbral rojo) solo se lee para las estaciones de rio_vigilado.
+-- podrían verse afectadas, umbral rojo y la leyenda que dice si es crecida o vaciante) se lee para
+-- todos los avisos vigentes (los de las estaciones de rio_vigilado primero).
 create table aviso_hidrologico (
   ca          int primary key,                   -- id del aviso en la web (?ca=)
   ce          text not null,                     -- código de la estación ('220213' = Mashcón)
   numero      int not null,
   titulo      text not null,                     -- literal ('INCREMENTO DEL CAUDAL DEL RÍO MASHCÓN - ESTACIÓN MASHCÓN')
   nivel       smallint check (nivel between 2 and 4),  -- 2 amarillo, 3 naranja, 4 rojo; null si la lista no lo trae
-  sentido     text not null check (sentido in ('crecida', 'descenso')),  -- 'descenso' si el título dice DESCENSO
+  sentido     text not null check (sentido in ('crecida', 'descenso', 'indeterminado')),
+                                                 -- lo fija el trigger aviso_hidrologico_sentido (abajo): el título si dice
+                                                 -- INCREMENTO/CRECIDA o DESCENSO; si no, la leyenda del nivel rojo del
+                                                 -- detalle (significado_rojo); si no, 'indeterminado' (no enciende nada)
   inicio_dia  date not null,                     -- columnas de la lista
   fin_dia     date not null,
   duracion_h  int,
   vigente     boolean not null default false,    -- "(vigente)" en la lista la última vez que se leyó
-  emision     timestamptz,                       -- del detalle (solo estaciones vigiladas)
+  emision     timestamptz,                       -- del detalle (los vigentes del país, vigilados primero,
+                                                 -- 10 por corrida: backend/ingesta/rios.py MAX_DETALLES)
   inicio      timestamptz,
   fin         timestamptz,
   valor       numeric,                           -- caudal o nivel que registró la estación
@@ -446,6 +513,39 @@ create table aviso_hidrologico (
   ts_captura  timestamptz not null default now()
 );
 create index aviso_hidrologico_ce_idx on aviso_hidrologico (ce, fin_dia desc);
+comment on column aviso_hidrologico.sentido is
+  'crecida | descenso (vaciante) | indeterminado. Lo fija aviso_hidrologico_sentido(titulo, significado_rojo): el título '
+  'si dice INCREMENTO/CRECIDA o DESCENSO; si no, la leyenda del nivel rojo del detalle; si no, indeterminado. '
+  'Solo crecida enciende la zona o el cauce de un río.';
+
+-- Sentido del aviso (migración aviso_hidrologico_sentido_indeterminado): los "SITUACIÓN ACTUAL DEL
+-- NIVEL ..." de la selva son casi siempre de vaciante y su título no lo dice; lo dice la leyenda del
+-- nivel rojo del detalle ("mayor descenso en el nivel ... encallamiento" o "Se espera desborde ...
+-- inundación"). Misma regla que backend/connectors/senamhi_avisos_hidro.py; el trigger la impone en
+-- cada escritura, así la BD nunca guarda 'crecida' sin evidencia (ni con un worker de código viejo).
+create or replace function aviso_hidrologico_sentido(titulo text, significado_rojo text)
+returns text language sql immutable set search_path = '' as $$
+  select case
+    when upper(coalesce(titulo, '')) like '%DESCENSO%' then 'descenso'
+    when upper(coalesce(titulo, '')) like '%INCREMENTO%' or upper(coalesce(titulo, '')) like '%CRECIDA%' then 'crecida'
+    when coalesce(significado_rojo, '') ~* '(descenso|encallamiento|estiaje|vaciante)'
+     and coalesce(significado_rojo, '') !~* '(desbord|inundaci)' then 'descenso'
+    when coalesce(significado_rojo, '') ~* '(desbord|inundaci)'
+     and coalesce(significado_rojo, '') !~* '(descenso|encallamiento|estiaje|vaciante)' then 'crecida'
+    else 'indeterminado'
+  end
+$$;
+comment on function aviso_hidrologico_sentido(text, text) is
+  'Sentido de un aviso hidrológico de SENAMHI por su título y, si este no lo dice, por la leyenda del nivel rojo de su detalle.';
+create or replace function aviso_hidrologico_fijar_sentido() returns trigger language plpgsql set search_path = '' as $$
+begin
+  new.sentido := public.aviso_hidrologico_sentido(new.titulo, new.significado_rojo);
+  return new;
+end
+$$;
+create trigger aviso_hidrologico_sentido
+  before insert or update of titulo, significado_rojo, sentido on aviso_hidrologico
+  for each row execute function aviso_hidrologico_fijar_sentido();
 
 -- Para el frontend (PostgREST devuelve geometry en hex): GeoJSON con 5 decimales (~1 m).
 create view rio_vigilado_mapa with (security_invoker = true) as
@@ -506,6 +606,56 @@ select r.id as rio,
     where h.ce = r.estacion_senamhi) as avisos_hidro
 from rio_vigilado r;
 
+-- "A dónde acudir" (migración punto_acudir): establecimientos de salud, comisarías, compañías de
+-- bomberos y oficinas de Defensa Civil con coordenadas, de fuentes oficiales. Carga manual con
+-- backend/mapas/cargar_acudir.py desde backend/data/acudir/ (no corre en el worker).
+-- Honestidad del dato: al 14-10-2026 no hay fuente oficial abierta con albergues, zonas seguras ni
+-- puntos de reunión (INDECI, CENEPRED, SIGRID y datosabiertos.gob.pe revisados); los tipos
+-- 'albergue' y 'zona_segura' quedan previstos para cuando una municipalidad publique su lista.
+-- atiende_24h solo es true/false si la fuente trae el horario (RENIPRESS); comisarías y bomberos
+-- quedan en null aunque atiendan de corrido. Cada fila lleva fuente, fuente_url, licencia,
+-- atribución y la fecha del dato.
+create table punto_acudir (
+  clave        text primary key check (clave ~ '^[a-z_]+:[A-Za-z0-9_.-]+$'),
+                                   -- '<fuente>:<id>': 'renipress:00007686' (COD_IPRESS), 'comisarias:5000'
+                                   -- (cod_cpnp), 'bomberos:59' (número de compañía), 'manual:indeci_cajamarca'
+  tipo         text not null check (tipo in ('salud', 'comisaria', 'bomberos', 'zona_segura', 'albergue', 'otro')),
+  nombre       text not null,      -- en lenguaje claro ('Hospital Regional Docente Cajamarca')
+  categoria    text,               -- 'Hospital II-2', 'Clínica II-1', 'Puesto de salud I-1', 'Comisaría tipo A',
+                                   -- 'Compañía de bomberos', 'Defensa Civil (INDECI)'
+  atiende_24h  boolean,            -- solo si la fuente lo dice; null = no se sabe
+  direccion    text,
+  distrito     text,
+  provincia    text,
+  departamento text not null,      -- canónico (backend/ingesta/departamentos.py)
+  ubigeo       char(6),
+  telefono     text,               -- como lo da la fuente, con espacios normalizados; null si no trae dígitos
+  lat          double precision not null,
+  lon          double precision not null,
+  geom         geometry(Point, 4326) generated always as (st_setsrid(st_makepoint(lon, lat), 4326)) stored,
+  fuente       text not null,      -- 'SUSALUD RENIPRESS', 'MININTER ... vía CENEPRED', 'CGBVP (portal) + CENEPRED', 'gob.pe'
+  fuente_url   text not null check (fuente_url ~ '^https://'),
+  fuente_id    text,               -- COD_IPRESS, cod_cpnp, número de compañía
+  licencia     text,               -- 'ODC-By' | null (información pública del Estado peruano)
+  atribucion   text not null,
+  detalle      jsonb not null default '{}'::jsonb check (jsonb_typeof(detalle) = 'object'),
+                                   -- lo demás que trae la fuente: horario, institucion, clasificacion, nivel,
+                                   -- tipo_comisaria, comandancia, nota, verificado_en...
+  actualizado  date not null,      -- fecha del dato en la fuente (Last-Modified del CSV, fecha del padrón o
+                                   -- de la verificación manual)
+  cargado_en   timestamptz not null default now(),
+  check (lat between -18.5 and 0.1 and lon between -81.5 and -68.5)   -- dentro del Perú
+);
+create index punto_acudir_geom_idx on punto_acudir using gist (geom);
+create index punto_acudir_tipo_idx on punto_acudir (tipo, departamento, atiende_24h);
+comment on table punto_acudir is
+  'A dónde acudir: salud (SUSALUD RENIPRESS), comisarías (MININTER vía CENEPRED), bomberos (CGBVP + CENEPRED) y Defensa Civil (gob.pe), con fuente y fecha. Sin albergues ni zonas seguras: no hay fuente oficial abierta (14-10-2026). Carga: backend/mapas/cargar_acudir.py.';
+-- Lectura pública; escribe solo el cargador (rol postgres).
+alter table punto_acudir enable row level security;
+revoke all on punto_acudir from anon, authenticated;
+grant select on punto_acudir to anon, authenticated;
+create policy "lectura publica punto acudir" on punto_acudir for select using (true);
+
 -- ===========================================================================
 -- B) COMUNIDAD: reportes estilo Waze validados por votos. Usuarios de Supabase
 --    Auth (auth.users.id es uuid). Todos los ids son uuid: no se pueden recorrer.
@@ -531,7 +681,10 @@ create table report (
                                then coalesce(subtipo in ('leve', 'moderado', 'detenido'), false)
                                else subtipo is null end),
   descripcion text check (char_length(descripcion) <= 500),
-  foto_url    text check (foto_url ~ '^https://'),
+  foto_url    text                             -- solo la URL pública del bucket "reportes" de este
+              -- proyecto (<ref>/storage/v1/object/public/reportes/<uuid autor>/<archivo>.jpg|jpeg|png|webp);
+              -- la carpeta y la existencia del archivo las valida el trigger report_foto_validar
+              check (foto_url ~ '^https://clrnommkjyksnyrtnisf\.supabase\.co/storage/v1/object/public/reportes/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/[A-Za-z0-9_-]{1,80}\.(jpg|jpeg|png|webp)$'),
   geom        geometry(Point, 4326) not null     -- GPS del usuario; solo dentro del Perú
               check (st_x(geom) between -81.5 and -68.5 and st_y(geom) between -18.5 and 0.1),
   likes       int  not null default 0,
@@ -582,7 +735,7 @@ create index message_autor_idx on message (autor, creado_en);
 
 -- Preferencias del mapa por usuario (capas encendidas y opciones elegidas). Sin sesión la web las
 -- guarda solo en el navegador (localStorage "simpac.mapa", frontend/src/lib/preferencias.js); con
--- sesión, también aquí. La web aún no tiene inicio de sesión: la tabla queda lista.
+-- sesión (páginas /cuenta, /cuenta/entrar y /cuenta/registro con Supabase Auth, 14-10-2026), también aquí.
 create table preferencia_mapa (
   usuario        uuid primary key default auth.uid() references auth.users(id) on delete cascade,
   version        smallint    not null default 1 check (version between 1 and 100),
@@ -598,17 +751,24 @@ comment on table preferencia_mapa is
 --                     confianza = (likes+1)/(likes+dislikes+2), estado (saldo ±3) y la
 --                     reputación del autor; impide mover un voto a otro reporte.
 --   report_limite     before insert on report: máximo 5 reportes por hora y autor.
+--   report_foto_validar before insert/update of foto_url on report: la carpeta de la URL debe
+--                     ser el autor del reporte y el archivo debe existir en storage.objects
+--                     (bucket reportes); con el CHECK de foto_url, nadie guarda un enlace o una
+--                     imagen de otro dominio (security definer para leer storage.objects).
 --   comentario_limite before insert on comentario: máximo 20 por hora y autor.
 --   message_limite    before insert on message: máximo 30 mensajes por hora y autor.
---                     (los límites toman un lock por autor: no se evaden en paralelo)
+--                     (los tres límites usan la misma función privado.limite_por_hora(N) y toman
+--                     un lock por autor: no se evaden en paralelo)
 --   crear_perfil      after insert on auth.users: crea el perfil (nombre de options.data).
 --   preferencia_tocar before insert/update on preferencia_mapa: actualizado_en = now() (la hora
 --                     la pone la BD, no el reloj del celular).
---   srs_solo_lectura  on spatial_ref_sys: rechaza escrituras de anon/authenticated.
+--   srs_solo_lectura  on spatial_ref_sys (y srs_no_truncate, before truncate): rechaza escrituras
+--                     de anon/authenticated en la tabla de PostGIS, que Supabase deja con permisos.
 -- Función pública: mis_reportes() (rpc, solo con sesión) devuelve los reportes propios,
 -- vigentes y vencidos: es la única forma de verlos, porque autor no es legible.
 -- Definición completa en supabase/migrations/ (comunidad_uuid_y_permisos,
--- permisos_api_endurecidos, comunidad_privacidad_y_limites y preferencia_mapa).
+-- permisos_api_endurecidos, comunidad_privacidad_y_limites, preferencia_mapa y
+-- report_foto_solo_bucket).
 
 -- ===========================================================================
 -- C) SEGURIDAD: RLS en todas las tablas y permisos POR COLUMNA.
@@ -739,3 +899,160 @@ create policy "preferencia edita dueno" on preferencia_mapa for update to authen
   using (usuario = (select auth.uid())) with check (usuario = (select auth.uid()));
 create policy "preferencia borra dueno" on preferencia_mapa for delete to authenticated
   using (usuario = (select auth.uid()));
+
+-- ===========================================================================
+-- D) STORAGE Y REALTIME DE LA COMUNIDAD (migración comunidad_fotos_y_chat_realtime)
+-- ===========================================================================
+
+-- Foto opcional de un reporte: bucket público "reportes" (3 MB; image/jpeg, png, webp). Sube
+-- solo quien tiene sesión y dentro de la carpeta de su uid (<uid>/<archivo>); se lee en
+-- público (la URL va en report.foto_url, que solo admite esa URL pública: CHECK report_foto_url_check
+-- y trigger report_foto_validar, migración report_foto_solo_bucket); nadie edita ni borra desde el cliente.
+insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+values ('reportes', 'reportes', true, 3145728, array['image/jpeg', 'image/png', 'image/webp']);
+create policy "reportes foto sube autor" on storage.objects for insert to authenticated
+  with check (bucket_id = 'reportes' and (select auth.uid())::text = (storage.foldername(name))[1]);
+create policy "reportes foto lectura publica" on storage.objects for select to anon, authenticated
+  using (bucket_id = 'reportes');
+
+-- Chat por zona en tiempo real: message entra en la publicación (postgres_changes respeta la
+-- RLS: solo con sesión y solo los mensajes vigentes). El cliente sondea además cada 10 s.
+alter publication supabase_realtime add table public.message;
+
+-- ===========================================================================
+-- E) RÍOS DEL PAÍS: trazo (cauce) de los ríos con estación de caudal de ANA
+--    (caudal_actual) o aviso hidrológico de SENAMHI. Migración rio_cauce.
+--    Carga ÚNICA con backend/mapas/cargar_cauces.py desde ANA - GeoSNIRH (dos
+--    capas: 'ana_rj056' red hidrográfica R.J. 056-2018-ANA, línea central por
+--    tramo; 'ana_ign' Carta Nacional 1:100 000 del IGN). Una fila por río
+--    (el Huallaga son 8 estaciones y una fila). El Mashcón sigue en rio_vigilado
+--    (OSM curado a mano) y no se duplica aquí. El trazo es la línea de
+--    referencia de la capa, no la orilla de hoy ni una zona inundable; un río
+--    sin trazo no tiene fila (nunca se dibuja una línea estimada como oficial).
+--    GeoSNIRH no publica licencia: información pública del Estado, con la
+--    fuente citada en cada fila (fuente, licencia, atribucion).
+-- ===========================================================================
+
+create table rio_cauce (
+  rio_ana            text primary key check (rio_ana ~ '^[a-z0-9_]+$'),  -- 'jequetepeque', 'chancay_lambayeque'
+  rio                text not null,            -- caudal_actual.rio literal; si solo tiene aviso SENAMHI, el del título
+  nombre             text not null,            -- para mostrar: 'Río Jequetepeque' (de la capa, o alias 'mostrar')
+  departamento       text not null,            -- de sus estaciones; varios separados por ', '
+  estaciones         text[] not null default '{}',   -- caudal_actual.estacion
+  estaciones_senamhi text[] not null default '{}',   -- aviso_hidrologico.ce
+  capa               text not null check (capa in ('ana_rj056', 'ana_ign', 'osm')),
+  nombre_capa        text not null,            -- nombre literal en la capa ('Río Chancay')
+  codigos            text[] not null,          -- CODIGO_CA (Pfafstetter) o IDE_CUERPO_AGUA de los tramos
+  tramos             int not null,
+  km                 numeric not null,         -- largo del trazo guardado
+  km_declarado       numeric,                  -- LONG_KM / NUM_LONGITUD de la capa
+  dist_estacion_m    numeric,                  -- la estación más cercana al trazo
+  distancias         jsonb not null default '[]'::jsonb check (jsonb_typeof(distancias) = 'array'),
+                                               -- [{estacion, origen: 'ana'|'senamhi', codigo, m}]
+  alias              text,                     -- nombre buscado si no es el de ANA (backend/data/rios/cauces_alias.json)
+  nota               text,                     -- avisos de la carga ('estación Jesús Túnel a 866 m del trazo')
+  geom               geometry(MultiLineString, 4326) not null,  -- ~6 m (maxAllowableOffset del servidor)
+  geom_lejos         geometry(MultiLineString, 4326) not null,  -- ~50 m (st_simplifypreservetopology 0.00045)
+  fuente             text not null,
+  fuente_url         text not null check (fuente_url ~ '^https://'),
+  licencia           text not null,
+  atribucion         text not null,
+  fecha_fuente       text,                     -- '2018-01-30' (RJ056) | '2026-04' (IGN)
+  url_consulta       text check (url_consulta ~ '^https://'),   -- la consulta que trajo el río
+  bytes              int,
+  ts_carga           timestamptz not null default now()
+);
+create index rio_cauce_geom_idx on rio_cauce using gist (geom);
+create index rio_cauce_geom_lejos_idx on rio_cauce using gist (geom_lejos);
+comment on table rio_cauce is
+  'Trazo de los ríos con estación de caudal de ANA o aviso hidrológico de SENAMHI (ANA - GeoSNIRH: RJ056 o Carta Nacional IGN). Carga única: backend/mapas/cargar_cauces.py. Línea de referencia, no la orilla de hoy ni una zona inundable.';
+
+-- GeoJSON (5 decimales) en dos niveles: cauce_lejos (~50 m) para todo el país de una vez; cauce (~6 m)
+-- por río (.eq('rio_ana', ...)) al acercarse. vigilado = ya está en rio_vigilado (el Mapa lo salta).
+create view rio_cauce_mapa with (security_invoker = true) as
+select c.rio_ana, c.rio, c.nombre, c.departamento, c.estaciones, c.estaciones_senamhi, c.capa, c.nombre_capa,
+       c.km, c.dist_estacion_m, c.nota, c.fuente, c.fuente_url, c.licencia, c.atribucion, c.fecha_fuente, c.ts_carga,
+       exists (select 1 from rio_vigilado v where v.rio_ana = c.rio or v.estacion_ana = any (c.estaciones)) as vigilado,
+       st_asgeojson(c.geom_lejos, 5)::json as cauce_lejos,
+       st_asgeojson(c.geom, 5)::json as cauce
+from rio_cauce c;
+
+-- Señales de hoy por río (como rio_senal): últimas lecturas de sus estaciones de ANA y avisos
+-- hidrológicos vigentes de sus estaciones SENAMHI. El nivel lo decide el frontend (lib/zonaRio.js).
+create view rio_cauce_senal with (security_invoker = true) as
+select c.rio_ana,
+  (select coalesce(json_agg(json_build_object(
+            'estacion', a.estacion, 'departamento', a.departamento, 'valor', a.valor, 'unidad', a.unidad,
+            'umbral_alerta', a.umbral_alerta, 'umbral_emergencia', a.umbral_emergencia, 'estado', a.estado,
+            'tendencia', a.tendencia, 'fecha', a.fecha, 'hora', a.hora, 'ts_captura', a.ts_captura)
+          order by a.estacion), '[]'::json)
+     from caudal_actual a
+    where a.rio = c.rio and a.estacion = any (c.estaciones)) as lecturas,
+  (select coalesce(json_agg(json_build_object(
+            'ca', h.ca, 'ce', h.ce, 'numero', h.numero, 'titulo', h.titulo, 'nivel', h.nivel, 'sentido', h.sentido,
+            'inicio', coalesce(h.inicio, h.inicio_dia::timestamp at time zone 'America/Lima'),
+            'fin', h.fin, 'fin_dia', h.fin_dia, 'valor', h.valor, 'unidad', h.unidad, 'umbral_rojo', h.umbral_rojo,
+            'url', h.url, 'visto_en', h.visto_en)
+          order by h.nivel desc nulls last, h.inicio_dia desc), '[]'::json)
+     from aviso_hidrologico_vigente h
+    where h.ce = any (c.estaciones_senamhi)) as avisos_hidro
+from rio_cauce c;
+
+-- Seguridad (misma regla que los datos oficiales de la sección C): lectura pública, escribe solo el cargador.
+alter table rio_cauce enable row level security;
+revoke all on rio_cauce, rio_cauce_mapa, rio_cauce_senal from anon, authenticated;
+grant select on rio_cauce, rio_cauce_mapa, rio_cauce_senal to anon, authenticated;
+create policy "lectura publica rio cauce" on rio_cauce for select using (true);
+
+-- ===========================================================================
+-- F) TITULAR INTERPRETADO por departamento (HU-16; migración titular_zona).
+--    Una frase en lenguaje claro, de 240 caracteres como mucho, por cada uno de
+--    los 24 departamentos y el Callao, que resume lo que dicen HOY las fuentes
+--    oficiales (alerta_actual, caudal_actual, lluvia_senamhi_actual,
+--    aviso_vigente, rio_senal, comunicado_enfen). La escribe la tarea 'titular'
+--    del worker (backend/ingesta/titular.py) cada 30 min. Con clave de API
+--    (SIMPAC_LLM_KEY) la redacta un modelo de lenguaje a partir de cifras y
+--    niveles YA calculados en Python (temperature 0; el modelo no decide el
+--    nivel ni calcula nada; su texto se valida: sin URL, sin emojis, cada
+--    número tiene que estar en los insumos, nunca afirma un peligro que las
+--    fuentes no indiquen ni "normal" sin datos) y solo cuando cambian los
+--    insumos del departamento (huella en insumos). Sin clave, o si el modelo
+--    falla o su texto no pasa, lo arman reglas fijas (origen 'reglas'). Si la
+--    API falla y nada cambió, el titular anterior se queda (nunca se borra).
+--    El nivel es el semáforo del frontend (lib/nivel.js): 'sin_dato' cuando
+--    SIMPAC no tiene nada que revisar en el departamento; la lluvia medida y
+--    un río muy bajo (vaciante) nunca pasan de 'aviso'.
+-- ===========================================================================
+create table titular_zona (
+  departamento text primary key,                 -- canónico (backend/ingesta/departamentos.py), incluye 'Callao'
+  titular      text not null check (char_length(titular) <= 240),
+  titular_corto text check (char_length(titular_corto) <= 110),
+                                                 -- la frase principal (qué hay vigente y de quién), siempre por
+                                                 -- reglas, para las dos líneas de la tarjeta "Tu zona ahora"
+                                                 -- (migración titular_zona_titular_corto); null hasta la primera
+                                                 -- corrida de la tarea tras esa migración
+  detalle      text,                             -- el resumen largo: qué hay, cuántas, el río vigilado,
+                                                 -- la lluvia medida y las fuentes con su hora
+  nivel        text not null check (nivel in ('normal', 'aviso', 'alerta', 'emergencia', 'sin_dato')),
+  generado_en  timestamptz not null default now(),   -- cuándo se escribió ESTE titular
+  revisado_en  timestamptz not null default now(),   -- última corrida que confirmó que sus insumos siguen iguales
+  modelo       text,                             -- id del modelo (origen 'llm'); null con reglas
+  origen       text not null check (origen in ('llm', 'reglas')),
+  insumos      jsonb not null default '{}'::jsonb check (jsonb_typeof(insumos) = 'object')
+                                                 -- las cifras y niveles que recibió el redactor, con la
+                                                 -- hora de cada fuente (horas), la huella (hash) que
+                                                 -- decide si hay que volver a redactar y, si el texto
+                                                 -- del modelo se descartó, el motivo (llm_descartado)
+);
+comment on table titular_zona is
+  'Titular en lenguaje claro por departamento, generado por el worker (tarea titular) a partir de los datos oficiales; '
+  'origen llm = lo redactó un modelo de lenguaje con las cifras fijadas y validado; reglas = respaldo determinista. '
+  'titular_corto (<= 110) es la frase principal por reglas para la tarjeta de inicio.';
+comment on column titular_zona.titular_corto is
+  'Frase principal del titular en 110 caracteres como mucho, siempre por reglas (titular.py titular_corto), para la '
+  'tarjeta "Tu zona ahora"; null hasta la primera corrida de la tarea tras esta migración.';
+-- Lectura pública (es un resumen de datos públicos); escribe solo el worker (rol postgres).
+alter table titular_zona enable row level security;
+revoke all on titular_zona from anon, authenticated;
+grant select on titular_zona to anon, authenticated;
+create policy "lectura publica titular" on titular_zona for select using (true);

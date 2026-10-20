@@ -4,7 +4,9 @@ Informe Técnico (descubrimiento, no volver a bajar el ya leído ni uno más vie
 24 h para uno descartado, lectura de la Tabla 3); errores de pypdf como PDF ilegible.
 
 Los fragmentos son texto real extraído con pypdf de los PDF oficiales (recortados, con
-sus saltos de línea y espacios raros tal cual). Sin red ni pypdf: solo librería estándar.
+sus saltos de línea y espacios raros tal cual). El CO 17-2026 (formato nuevo: estado en una
+línea propia, sin rótulo ni resumen ejecutivo, y la fecha con el año errado) va completo en
+muestras/comunicado_enfen_17_2026.txt. Sin red ni pypdf: solo librería estándar.
 """
 import io
 import sys
@@ -13,6 +15,7 @@ import unicodedata
 import unittest
 import urllib.error
 from datetime import date, datetime, timedelta, timezone
+from pathlib import Path
 from unittest import mock
 
 from backend.connectors import _http, enfen
@@ -191,6 +194,11 @@ Fuerte
 
 URL = "https://cdn.www.gob.pe/uploads/document/file/10621138/8596065-comunicado_of_enfen-n-16-2026.pdf"
 
+# --- Comunicado Oficial ENFEN N° 17-2026 (formato nuevo del 28-09-2026), texto completo ----
+MUESTRAS = Path(__file__).parent / "muestras"
+CO_17_2026 = (MUESTRAS / "comunicado_enfen_17_2026.txt").read_text(encoding="utf-8")
+URL_17 = "https://cdn.www.gob.pe/uploads/document/file/10703704/8654940-comunicado_of_enfen-n-17-2026.pdf"
+
 
 class TestParseo(unittest.TestCase):
     def test_co_16_2026_alerta(self):
@@ -315,6 +323,121 @@ class TestTolerancia(unittest.TestCase):
     def test_sin_proximo(self):
         texto = CO_16_2026.split("La Comisión Multisectorial del ENFEN mantendrá")[0]
         self.assertIsNone(enfen.parsear_texto(texto, "u").proximo)
+
+
+class TestFormato2026(unittest.TestCase):
+    """
+    CO 17-2026: sin rótulo "Estado del sistema de alerta:" ni "RESUMEN EJECUTIVO"; el estado
+    va en una línea propia bajo la fecha, sigue un título en mayúsculas y el cuerpo. La fecha
+    dice "28 septiembre 2027" (errata: se publicó el 28-09-2026 y anuncia el próximo para el
+    15-10-2026). Se fija _hoy porque la corrección depende de qué fechas son futuras.
+    """
+
+    def parsear(self, texto=None, hoy=date(2026, 9, 28), url=URL_17):
+        with mock.patch.object(enfen, "_hoy", lambda: hoy):
+            return enfen.parsear_texto(CO_17_2026 if texto is None else texto, url)
+
+    def test_co_17_2026(self):
+        with self.assertLogs(enfen.log, "WARNING") as cm:
+            c = self.parsear()
+        self.assertEqual((c.numero, c.anio), (17, 2026))
+        self.assertEqual(c.fecha, date(2026, 9, 28))           # "28 septiembre 2027" corregido
+        self.assertEqual(c.estado, "Alerta de El Niño Costero")   # línea suelta, sin el "1"
+        self.assertEqual(c.proximo, date(2026, 10, 15))        # "el jueves 15 de octubre de 2026"
+        self.assertEqual(c.url, URL_17)
+        self.assertEqual(c.icen, [])                           # no trae tabla del ICEN
+        self.assertIsNone(c.icen_tmp)
+        self.assertFalse(c.extraordinario)
+        self.assertEqual(len(cm.output), 1)
+        self.assertIn("2027-09-28", cm.output[0])
+        self.assertIn("2026-09-28", cm.output[0])
+
+    def test_resumen_del_cuerpo_sin_titulo_ni_llamadas(self):
+        c = self.parsear()
+        self.assertTrue(c.resumen.startswith("El Niño Costero (región Niño 1+2 - Figura 1) se mantendría"))
+        self.assertTrue(c.resumen.endswith("hacia el otoño de dicho año."))
+        self.assertNotIn("PROLONGARÍA", c.resumen)             # el título en mayúsculas se omite
+        self.assertFalse(c.resumen.startswith("1"))            # ni la llamada "1" del estado
+        self.assertIn("hasta enero 2027 (Figura 2a)", c.resumen)   # "20272": llamada tras el año
+        self.assertIn("muy fuerte (Figura 2b)", c.resumen)         # "fuerte3"
+        self.assertIn("extraordinaria, respecto", c.resumen)       # "extraordinaria , respecto"
+        self.assertNotIn("Figura 1. Anomalía", c.resumen)          # la leyenda no es prosa
+        self.assertNotIn("\n", c.resumen)
+        self.assertLessEqual(len(c.resumen), 480)
+
+    def test_estado_suelto_con_comillas_y_palabras_partidas(self):
+        texto = CO_17_2026.replace("Alerta de El Niño Costero1", '"Alerta de El Ni ño Coste ro" 1')
+        c = self.parsear(texto)
+        self.assertEqual(c.estado, "Alerta de El Niño Costero")
+        self.assertTrue(c.resumen.startswith("El Niño Costero (región Niño 1+2"))
+        texto = CO_17_2026.replace("Alerta de El Niño Costero1", "Vigilancia de La Niña Costera 1")
+        self.assertEqual(self.parsear(texto).estado, "Vigilancia de La Niña Costera")
+
+    def test_estado_suelto_no_toma_una_mencion_dentro_de_una_frase(self):
+        # Sin rótulo y con el cambio de estado en la primera frase: la mención entre comillas
+        # va precedida de 'de' / 'a', no es el estado suelto; vale la frase con verbo (el nuevo).
+        texto = (
+            "COMUNICADO OFICIAL ENFEN N° 18-2026\n15 de octubre de 2026\n\n"
+            "La Comisión Multisectorial del ENFEN cambia el estado del sistema de alerta de "
+            "“Alerta de El Niño Costero” a “Vigilancia de El Niño Costero”, debido a que es más "
+            "probable que las condiciones cálidas se atenúen.\n"
+        )
+        c = self.parsear(texto, hoy=date(2026, 10, 15))
+        self.assertEqual(c.estado, "Vigilancia de El Niño Costero")
+        # Y los caminos anteriores siguen primero: el rótulo manda sobre la línea suelta.
+        texto = CO_17_2026.replace("Alerta de El Niño Costero1",
+                                   "Estado del sistema de alerta: No Activo1\nAlerta de El Niño Costero1")
+        self.assertEqual(self.parsear(texto).estado, "No activo")
+
+    def test_sin_errata_no_hay_aviso(self):
+        texto = CO_17_2026.replace("28 septiembre 2027", "28 septiembre 2026")
+        with self.assertNoLogs(enfen.log, "WARNING"):
+            c = self.parsear(texto, hoy=date(2026, 10, 14))
+        self.assertEqual((c.fecha, c.proximo), (date(2026, 9, 28), date(2026, 10, 15)))
+
+    def test_fecha_de_manana_no_es_futura(self):
+        # Un día de margen por husos horarios: emitido el 28 y leído el 27 en hora de Perú.
+        c = self.parsear(hoy=date(2026, 9, 27))
+        self.assertEqual(c.fecha, date(2026, 9, 28))
+
+    def test_fecha_futura_que_no_cuadra_es_error(self):
+        # Corregida con el año del encabezado (2026-09-28) sigue siendo futura el 20-09-2026.
+        with self.assertRaisesRegex(ValueError, "futura"):
+            self.parsear(hoy=date(2026, 9, 20))
+        # Año correcto pero fecha adelantada: no hay con qué corregirla.
+        with mock.patch.object(enfen, "_hoy", lambda: date(2026, 9, 1)):
+            with self.assertRaisesRegex(ValueError, "2026-09-14 .*futura"):
+                enfen.parsear_texto(CO_16_2026, "u")
+
+    def test_comunicado_de_2026_emitido_en_enero_de_2027(self):
+        texto = CO_17_2026.replace("N°17- 2026", "N°24- 2026").replace("28 septiembre 2027", "14 de enero de 2027")
+        with self.assertLogs(enfen.log, "WARNING") as cm:
+            c = self.parsear(texto, hoy=date(2027, 1, 14))
+        self.assertEqual((c.numero, c.anio, c.fecha), (24, 2026, date(2027, 1, 14)))   # no se "corrige"
+        self.assertFalse([m for m in cm.output if "futura" in m])
+        # El único aviso es por el "próximo" de la muestra (15-10-2026), anterior a la emisión.
+        self.assertIsNone(c.proximo)
+
+    def test_fecha_errada_mas_de_un_anio_sigue_siendo_error(self):
+        texto = CO_17_2026.replace("28 septiembre 2027", "28 septiembre 2028")
+        with self.assertRaisesRegex(ValueError, "no corresponde"):
+            self.parsear(texto)
+
+    def test_titulo_en_mayusculas(self):
+        self.assertEqual(enfen._sin_titulo("EL NIÑO COSTERO SE PROLONGARÍA HASTA EL OTOÑO DE 2027 El Niño Costero sigue."),
+                         "El Niño Costero sigue.")
+        # La sigla con que empieza la primera frase no es parte del título.
+        self.assertEqual(enfen._sin_titulo("EL NIÑO SIGUE HASTA 2027 ENFEN sostiene que sigue."),
+                         "ENFEN sostiene que sigue.")
+        # Menos de tres palabras en mayúsculas no son un título.
+        self.assertEqual(enfen._sin_titulo("ENFEN mantiene el estado."), "ENFEN mantiene el estado.")
+        self.assertEqual(enfen._sin_titulo("La Comisión Multisectorial se reunió."), "La Comisión Multisectorial se reunió.")
+
+    def test_llamada_de_nota_tras_un_anio(self):
+        self.assertEqual(enfen._RE_LLAMADA.sub("", "hasta enero 20272 (Figura 2a), fuerte3 y 2026 a 2027."),
+                         "hasta enero 2027 (Figura 2a), fuerte y 2026 a 2027.")
+        self.assertEqual(enfen._RE_LLAMADA.sub("", "200000 soles en 2026-2027 y 19950 casos"),
+                         "200000 soles en 2026-2027 y 19950 casos")   # cifras, no llamadas
 
 
 class TestICEN(unittest.TestCase):
@@ -597,6 +720,18 @@ class TestUltimoComunicado(unittest.TestCase):
         c = self.correr(red, avisos=False)
         self.assertEqual((c.numero, c.anio, c.estado, c.url), (16, 2026, "Alerta de El Niño Costero", URL))
         self.assertNotIn(enfen.SENAMHI_NINO, red.pedidas)   # no hizo falta seguir
+
+    def test_co_17_formato_nuevo_de_punta_a_punta(self):
+        red = _Red(self.PAGINAS, {URL: _pdf(CO_17_2026)})
+        p = red.parches()
+        with p[0], p[1], p[2], p[3], mock.patch.object(enfen, "_hoy", lambda: date(2026, 10, 14)):
+            with self.assertLogs(enfen.log, "WARNING") as cm:   # solo el aviso de la errata del año
+                c = enfen.ultimo_comunicado()
+        self.assertEqual([m for m in cm.output if "futura" in m], cm.output)
+        self.assertEqual((c.numero, c.anio, c.fecha, c.estado, c.proximo),
+                         (17, 2026, date(2026, 9, 28), "Alerta de El Niño Costero", date(2026, 10, 15)))
+        self.assertEqual(c.avisos, [])
+        self.assertNotIn(enfen.SENAMHI_NINO, red.pedidas)   # vigente hasta el 15-10 + 2 días
 
     def test_si_gobpe_falla_usa_senamhi(self):
         paginas = dict(self.PAGINAS)

@@ -38,8 +38,9 @@ import avisos from "./avisos";
 import pronostico from "./pronostico";
 import nowcast from "./nowcast";
 import lluviaAhora from "./lluviaAhora";
+import acudir from "./acudir";
 
-export const GRUPOS = ["Alertas y avisos", "Pronóstico", "Lluvia", "Ríos y estaciones", "El Niño", "Comunidad"];
+export const GRUPOS = ["Alertas y avisos", "Pronóstico", "Lluvia", "Ríos y estaciones", "El Niño", "Comunidad", "A dónde acudir"];
 
 export const LAYERS = [
   avisos,
@@ -56,4 +57,5 @@ export const LAYERS = [
   estaciones,
   fenHistorico,
   incidentes,
+  acudir,
 ];

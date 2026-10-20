@@ -1,0 +1,119 @@
+{
+  "_nota": "Alias para backend/mapas/cargar_cauces.py: los ríos de caudal_actual (ANA) o de los avisos de SENAMHI cuyo nombre no coincide con el de las capas de GeoSNIRH, o cuya estación tiene la coordenada desplazada. Clave: rio_ana (slug de caudal_actual.rio). nombre = nombre a buscar en la capa; capa = forzar 'ana_rj056' o 'ana_ign'; radio_m = radio de búsqueda y distancia aceptada a la estación (solo cuando la coordenada de ANA no está sobre el cauce: nunca se mueve el trazo); mostrar = nombre para la web; sin_trazo = no hay un cauce que dibujar (la fila no se crea). Revisado en vivo el 14-10-2026.",
+  "rios": {
+    "amazonas": {
+      "radio_m": 1000,
+      "nota": "Río de 2 km de ancho: la línea central de RJ056 (2018) queda a 389 m de la estación más cercana."
+    },
+    "cajamarca": {
+      "nombre": "Río Cajamarca",
+      "capa": "ana_ign",
+      "nota": "La estación Jesús Túnel de ANA tiene la coordenada del túnel (866 m del cauce); la de SENAMHI (220205) está sobre el río. SENAMHI a veces lo llama 'Cajamarquino'. Solo está en la Carta Nacional."
+    },
+    "callazas": {
+      "nombre": "Río Callazos",
+      "capa": "ana_rj056",
+      "nota": "ANA escribe 'Callazas' (estación Coranchay); RJ056, 'Río Callazos'."
+    },
+    "canopampa": {
+      "sin_trazo": "Canopampa es un canal/túnel (estación Túnel Kovire): no está en las capas de ríos de ANA."
+    },
+    "chancay_huaral": {
+      "nombre": "Río Chancay",
+      "capa": "ana_rj056",
+      "mostrar": "Río Chancay (Huaral)",
+      "nota": "ANA lo llama 'Chancay Huaral'; en RJ056 es 'Río Chancay', cuenca Chancay - Huaral (Puente Callantama y Santo Domingo)."
+    },
+    "chancay_lambayeque": {
+      "nombre": "Río Chancay",
+      "capa": "ana_rj056",
+      "mostrar": "Río Chancay (Lambayeque)",
+      "nota": "ANA lo llama 'Chancay Lambayeque'; en RJ056 es 'Río Chancay', cuenca Chancay-Lambayeque (estaciones Cirato y Racarumi)."
+    },
+    "charanal": {
+      "nombre": "Río Charanal",
+      "capa": "ana_ign",
+      "radio_m": 4000,
+      "nota": "Estación San Pedro (Piura), homónima de la del río Santa. El 'Río Charanal' de la Carta Nacional (cuenca Piura) pasa a 3,7 km de la coordenada de ANA; RJ056 no lo tiene. La coordenada parece desplazada: se acepta con aviso."
+    },
+    "chunchuca": {
+      "sin_trazo": "La única 'Quebrada Chunchuca' (Carta Nacional, cuenca Chamaya) pasa a 6,8 km de la estación Cacao de SENAMHI: no se da por buena. RJ056 no la tiene."
+    },
+    "cumbaza": {
+      "radio_m": 1000,
+      "nota": "ANA publica la estación Cumbaza con 4 decimales (-6.4667, -76.3833): queda a 604 m del cauce."
+    },
+    "el_ingenio": {
+      "nombre": "Quebrada Ingenio",
+      "capa": "ana_rj056",
+      "nota": "RJ056 lo clasifica como quebrada (Quebrada Ingenio, cuenca Grande); estación Huallpoca."
+    },
+    "itaya": {
+      "radio_m": 2000,
+      "nota": "Estación Enapu Perú (puerto de Iquitos): ANA la pone en el Itaya y SENAMHI en el Amazonas. La línea central del Itaya (RJ056) queda a 1,9 km."
+    },
+    "llapa": {
+      "radio_m": 1000,
+      "nota": "Estación Sibayo: el Río Llapa de RJ056 pasa a 459 m de la coordenada de ANA."
+    },
+    "llaucano": {
+      "nombre": "Río Llaucano",
+      "capa": "ana_ign",
+      "radio_m": 3000,
+      "nota": "La coordenada de ANA de Llaucano Corellama queda a más de 2 km del cauce de la Carta Nacional."
+    },
+    "locumba": {
+      "nota": "Dos estaciones: Puente Viejo sobre el Locumba y TICAPAMPA donde nace (Ilabaya + Curibaya); TICAPAMPA puede quedar lejos del trazo."
+    },
+    "lurin": {
+      "radio_m": 1000,
+      "nota": "ANA publica Antapucro con 4 decimales (-12.0333, -76.6333): queda a 408 m del cauce."
+    },
+    "motupe": {
+      "nombre": "Río Chiniama",
+      "capa": "ana_rj056",
+      "nota": "En RJ056 el tramo donde está la estación Marripón se llama Río Chiniama (nace el Motupe aguas abajo)."
+    },
+    "palpa": {
+      "nombre": "Río Llauta",
+      "capa": "ana_ign",
+      "nota": "La estación Llauta (ANA: río Palpa) está sobre el río Llauta, que forma el Palpa aguas abajo."
+    },
+    "quilvire": {
+      "radio_m": 2000,
+      "nota": "Solo está en la Carta Nacional (cuenca Mauri), a 1,4 km de la coordenada de ANA de la estación Vilacota."
+    },
+    "san_juan": {
+      "radio_m": 1500,
+      "nota": "Solo tiene estación de SENAMHI (Conta, 203501). El Río San Juan de la Carta Nacional pasa a 1,1 km; el de RJ056 a más de 4,6 km (otro tramo con nombre propio)."
+    },
+    "socabaya": {
+      "nombre": "Río Socabaya",
+      "capa": "ana_ign",
+      "radio_m": 3000,
+      "nota": "La coordenada de ANA de la estación Tingo Grande no cae sobre el cauce de la Carta Nacional."
+    },
+    "sumbay": {
+      "nota": "Ninguna de las dos capas tiene un curso llamado Sumbay a 10 km de la estación (revisado el 14-10-2026): queda sin trazo."
+    },
+    "titicaca": {
+      "sin_trazo": "Es el lago Titicaca (estación Muelle Enafer): no hay un cauce que dibujar."
+    },
+    "tulumayo": {
+      "nota": "Solo está en la Carta Nacional (IGN), a 66 m de la estación Rio Tulumayo; RJ056 no lo trae."
+    },
+    "ushusuma": {
+      "nombre": "Río Uchusuma",
+      "radio_m": 3000,
+      "nota": "ANA escribe 'Ushusuma' para la estación Canal Uchusuma (un canal: si no pasa a 3 km del río queda sin trazo)."
+    },
+    "vichaycocha": {
+      "radio_m": 1000,
+      "nota": "Solo tiene estación de SENAMHI (47E257D8): el río de RJ056 pasa a 642 m de la coordenada de la tabla estacion."
+    }
+  },
+  "senamhi": {
+    "biavo": "biabo",
+    "cajamarquino": "cajamarca"
+  }
+}

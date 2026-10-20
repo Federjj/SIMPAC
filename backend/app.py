@@ -11,6 +11,7 @@ import httpx
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
+from backend.config import ajustes
 from backend.snapshot import get_snapshot, new_redis
 
 
@@ -25,9 +26,12 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="SIMPAC API", version="0.2.0", lifespan=lifespan)
+# CORS solo para la web de SIMPAC (SIMPAC_CORS_ORIGENES; por defecto nginx :8080, Vite :5173 y la
+# app Android), solo GET: a otro origen el navegador no le entrega la respuesta. La API es de solo
+# lectura y los datos son públicos, pero así nadie monta otra web encima de ella sin que se note.
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=list(ajustes().cors_origenes),
     allow_methods=["GET"],
     allow_headers=["*"],
 )

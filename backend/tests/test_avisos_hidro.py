@@ -8,6 +8,10 @@ Muestras reales (backend/tests/muestras/, 03-10-2026 de madrugada, hora de Perú
                                                    13-03-2026: 30.17 m3/s, umbral 18)
   aviso_hidrologico_70483_napo_descenso.html.gz    detalle del aviso 1624 del Napo (descenso,
                                                    vigente: nivel en m.s.n.m, umbral 85.81)
+  aviso_hidrologico_70615_enapu_situacion.html.gz  solo el bloque del aviso 1649 del Amazonas en
+                                                   Enapu Perú (19-10-2026): título "SITUACIÓN
+                                                   ACTUAL DEL NIVEL", que no dice el sentido, y
+                                                   leyenda de vaciante (encallamiento, no desborde)
 """
 import gzip
 import unittest
@@ -29,6 +33,7 @@ def _leer(nombre: str) -> str:
 LISTA = _leer("avisos_hidrologicos_lista_20261003.html.gz")
 MASHCON_ROJO = _leer("aviso_hidrologico_67552_mashcon_rojo.html.gz")
 NAPO_DESCENSO = _leer("aviso_hidrologico_70483_napo_descenso.html.gz")
+ENAPU_SITUACION = _leer("aviso_hidrologico_70615_enapu_situacion.html.gz")
 
 
 def _fila_html(ca=1, ce="220213", nro="10", ini="2026-03-17", fin="2026-03-18", dur="24",
@@ -53,7 +58,9 @@ class TestLista(unittest.TestCase):
         self.assertEqual(sum(x.vigente for x in f), 7)
         self.assertEqual(sum(x.ce == "220213" for x in f), 27)      # Mashcón
         self.assertEqual(sum(x.nivel is None for x in f), 3)
-        self.assertEqual(sum(x.sentido == "descenso" for x in f), 37)
+        # 983 "INCREMENTO ..." (crecida), 37 "DESCENSO ..." y 660 "SITUACIÓN ACTUAL ..." que no dicen el sentido
+        self.assertEqual({k: sum(x.sentido == k for x in f) for k in sh.SENTIDOS},
+                         {"crecida": 983, "descenso": 37, "indeterminado": 660})
         self.assertEqual({x.nivel for x in f}, {2, 3, 4, None})
 
     def test_fila_del_mashcon(self):
@@ -69,8 +76,8 @@ class TestLista(unittest.TestCase):
         napo = self.por_ca[70483]
         self.assertEqual((napo.ce, napo.numero, napo.vigente, napo.sentido, napo.nivel, napo.duracion_h),
                          ("240111", 1624, True, "descenso", 2, 60))
-        # "SITUACIÓN ACTUAL ..." es de crecida
-        self.assertEqual(self.por_ca[70487].sentido, "crecida")
+        # "SITUACIÓN ACTUAL DEL NIVEL ..." no dice si el río sube o baja: lo decide el detalle
+        self.assertEqual(self.por_ca[70487].sentido, "indeterminado")
 
     def test_codigo_de_estacion_con_letras(self):
         self.assertEqual(self.por_ca[65908].ce, "472B730C")
@@ -113,6 +120,21 @@ class TestLista(unittest.TestCase):
         sin_texto = sh.parsear_lista(LISTA.replace(" (vigente)", ""))
         self.assertEqual(sum(x.vigente for x in sin_texto), 7)
 
+    def test_sentido_del_titulo(self):
+        casos = {
+            "INCREMENTO DEL CAUDAL DEL RÍO MASHCÓN - ESTACIÓN MASHCÓN": "crecida",
+            "INCREMENTO DEL NIVEL DEL RÍO AMAZONAS": "crecida",
+            "CRECIDA DEL RÍO PIURA": "crecida",
+            "DESCENSO DEL NIVEL DEL RÍO NAPO - ESTACIÓN BELLAVISTA": "descenso",
+            "SITUACIÓN ACTUAL DEL DESCENSO DEL NIVEL DEL RÍO UCAYALI": "descenso",
+            "SITUACIÓN ACTUAL DEL NIVEL DEL RÍO AMAZONAS - ESTACIÓN ENAPU PERÚ": "indeterminado",
+            "SITUACION ACTUAL DEL CAUDAL DEL RÍO ALAMOR": "indeterminado",   # en la costa puede ser crecida
+            "SITUCION ACTUAL DEL NIVEL DEL RÍO NANAY": "indeterminado",      # con la errata de SENAMHI
+            "": "indeterminado",
+        }
+        for titulo, sentido in casos.items():
+            self.assertEqual(sh.sentido_del_titulo(titulo), sentido, titulo)
+
     def test_enlace_con_amp(self):
         fila = _fila_html(ca=9).replace("&ca=", "&amp;ca=").replace("&ce=", "&amp;ce=")
         [f] = sh.parsear_lista(fila)
@@ -128,6 +150,7 @@ class TestDetalle(unittest.TestCase):
         self.assertIn("BAMBAMARCA CHICO", d["areas"])
         self.assertTrue(d["areas"].endswith("MOLLEPAMPA."))
         self.assertTrue(d["significado_rojo"].startswith("Se espera desborde del río"))
+        self.assertEqual(d["sentido"], "crecida")
         self.assertEqual(d["inicio"], datetime(2026, 3, 13, 6, 0, tzinfo=HORA_PERU))
         self.assertEqual(d["fin"], datetime(2026, 3, 13, 16, 0, tzinfo=HORA_PERU))
         self.assertEqual(d["emision"], datetime(2026, 3, 13, 9, 36, tzinfo=HORA_PERU))
@@ -143,10 +166,34 @@ class TestDetalle(unittest.TestCase):
         # la leyenda del rojo de un aviso de descenso no habla de desborde
         self.assertNotIn("desborde", d["significado_rojo"])
         self.assertIn("encallamiento", d["significado_rojo"])
+        self.assertEqual(d["sentido"], "descenso")
+
+    def test_situacion_actual_es_vaciante_por_la_leyenda(self):
+        # el título "SITUACIÓN ACTUAL DEL NIVEL DEL RÍO AMAZONAS - ESTACIÓN ENAPU PERÚ" no dice el sentido;
+        # la leyenda del rojo habla de "mayor descenso en el nivel del río" y "encallamiento"
+        d = sh.parsear_detalle(ENAPU_SITUACION)
+        self.assertEqual((d["numero"], d["nivel"]), (1649, 3))
+        self.assertEqual((d["valor"], d["unidad"], d["umbral_rojo"]), (108.66, "m.s.n.m", 107.96))
+        self.assertEqual((d["inicio"], d["fin"]), (datetime(2026, 10, 13, 6, 0, tzinfo=HORA_PERU),
+                                                   datetime(2026, 10, 20, 12, 0, tzinfo=HORA_PERU)))
+        self.assertEqual(d["emision"], datetime(2026, 10, 13, 8, 29, tzinfo=HORA_PERU))
+        self.assertIn("IQUITOS", d["areas"])
+        self.assertIn("mayor descenso en el nivel", d["significado_rojo"])
+        self.assertEqual(d["sentido"], "descenso")
+
+    def test_sentido_del_detalle(self):
+        self.assertEqual(sh.sentido_del_detalle("Se espera desborde del río. Probable inundación en zonas bajas."), "crecida")
+        self.assertEqual(sh.sentido_del_detalle("Indica ... mayor descenso en el nivel del río ... encallamiento"), "descenso")
+        self.assertEqual(sh.sentido_del_detalle("Condiciones de estiaje severo."), "descenso")
+        # sin pistas, o con pistas de los dos lados, no se afirma nada
+        self.assertIsNone(sh.sentido_del_detalle("Indica condiciones del río con tendencia ascendente en su nivel."))
+        self.assertIsNone(sh.sentido_del_detalle("Desborde por descenso."))
+        self.assertIsNone(sh.sentido_del_detalle(None))
+        self.assertIsNone(sh.sentido_del_detalle(""))
 
     def test_pagina_vacia_o_sin_aviso(self):
         vacio = dict.fromkeys(("numero", "nivel", "emision", "inicio", "fin", "valor", "unidad", "areas",
-                               "umbral_rojo", "significado_rojo"))
+                               "umbral_rojo", "significado_rojo", "sentido"))
         self.assertEqual(sh.parsear_detalle(""), vacio)
         # la lista sola (sin el bloque del aviso) no se confunde con un detalle
         self.assertEqual(sh.parsear_detalle(LISTA), vacio)

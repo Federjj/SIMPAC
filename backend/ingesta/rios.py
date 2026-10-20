@@ -4,20 +4,34 @@ aviso_hidrologico_vigente y rio_senal para el frontend).
 
 La tarea 'rios' (cada hora) llama a actualizar(), que:
   1. Lee las estaciones SENAMHI de rio_vigilado (hoy solo el Mashcón, '220213') y qué avisos
-     ya tienen el detalle guardado (inicio no nulo), con su fin y su nivel.
+     ya tienen el detalle guardado (inicio no nulo), con su fin, su nivel y su sentido.
   2. Baja la lista de avisos de los últimos 12 meses de todo el país (una petición de ~700 KB;
      backend/connectors/senamhi_avisos_hidro.py) y la valida: con menos de MIN_FILAS filas la
      página cambió o vino cortada y no se escribe nada.
-  3. Baja el detalle (hora, caudal, áreas que podrían verse afectadas, umbral rojo) solo de
-     los avisos vigentes de las estaciones vigiladas que aún no lo tienen, o cuyo fin o nivel
-     cambió en la lista desde que se leyó (SENAMHI corrigió o extendió el aviso): MAX_DETALLES
-     como máximo, en serie y con pausa (cada detalle pesa lo mismo que la lista). Un dato que
-     no cuadra con la lista (fin de otro día, valor más de 10 veces el umbral) no se guarda.
-     Todo antes de abrir la transacción.
+  3. Baja el detalle (hora, caudal, áreas que podrían verse afectadas, umbral rojo y la leyenda
+     que dice si el aviso es de crecida o de vaciante) de TODOS los avisos vigentes del país que
+     aún no lo tienen, o cuyo fin o nivel cambió en la lista desde que se leyó (SENAMHI corrigió
+     o extendió el aviso): los de las estaciones vigiladas primero, MAX_DETALLES como máximo por
+     corrida (el resto queda 'indeterminado' y no enciende nada hasta la próxima), en serie y
+     con pausa (cada detalle pesa lo mismo que la lista). Un dato que no cuadra con la lista
+     (fin de otro día, valor más de 10 veces el umbral) no se guarda. Todo antes de abrir la
+     transacción.
   4. En una transacción (con un candado para que dos corridas no se pisen): upsert de todas
-     las filas de la lista (sin pisar las columnas del detalle, con visto_en = now()), marca
-     como no vigentes los que ya no figuran como vigentes (salvo que la vigencia sea ambigua),
-     guarda los detalles y purga los avisos que terminaron hace más de DIAS_PURGA días.
+     las filas de la lista (sin pisar las columnas del detalle ni un sentido ya fijado por el
+     detalle, con visto_en = now()), marca como no vigentes los que ya no figuran como vigentes
+     (salvo que la vigencia sea ambigua), guarda los detalles (con el sentido) y purga los
+     avisos que terminaron hace más de DIAS_PURGA días.
+
+Sentido del aviso (crecida o vaciante): el título solo lo dice en "INCREMENTO ..." (crecida) y
+"DESCENSO ..." (descenso); los "SITUACIÓN ACTUAL DEL NIVEL ..." de la selva son casi siempre de
+vaciante y antes se guardaban como crecida (hallazgo del 19-10-2026: 6 ríos amazónicos pintados
+de naranja en plena vaciante). Ahora esos entran como 'indeterminado' y el sentido lo fija la
+leyenda del nivel rojo del detalle (fuente.sentido_del_detalle); si la leyenda no lo aclara, se
+queda 'indeterminado' y se anota en el latido. Un título explícito manda sobre la leyenda (si no
+coinciden, se anota). El frontend (lib/zonaRio.js, lib/cauces.js) y titular.py solo encienden un
+río con sentido 'crecida'. La función SQL aviso_hidrologico_sentido (migración
+aviso_hidrologico_sentido_indeterminado) aplica la misma regla en un trigger, de modo que la BD
+nunca guarda 'crecida' sin esa evidencia aunque la escriba un worker con código viejo.
 
 La tarea no crea filas en `alerta`: el contador y el badge no cambian (decisión del 03-10-2026).
 El aviso hidrológico solo enciende la zona del río en el frontend (lib/zonaRio.js, vía rio_senal).
@@ -34,6 +48,8 @@ Resumen del latido 'rios':
   vigilados   [{ce, numero, nivel, vigente, fin_dia}] de las estaciones vigiladas: los vigentes
               y el último de cada estación
   detalles    ca de los avisos cuyo detalle se leyó y guardó en esta corrida
+  indeterminados  ca de los avisos vigentes que siguen sin sentido conocido tras esta corrida
+              (sin detalle todavía, o con una leyenda que no lo aclara): no encienden ningún río
   purgados    avisos borrados por antigüedad
   fallas      'migracion' (faltan las tablas), 'lista' (caída), 'lista_rara' (menos de
               MIN_FILAS filas: no se escribe), 'vigente_ambiguo' (el texto y la marca de
@@ -85,13 +101,15 @@ SQL_HAY_TABLA = ("select to_regclass('public.aviso_hidrologico') is not null "
 AVISO_SIN_TABLA = ("aviso_hidrologico / rio_vigilado: faltan las tablas (migración pendiente); "
                    "no se consultó ni se guardó nada")
 SQL_VIGILADAS = "select distinct estacion_senamhi from rio_vigilado where estacion_senamhi is not null"
-# Avisos con detalle: su fin (día de Lima) y su nivel, para volver a leerlo si la lista los cambia.
-SQL_CON_DETALLE = ("select ca, (fin at time zone 'America/Lima')::date, nivel from aviso_hidrologico "
+# Avisos con detalle: su fin (día de Lima) y su nivel, para volver a leerlo si la lista los cambia,
+# y su sentido (el que fijó el detalle), para contar los que siguen indeterminados.
+SQL_CON_DETALLE = ("select ca, (fin at time zone 'America/Lima')::date, nivel, sentido from aviso_hidrologico "
                    "where inicio is not null")
 # Primera sentencia de la transacción de escritura: pone en serie el beat y una corrida suelta.
 SQL_CANDADO = "select pg_advisory_xact_lock(hashtext('rios'))"
 # Solo las columnas de la lista: el detalle (emision ... significado_rojo) no se pisa. Una fila
-# sin nivel (pasa) no borra el que vino del detalle.
+# sin nivel (pasa) no borra el que vino del detalle, y un título que no dice el sentido
+# ('indeterminado') no borra el que fijó la leyenda del detalle.
 SQL_AVISO = """
 insert into aviso_hidrologico (ca, ce, numero, titulo, nivel, sentido, inicio_dia, fin_dia, duracion_h,
                                vigente, url, visto_en)
@@ -100,16 +118,18 @@ values (%(ca)s, %(ce)s, %(numero)s, %(titulo)s, %(nivel)s, %(sentido)s, %(inicio
 on conflict (ca) do update set
   ce = excluded.ce, numero = excluded.numero, titulo = excluded.titulo,
   nivel = coalesce(excluded.nivel, aviso_hidrologico.nivel),
-  sentido = excluded.sentido, inicio_dia = excluded.inicio_dia, fin_dia = excluded.fin_dia,
+  sentido = case when excluded.sentido = 'indeterminado' then aviso_hidrologico.sentido else excluded.sentido end,
+  inicio_dia = excluded.inicio_dia, fin_dia = excluded.fin_dia,
   duracion_h = excluded.duracion_h, vigente = excluded.vigente, url = excluded.url,
   visto_en = now(), ts_captura = now()
 """
 # Los que ya no figuran como vigentes (también los que salieron de la lista de 12 meses).
 SQL_NO_VIGENTES = "update aviso_hidrologico set vigente = false where vigente and not (ca = any(%s::int[]))"
-# El nivel del detalle ("Aviso N°1169 ROJO") solo completa el de la lista si esta no lo trae.
+# El nivel del detalle ("Aviso N°1169 ROJO") solo completa el de la lista si esta no lo trae. El
+# sentido (título explícito o leyenda del detalle; _sentido) se escribe si se conoce.
 SQL_DETALLE = """
 update aviso_hidrologico set
-  nivel = coalesce(nivel, %(nivel)s),
+  nivel = coalesce(nivel, %(nivel)s), sentido = coalesce(%(sentido)s, sentido),
   emision = %(emision)s, inicio = %(inicio)s, fin = %(fin)s, valor = %(valor)s, unidad = %(unidad)s,
   umbral_rojo = %(umbral_rojo)s, areas = %(areas)s, significado_rojo = %(significado_rojo)s, ts_captura = now()
 where ca = %(ca)s
@@ -128,7 +148,7 @@ def _recortar(lista: list[str], maximo: int) -> list[str]:
 
 
 def _resumen(fallas: list[str], avisos: list[str], **datos) -> dict:
-    base = {"filas": None, "vigentes": None, "vigilados": [], "detalles": [], "purgados": None}
+    base = {"filas": None, "vigentes": None, "vigilados": [], "detalles": [], "indeterminados": [], "purgados": None}
     return {**base, **datos, "fallas": fallas, "avisos": _recortar(avisos, MAX_AVISOS), "atribucion": ATRIBUCION}
 
 
@@ -140,8 +160,8 @@ def _latido(resumen: dict) -> None:
 
 def _previos() -> tuple[set[str], dict[int, tuple]] | None:
     """
-    (estaciones SENAMHI vigiladas, {ca: (día de Lima de su fin o None, nivel)} de los avisos con
-    detalle); None si faltan las tablas.
+    (estaciones SENAMHI vigiladas, {ca: (día de Lima de su fin o None, nivel, sentido)} de los
+    avisos con detalle); None si faltan las tablas.
     """
     with conectar() as conn, conn.cursor() as cur:
         cur.execute(SQL_HAY_TABLA)
@@ -151,7 +171,7 @@ def _previos() -> tuple[set[str], dict[int, tuple]] | None:
         cur.execute(SQL_VIGILADAS)
         vigiladas = {str(ce) for (ce,) in cur.fetchall()}
         cur.execute(SQL_CON_DETALLE)
-        return vigiladas, {ca: (fin_dia, nivel) for (ca, fin_dia, nivel) in cur.fetchall()}
+        return vigiladas, {ca: (fin_dia, nivel, sentido) for (ca, fin_dia, nivel, sentido) in cur.fetchall()}
 
 
 def _params(f: fuente.FilaAviso) -> dict:
@@ -172,7 +192,7 @@ def vigilados(filas: list[fuente.FilaAviso], vigiladas: set[str]) -> list[dict]:
 
 def _detalle_viejo(f: fuente.FilaAviso, con_detalle: dict[int, tuple]) -> bool:
     """¿La lista cambió el fin o el nivel del aviso desde que se leyó su detalle? (lo corrigió o extendió)"""
-    fin_dia, nivel = con_detalle[f.ca]
+    fin_dia, nivel, _ = con_detalle[f.ca]
     return ((fin_dia is not None and fin_dia != f.fin_dia)
             or (f.nivel is not None and nivel is not None and f.nivel != nivel))
 
@@ -191,18 +211,44 @@ def _cuadrar(f: fuente.FilaAviso, d: dict, avisos: list[str]) -> None:
         d["valor"] = d["umbral_rojo"] = None
 
 
+def _sentido(f: fuente.FilaAviso, d: dict, avisos: list[str]) -> str | None:
+    """
+    Sentido que se guarda con el detalle: el del título si es explícito (INCREMENTO/DESCENSO); si
+    no, el de la leyenda del nivel rojo; si tampoco, None (la fila queda 'indeterminado' y no
+    enciende ningún río). Si el título y la leyenda no coinciden, manda el título y se anota.
+    """
+    leyenda = d.get("sentido")
+    if f.sentido != "indeterminado":
+        if leyenda and leyenda != f.sentido:
+            avisos.append(f"detalle {f.ca} (aviso {f.numero}): el título dice {f.sentido} y la leyenda del detalle, "
+                          f"{leyenda}; se deja {f.sentido}")
+        return f.sentido
+    if leyenda is None:
+        avisos.append(f"detalle {f.ca} (aviso {f.numero}): la leyenda no dice si es crecida o vaciante; queda "
+                      "indeterminado (no enciende ningún río)")
+    return leyenda
+
+
+def _sentido_final(f: fuente.FilaAviso, detalles: dict[int, dict], con_detalle: dict[int, tuple]) -> str:
+    """Sentido con el que queda el aviso en la BD tras la corrida (para contar los indeterminados)."""
+    if f.ca in detalles and detalles[f.ca]["sentido"]:
+        return detalles[f.ca]["sentido"]
+    if f.sentido != "indeterminado":
+        return f.sentido
+    return (con_detalle.get(f.ca) or (None, None, None))[2] or "indeterminado"
+
+
 def _bajar_detalles(filas: list[fuente.FilaAviso], vigiladas: set[str], con_detalle: dict[int, tuple],
                     inicio: float, fallas: list[str], avisos: list[str]) -> dict[int, dict]:
     """
-    {ca: parámetros de SQL_DETALLE} de los avisos vigentes de las estaciones vigiladas que aún
-    no tienen detalle o cuyo detalle quedó viejo (primero los más nuevos), en serie y con pausa.
-    inicio: time.monotonic().
+    {ca: parámetros de SQL_DETALLE} de los avisos vigentes (de todo el país) que aún no tienen
+    detalle o cuyo detalle quedó viejo: primero los de las estaciones vigiladas y después los
+    más nuevos, MAX_DETALLES como máximo, en serie y con pausa. inicio: time.monotonic().
     """
-    pedir = sorted((f for f in filas if f.vigente and f.ce in vigiladas
-                    and (f.ca not in con_detalle or _detalle_viejo(f, con_detalle))),
-                   key=lambda f: (f.inicio_dia, f.ca), reverse=True)
+    pedir = sorted((f for f in filas if f.vigente and (f.ca not in con_detalle or _detalle_viejo(f, con_detalle))),
+                   key=lambda f: (f.ce in vigiladas, f.inicio_dia, f.ca), reverse=True)
     if len(pedir) > MAX_DETALLES:
-        avisos.append(f"{len(pedir) - MAX_DETALLES} avisos vigilados sin detalle quedan para la próxima corrida "
+        avisos.append(f"{len(pedir) - MAX_DETALLES} avisos vigentes sin detalle quedan para la próxima corrida "
                       f"(máximo {MAX_DETALLES} por corrida)")
     detalles: dict[int, dict] = {}
     for f in pedir[:MAX_DETALLES]:
@@ -233,10 +279,10 @@ def _bajar_detalles(filas: list[fuente.FilaAviso], vigiladas: set[str], con_deta
             otra_vez = " (se vuelve a pedir en la próxima corrida)" if "inicio" in faltan else ""
             avisos.append(f"detalle {f.ca} (aviso {f.numero}): no se encontró {', '.join(faltan)}{otra_vez}")
         _cuadrar(f, d, avisos)
-        detalles[f.ca] = {"ca": f.ca, "nivel": d.get("nivel"), "emision": d.get("emision"),
-                          "inicio": d.get("inicio"), "fin": d.get("fin"), "valor": d.get("valor"),
-                          "unidad": d.get("unidad"), "umbral_rojo": d.get("umbral_rojo"), "areas": d.get("areas"),
-                          "significado_rojo": d.get("significado_rojo")}
+        detalles[f.ca] = {"ca": f.ca, "nivel": d.get("nivel"), "sentido": _sentido(f, d, avisos),
+                          "emision": d.get("emision"), "inicio": d.get("inicio"), "fin": d.get("fin"),
+                          "valor": d.get("valor"), "unidad": d.get("unidad"), "umbral_rojo": d.get("umbral_rojo"),
+                          "areas": d.get("areas"), "significado_rojo": d.get("significado_rojo")}
     return detalles
 
 
@@ -255,7 +301,7 @@ def actualizar(ahora: datetime | None = None) -> dict:
         return resumen
     vigiladas, con_detalle = previos
     if not vigiladas:
-        avisos.append("rio_vigilado no tiene estaciones SENAMHI: no se lee ningún detalle")
+        avisos.append("rio_vigilado no tiene estaciones SENAMHI: ningún aviso tiene prioridad para el detalle")
 
     # 1) Lista (descargas antes de abrir la transacción: no se deja una transacción esperando la red).
     try:
@@ -280,8 +326,10 @@ def actualizar(ahora: datetime | None = None) -> dict:
         avisos.append(f"vigencia ambigua en {len(ambiguos)} avisos (N.º {numeros}): el texto \"(vigente)\" y la marca "
                       "de la fila no coinciden; se toman como vigentes y no se apagó ningún aviso")
 
-    # 2) Detalles de los vigilados vigentes que aún no lo tienen (o cuyo detalle quedó viejo).
+    # 2) Detalles de los vigentes que aún no lo tienen (o cuyo detalle quedó viejo), vigilados primero.
     detalles = _bajar_detalles(filas, vigiladas, con_detalle, inicio, fallas, avisos)
+    indeterminados = sorted(f.ca for f in filas if f.vigente
+                            and _sentido_final(f, detalles, con_detalle) == "indeterminado")
 
     # 3) Escritura y latido en una sola transacción, con el candado.
     with conectar() as conn, conn.cursor() as cur:
@@ -294,7 +342,8 @@ def actualizar(ahora: datetime | None = None) -> dict:
         cur.execute(SQL_PURGA, (hoy - timedelta(days=DIAS_PURGA),))
         purgados = cur.rowcount
         resumen = _resumen(fallas, avisos, filas=len(filas), vigentes=sum(f.vigente for f in filas),
-                           vigilados=vigilados(filas, vigiladas), detalles=list(detalles), purgados=purgados)
+                           vigilados=vigilados(filas, vigiladas), detalles=list(detalles),
+                           indeterminados=indeterminados, purgados=purgados)
         cur.execute(SQL_LATIDO, (SERVICIO, json.dumps(resumen)))
 
     if fallas:

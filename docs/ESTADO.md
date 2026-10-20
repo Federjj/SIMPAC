@@ -1,17 +1,20 @@
 # SIMPAC — Estado del proyecto
 
-> Panel vivo de "dónde estamos". Actualizado: **2026-10-03**.
+> Panel vivo de "dónde estamos". Actualizado: **2026-10-14** (verificación y despliegue cerrados
+> la noche del 19 al 20 de octubre).
 > Repo: `github.com/Federjj/SIMPAC` (monorepo, rama `main`).
 
 ## Resumen en una línea
-Backend + Supabase con datos reales (**ríos a nivel nacional**, **avisos oficiales de SENAMHI
-como áreas, con ícono**, **pronóstico oficial por localidad**, **nowcasting experimental**,
-**lluvia de la última hora en todo el país**, **serie del ICEN**, **5 mapas históricos de eventos
-El Niño** y el **río Mashcón vigilado**, con la zona que podría afectar y sus desbordes pasados);
-**frontend React (Mapa) con datos reales, capas de lluvia sombreadas, selector de día, franja de 3
-días, un panel gráfico de El Niño y capas recordadas**; **stack dockerizado y corriendo** con 7
-tareas de datos programadas en el worker. Faltan las demás páginas del front (Alertas, Comunidad,
-Chat, Cuenta) y el inicio de sesión.
+**Software terminado y desplegado en local**: web completa con react-router (Mapa, Alertas,
+Comunidad, Chat, Cuenta, Histórico) e **inicio de sesión** con Supabase Auth; inicio **"Tu zona
+ahora"** con semáforo, titular, distancia al río y **a dónde acudir** (12 915 puntos oficiales);
+**100 ríos del país resaltados con el trazo de ANA** más el Mashcón vigilado; **titular automático
+por departamento** (tarea `titular`, por reglas; el LLM queda apagado hasta poner la clave);
+**app Android con Capacitor** (APK de 5,06 MiB probado en emulador); backend + Supabase con datos
+reales (avisos de SENAMHI con ícono, pronóstico por localidad, nowcasting, lluvia de la última hora
+en todo el país, ICEN, 5 mapas FEN, ENFEN con el formato nuevo del CO 17-2026); **stack
+dockerizado y corriendo** con 9 tareas en el worker; 657 pruebas del backend y 148 del frontend.
+Pendiente: push (FCM), publicación en Play Console, clave del LLM y validar con usuarios.
 
 ---
 
@@ -29,9 +32,13 @@ Chat, Cuenta) y el inicio de sesión.
 - [x] Proyecto **DATASYMPAC** (ref `clrnommkjyksnyrtnisf`, región São Paulo).
 - [x] **Esquema aplicado**: 16 tablas + vistas `caudal_actual`, `aviso_vigente`,
       `lluvia_senamhi_actual` y `alerta_actual` + **PostGIS** + **RLS**. Historia en
-      `supabase/migrations/` (25 migraciones, versionadas en el repo); foto final en
-      `supabase/schema.sql`: 24 tablas y 11 vistas, con las de los avisos con ícono, el pronóstico,
-      el nowcasting y los ríos vigilados (ver abajo).
+      `supabase/migrations/` (**32 migraciones**, versionadas en el repo y las 32 registradas en
+      `supabase_migrations.schema_migrations` de la BD; las 7 últimas son del 14 y del 20 oct:
+      `comunidad_fotos_y_chat_realtime`, `punto_acudir`, `rio_cauce`, `titular_zona`,
+      `report_foto_solo_bucket`, `aviso_hidrologico_sentido_indeterminado`,
+      `titular_zona_titular_corto`); foto final en `supabase/schema.sql`: **27 tablas y 13 vistas**
+      propias (la BD lista 28 y 15 contando `spatial_ref_sys` y las vistas de PostGIS), más el
+      bucket `reportes` y la publicación realtime de `message` (sección D del schema).
 - [x] **Datos (22 sep, los llena la ingesta horaria)**: 982 estaciones SENAMHI en 24 departamentos
       (con `lat`/`lon`) · lluvia horaria de las 14 automáticas de Cajamarca · ~120 ríos con caudal y
       umbrales en 23 departamentos · ICEN / RONI / estado ENFEN · capa de **anomalías de
@@ -60,6 +67,10 @@ Chat, Cuenta) y el inicio de sesión.
 - [x] **Geolocalización** (con permiso) + **selector de ciudades del Perú** (Cajamarca por defecto).
 - [x] Componentes: `Sidebar`, `MapView`, `LayersPanel`, `StatusPanel`, `CitySelector` + `components/ui/`
       (shadcn). Correr: `npm --prefix frontend install && npm --prefix frontend run dev` → localhost:5173.
+- [x] **Desde el 14 oct la web está completa**: `App.jsx` es el marco con react-router, el mapa vive
+      en `pages/Mapa.jsx` y hay páginas Alertas, Comunidad (con crear reporte y detalle), Chat,
+      Cuenta (Supabase Auth) e Histórico, barra inferior de 5 pestañas en celular y la hoja "Tu zona
+      ahora". Detalle en "Software terminado (14 oct)" más abajo.
 
 **Infraestructura (Docker)** — `docker-compose.yml`
 - [x] Stack de 4 servicios: **frontend** (nginx), **backend** (FastAPI **async**), **worker**
@@ -80,6 +91,202 @@ Chat, Cuenta) y el inicio de sesión.
       Conectores con TLS siempre verificado; BD por pooler con `sslmode=require`.
 - [x] **Endurecido**: Redis publicado solo en `127.0.0.1`; geopandas solo en la imagen del worker
       (`requirements-mapas.txt`), la imagen de la API bajó a ~310 MB.
+- [x] **Worker con 9 tareas** (20 oct): `ingesta` (1 h), `refresh_cache` (5 min), `enfen` (6 h),
+      `avisos` (1 h), `lluvia_nacional` (30 min), `pronostico` (1 h), `nowcast` (10 min), `rios`
+      (1 h) y `titular` (30 min; al arrancar se encola 5 min después de las demás). Arranque del
+      20-10 sin ningún Traceback: nowcast 2,7 s, pronostico 2,9 s (277 localidades, 831 filas),
+      rios 4,3 s (1695 filas, 9 avisos hidrológicos vigentes), lluvia_nacional 4,9 s (154
+      estaciones, 6 lloviendo), enfen 5,7 s (CO 18-2026), avisos 7,1 s (38 alertas), ingesta 11,2 s
+      (973 estaciones, 720 lluvia, 127 caudales), titular 25 departamentos por reglas.
+- [x] **nginx del frontend** (14 oct): gzip + `gzip_static` con los `.gz` que deja el build, caché
+      inmutable de 1 año para `/assets/`, `no-cache` para `index.html`, manifest y `sw.js`,
+      cabeceras CSP, `X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy` y `access_log
+      off`. Comprobado el 20-10 en `localhost:8080`: `index-*.js` 445 544 B -> 154 838 B servidos
+      (34,8 %), `/assets/noexiste.js` -> 404, `/alertas` con recarga directa -> la página.
+- [x] **CORS en la API** (14 oct): responde solo a los orígenes de `SIMPAC_CORS_ORIGENES` (vacío =
+      `http://localhost:8080`, `http://localhost:5173`, `https://localhost` y
+      `capacitor://localhost` para la app; `*` se ignora) y solo GET. `/health` -> 200 con
+      `vary: Origin`; `/api/snapshot` -> 46 125 bytes en 0,028 s.
+
+**Software terminado (14 oct)** — implementado el 14 oct por 8 frentes en paralelo y sometido a una
+verificación adversarial los días 19 y 20 oct (4 verificadores en navegador: escritorio, celular,
+veracidad de textos y rendimiento, más seguridad y backend/BD): **51 hallazgos** (1 bloqueante, 18
+graves, 32 menores) y 13 confirmados antes; dos rondas de arreglos y la reverificación final sin
+graves ni bloqueantes. Cierre del 20-10 (00:49, hora de Lima): **657 pruebas** del backend sin red
+(`python -m unittest discover -s backend/tests -t .`, 12 s) y **148** del frontend (`npm test`,
+0,9 s), `npm run build` OK (9,4 s, 1801 módulos), **7 migraciones** aplicadas y registradas,
+imágenes de frontend, backend y worker reconstruidas, web recorrida en `localhost:8080` en
+escritorio y celular emulado (375x812), APK de Android compilado y probado en emulador. La BD de
+Supabase estuvo **pausada del 15 al 19 oct** (proyecto gratuito) y se reanudó el 19-10 a las 22:10;
+los datos de abajo son de después de reanudarla.
+- [x] **Rendimiento** (plan de la auditoría: puntos 1-7, 9 y 11; 8 y 10 descartados con datos).
+      Medido en Vite, misma pestaña, 800x600, antes -> después:
+  - Entrega: nginx no comprimía y ahora sirve gzip precomprimido (plugin `precomprimir` de
+    `vite.config.js`, zlib, sin dependencias): JS principal 323 876 B -> 112 280 B, CSS 68 553 ->
+    17 005. Chunks `react`/`leaflet`/`supabase` aparte (45/43/59 KB gzip, cacheados un año): un
+    cambio propio invalida solo `index-*.js`. Build del 20-10: index 444,38 kB (154,97 gzip),
+    supabase 227,45 (59,01), leaflet 149,58 (43,36), react 141,39 (45,45), CSS 80,19 (19,72) y las
+    páginas perezosas (Alertas 16,25 kB, Histórico 15,06, Cuenta 11,79, ReporteNuevo 7,09, Chat
+    6,00, Comunidad 2,81).
+  - Consultas: la cascada `conRios` (la ola 2 arrancaba a los 836 ms, la 1 a los 618) desapareció:
+    las 14 arrancan juntas a los 404-408 ms (celular 422-427). En 8080, primera carga en frío: 19
+    peticiones REST a 17 vistas/tablas, 0 duplicadas; con assets en caché el titular se ve a los
+    468 ms (DOMContentLoaded 106 ms).
+  - Mapa: SVG en línea 382 -> 0, filtros 192 -> 0, paths de marcadores 582 -> 0, nodos del DOM
+    4691 -> 2900 (glifos como `data:` URI); `getPointAtLength` por arrastre 2050 -> 456 y por zoom
+    13->14 3463 -> 648-742 (`rotuloBusqueda.js`, memoria de puntos y debounce de 120 ms); pan de
+    1 px 17,4 -> 10,5 ms; zoom 13->14 66 -> 47 ms; render río 85 -> 27 ms, pronóstico 64 -> 29,
+    zona 19 -> 11. Un refresco con los mismos datos no redibuja (huella por capa).
+  - `index.html` con `preconnect` a Supabase (URL inyectada en el build), Stadia y Google Fonts y
+    fuentes por `<link>`. PWA: `manifest.webmanifest`, íconos y `sw.js` (solo la cáscara propia,
+    nunca datos de Supabase ni tiles), registrado desde `main.jsx` solo en producción y fuera de
+    Capacitor.
+  - Pendiente: fuentes autoalojadas (punto 5b) y subir el Dockerfile del frontend a `node:22-alpine`
+    (`@supabase/supabase-js` 2.116.0 pide node >= 22; con `node:20-alpine` compila y corre, con el
+    aviso `EBADENGINE`).
+- [x] **Páginas y cuentas** (`react-router-dom` 6): `App.jsx` es el marco (`SesionProvider`,
+      `ContextoApp`, `Sidebar`, `BarraInferior` de 5 pestañas en celular, `Routes` con `lazy`) y el
+      mapa está en `pages/Mapa.jsx`; `MapView` nunca se desmonta: las páginas van a pantalla
+      completa sobre el mapa en celular/tablet y en una columna de 28-30 rem desde `lg`. Rutas `/`,
+      `/alertas`, `/comunidad`, `/comunidad/nuevo`, `/comunidad/:id`, `/chat`, `/cuenta` (`/entrar`,
+      `/registro`), `/historico` y "Esta página no existe"; todas cargan con recarga directa
+      (nginx cae en `index.html`), el foco pasa al `h1` y cambia `document.title`.
+  - **Alertas**: lista priorizada de `alerta_actual` agrupada por aviso, filtros nivel / tipo / mi
+    zona o país, vacío con hora de la última revisión, avisos de SENAMHI vigentes con sus días
+    (nivel = el máximo de todas sus áreas y días: el 419 rojo y el 421/426 naranja salían amarillos),
+    ríos vigilados con "Ver en el mapa" y pestaña Pasadas sobre la tabla `alerta` (rango de hasta
+    30 días y zona).
+  - **Cuenta** (Supabase Auth): entrar, crear cuenta con nombre, olvidé mi contraseña, pantalla
+    "revisa tu correo", contraseña nueva al volver del enlace; con sesión: nombre editable, correo,
+    reputación, "Mi zona" en `perfil.zona` (punto de la ciudad) y en `localStorage`, "Mis reportes"
+    (rpc `mis_reportes`) y cerrar sesión. Formularios con `label`, `autocomplete`, errores con
+    `aria-describedby`. Al 20-10 no hay ningún usuario en `auth.users` (nadie se ha registrado).
+  - **Histórico** (`/historico?tipo=rio|lluvia&id=...&rango=24h|7d|30d`): `lectura_caudal` con los
+    umbrales de `caudal_actual` o `lectura_lluvia`, gráfico SVG propio, tabla y CSV; se llega desde
+    el popup de la estación ("Ver histórico").
+  - Accesibilidad: bajo una página a pantalla completa el `<main>` del mapa queda `inert` y
+    `aria-hidden` (sus controles ya no están en el orden de tabulación); barra inferior de 56 px con
+    objetivos de 44 px y contador de alertas; sin desborde horizontal en 375 ni 360 px.
+- [x] **Comunidad y chat** (migración `comunidad_fotos_y_chat_realtime`): `/comunidad` lista los
+      reportes vigentes por confianza y cercanía, con votos (upsert), detalle y "Ver en el mapa";
+      `/comunidad/nuevo` solo con sesión y GPS real (tipos estilo Waze con ícono lucide, subtipo de
+      atasco, descripción de hasta 500 caracteres, foto opcional reducida a 1280 px y subida al
+      bucket público `reportes` en `<uid>/<archivo>.jpg`, 3 MB); `/chat` por zona (= departamento)
+      con realtime (tabla `message` en la publicación `supabase_realtime`) más sondeo cada 10 s;
+      normas y aviso legal fijos en `lib/comunidad.js`. Arreglo del 20-10 (hallazgo de seguridad):
+      `report.foto_url` aceptaba cualquier `https://`; ahora el CHECK y el trigger
+      `report_foto_validar` exigen la URL pública del bucket `reportes` del proyecto, con carpeta
+      `<uuid>` y extensión jpg/jpeg/png/webp (migración `report_foto_solo_bucket`, 12 de 12 casos
+      en una transacción revertida). Al 20-10: 0 reportes y 0 mensajes en la BD.
+- [x] **Ríos a nivel nacional**: conector `backend/connectors/ana_rios.py` (ANA - GeoSNIRH, dos
+      capas ArcGIS REST: red hidrográfica R.J. 056-2018-ANA y Carta Nacional del IGN; `LIKE` con
+      comodín de tildes, filtro por punto y radio, paginación, tope de 15 MB) y cargador
+      `backend/mapas/cargar_cauces.py` (prueba en seco por defecto; `--aplicar`, `--desde-copia`,
+      `--rio`, `--forzar`, `--recorte`, `--podar`). Emparejamiento por nombre normalizado + tramos a
+      2000 m de una estación + río completo por conectividad; 25 alias en
+      `backend/data/rios/cauces_alias.json`. Tabla `rio_cauce` (`geom` ~6 m y `geom_lejos` ~50 m)
+      y vistas `rio_cauce_mapa` y `rio_cauce_senal` (migración `rio_cauce`). **Carga del 14-10,
+      verificada en la BD el 20-10**: 104 ríos buscados, **100 cargados** (79 RJ056, 21 IGN; 352
+      tramos; 18 636 km), 4 sin trazo (Titicaca, Canopampa, Chunchuca, Sumbay), 26 con nota; tabla de
+      5,6 MB; copias en `backend/data/cauces/` (105 GeoJSON, 2,98 MB, versionados: los 100
+      cargados, los 4 pendientes y el Mantaro). El Mashcón no
+      se duplica (`rio_vigilado` manda) y un río sin trazo no se inventa.
+  - **Mapa**: `lib/cauces.js` (puro, con pruebas) empareja los trazos con `caudal_actual`; estado =
+    la peor estación de ANA en crecida o el aviso hidrológico vigente si es más alto (la misma regla
+    del Mashcón); `cauce_lejos` para todo el país hasta zoom 12 y `cauce` fino por río desde zoom
+    13; nombres sobre la línea desde zoom 10 (máximo 8, primero los de alerta); en alerta o
+    emergencia la capa "Zonas que un río podría afectar" dibuja el aura a lo largo del trazo en vez
+    del círculo de 2,5 km. 92 ríos dibujados hoy (los 8 que solo tienen aviso de SENAMHI se
+    resaltan solo con aviso vigente).
+  - Arreglos del 20-10: los avisos "SITUACIÓN ACTUAL DEL NIVEL..." de SENAMHI (vaciante en la
+    selva) se guardaban como crecida; ahora `sentido` sale del título y de la leyenda del detalle
+    (`crecida`, `descenso` o `indeterminado`; CHECK y trigger, migración
+    `aviso_hidrologico_sentido_indeterminado`) y la tarea `rios` pide el detalle de todos los
+    vigentes del país: hoy 9 avisos vigentes, 9 `descenso`, 0 `crecida`, y el popup del Itaya ya no
+    afirma una crecida. Un aviso hidrológico tiñe solo la estación que nombra su título
+    (`avisoEsDeEstacion`), no todas las del río (20 discos de ANA salían con "Aviso").
+- [x] **A dónde acudir**: tabla `punto_acudir` (migración `punto_acudir`; clave `<fuente>:<id>`,
+      tipo, `atiende_24h` solo si la fuente lo dice, dirección, teléfono, lat/lon, fuente, licencia,
+      atribución, `detalle`; RLS de lectura pública) y cargador `backend/mapas/cargar_acudir.py`
+      (en seco, `--aplicar`, `--podar`, `--descargar`, `--pais`) con los datos en
+      `backend/data/acudir/`. **Carga del 14-10, verificada en la BD el 20-10: 12 915 puntos**
+      (salud 11 376, comisarías 1323, bomberos 213, Defensa Civil 3); Cajamarca 1126 (salud 1001,
+      42 de 24 h; comisarías 118; bomberos 4; Defensa Civil 3). Fuentes: RENIPRESS de SUSALUD del
+      30-09-2026 (ODC-By), comisarías del padrón MININTER de nov. 2019 servido por CENEPRED,
+      bomberos del CGBVP con ubicación de CENEPRED, fichas de gob.pe para Defensa Civil; números de
+      emergencia en `backend/data/acudir/numeros.json` y `frontend/src/data/emergencias.js`.
+  - **Frontend**: capa `acudir` (grupo "A dónde acudir", apagada por defecto; pide `punto_acudir`
+    por caja a la vista, desde zoom 11) y tarjeta `AcudirCercanos` con "105 Policía · 116 Bomberos ·
+    106 SAMU", los 3 puntos más cercanos (salud, comisaría, bomberos) con distancia en línea recta,
+    teléfono `tel:`, "Cómo llegar" y "Ver en el mapa"; `lib/acudir.js`: caja de 30 km y regla
+    "hospital de 24 h si está a menos de 15 km; si no, el establecimiento más cercano". Verificado
+    contra la BD: Hospital II Cajamarca a 450 m (453 en PostGIS, 24 h según la fuente), Comisaría
+    Central a 170 m (168; sin teléfono en la fuente, padrón 2019), Bomberos N° 59 a 450 m (452).
+  - **Sin albergues ni zonas seguras**: al 14-10 ninguna fuente oficial abierta los publica
+    georreferenciados (se revisaron el ArcGIS de CENEPRED, SIGRID, el visor y los servidores de
+    INDECI, datosabiertos.gob.pe y los planes de contingencia del GORE Cajamarca). Los tipos quedan
+    previstos en la tabla; la web muestra la recomendación general de INDECI con su enlace.
+- [x] **Inicio con impacto visual ("Tu zona ahora")**: `StatusPanel` es una hoja inferior de 4
+      alturas (plegado, vistazo, media, completa; asa arrastrable y botones accesibles; tarjeta de
+      420 px en escritorio) con franja del color del nivel. `TuZona`: semáforo con ícono (nunca
+      solo color), titular corto (`titularCorto`: río vigilado en alerta > alerta oficial > aviso
+      amarillo > lluvia medida > señales en la cuenca > calma > sin datos; nunca verde sin datos),
+      chips "A 2 km del río Mashcón" (2026 m desde el centro de Cajamarca al cauce, en PostGIS) y
+      "Fuera de la zona que podría inundarse", línea de fuente y hora, botón por nivel; en alerta o
+      emergencia una sola instrucción, botones `tel:105` y `tel:116` y el pie SISMATE/INDECI.
+      En la altura media: `MedidorCaudal` (arco con los umbrales de ANA), `BarrasLluvia` (24 h con
+      la referencia de SENAMHI) y "A dónde acudir". `OnboardingGps` explica el permiso una sola vez
+      (`simpac.gps`); la app ya no pide la ubicación al arrancar. Modo emergencia: abre la hoja,
+      prende río y zona, encuadra el cauce; el chip de arriba y la barra lateral heredan el nivel;
+      `html[data-nivel]`. Hoy en 8080: "ALERTA en Cajamarca: aviso naranja de SENAMHI por lluvias."
+  - Arreglos del 19/20-10: un río en **nivel bajo** y la lluvia medida cuentan como máximo "aviso"
+    (`lib/nivel.js` y `titular.py`, misma regla): Loreto salía en "ALERTA" con teléfonos por 5 ríos
+    en vaciante y ahora dice "Ríos muy bajos"; la causa de una alerta se decide por el tipo de fila
+    (Piura ya no inventa "un río pasó su nivel"); en celular la hoja arranca **plegada** (295-299
+    px, 36-37 % de la pantalla) y el cauce queda visible; atribución de Leaflet propia de una línea
+    con "más"; los popups miden lo que de verdad tapa el mapa; el botón "Reportar" desaparece
+    mientras el panel de capas está abierto; las 3 pruebas que dependían de la fecha del 14-10
+    construyen su fecha con el día de Perú.
+- [x] **Titular automático (HU-16)**: tarea `titular` (`backend/ingesta/titular.py`, cada 30 min)
+      calcula para los 24 departamentos y el Callao los insumos con la misma regla que
+      `lib/nivel.js` (nivel vigente, alertas oficiales, avisos por color, ríos sobre su nivel y muy
+      bajos, lluvia de la última hora, señales del río vigilado, ENFEN, hora de cada fuente) y
+      escribe `titular_zona` (`titular`, `titular_corto` de hasta 110 caracteres siempre por reglas,
+      `detalle`, `insumos`, huella sha256, `origen`). Con `SIMPAC_LLM_KEY` pide una redacción por
+      departamento a la API de Anthropic (modelo por defecto `claude-haiku-4-5-20251001`,
+      `temperature` 0, 200 tokens) que se valida antes de guardarse (una línea, 240 caracteres, sin
+      URL, cada cifra en los insumos, sin afirmar emergencia ni normalidad que no esté en los
+      datos); si falla o no hay clave, reglas. Migraciones `titular_zona` y
+      `titular_zona_titular_corto`. **Al 20-10**: 25 filas, todas `origen = 'reglas'`,
+      `titular_corto` de 43 a 100 caracteres (p. ej. "Loreto: aviso amarillo de SENAMHI por lluvias
+      y 5 ríos muy bajos según ANA."), llm 0, fallas 0, aviso "sin clave de API (SIMPAC_LLM_KEY):
+      titulares por reglas". La web lee `titular_zona` y usa el titular de la BD solo si su nivel
+      coincide con el que calcula ella.
+- [x] **App Android con Capacitor** (`frontend/android/`, documentación en `appmobile/README.md`):
+      la misma web en un WebView con GPS por `@capacitor/geolocation` (import dinámico en
+      `useGeolocation.js`). Capacitor 8.5.3, `appId` `pe.simpac.app`, origen `https://localhost`,
+      `minSdk` 24, `targetSdk`/`compileSdk` 36, AGP 8.13, Gradle 8.14.3, JDK 21; `versionCode` 1.
+      **Compilado el 20-10**: `npm run build` (9,4 s) + `npx cap sync android` (1,7 s) + `gradlew
+      assembleDebug` (9 s, 214 tareas) -> `app-debug.apk` de **5 304 253 bytes (5,06 MiB)**.
+      Arreglo: los `.gz` del build se excluyen con `!*.gz` en `ignoreAssetsPattern` (AAPT los tomaba
+      como recursos duplicados). Probado en el emulador Pixel_7a sin ventana (`-memory 3072`): carga
+      el mapa con sus tiles, el chip "Aviso naranja en Cajamarca", el río Mashcón con sus rombos, el
+      onboarding del GPS y la barra inferior; con los 2 GB por defecto del AVD Android mata la app.
+      Scripts `android:sync`, `android:apk`, `android:aab`, `android:apk:release` en `package.json`;
+      la firma lee `key.properties` o variables de entorno (ninguno en el repo).
+- [x] **ENFEN, CO 17-2026 corregido**: el Comunicado Oficial 17-2026 (28-09-2026) cambió el formato
+      (sin rótulo "Estado del sistema de alerta" ni "RESUMEN EJECUTIVO", el estado en una línea
+      suelta bajo la fecha, un título en mayúsculas y la fecha con el año errado "28 septiembre
+      2027") y el conector no lo leía. `backend/connectors/enfen.py` ahora reconoce el estado
+      suelto (sin confundirlo con una mención dentro de una frase), salta el título, corrige una
+      fecha futura con el año del encabezado (con aviso en el log) y corta la prosa donde empieza
+      la leyenda de una figura; muestra real en `backend/tests/muestras/comunicado_enfen_17_2026.txt`
+      con pruebas de punta a punta. En la BD **no hay fila del CO 17**: la tarea solo lee el último
+      comunicado publicado y cuando corrió ya estaba el **CO 18-2026** (16-10, "Alerta de El Niño
+      Costero", próximo el 30-10), que es lo que muestra la web; el 16-2026 sigue como anterior.
+- **Pendiente de este bloque** (ver "Siguiente"): push por FCM, firma y Play Console, clave del
+  LLM, Redirect URLs y SMTP de Supabase Auth, validar con usuarios, otros ríos con zonas y radios
+  de "A dónde acudir".
 
 **Ríos vigilados: el Mashcón (03 oct)** — **532 pruebas** del backend sin red y **68** del frontend
 (`npm test`), build OK. Diseño verificado en vivo contra las fuentes (URLs y datos de hoy);
@@ -375,7 +582,11 @@ estaciones evaluadas, 1 alerta real de 6 h en Cotahuasi, Arequipa)
 
 **Documentación** (`docs/`)
 - [x] `README-tecnico.md`, `fuentes-y-endpoints.html`, `frontend-brief.md`, `stack-tecnologico.md`,
-      `pre-documentacion-general.html`, y este `ESTADO.md`.
+      `catalogo-idesep.md`, `pre-documentacion-general.html`, `guia-medicion.md` (cómo llenar las
+      fichas ISO/IEC 25010 del curso con datos reales) y este `ESTADO.md`.
+- [x] `README.md` de la raíz (instalación con Docker y carga de datos), `frontend/README.md`
+      (capas, tablas que alimentan cada parte, comunidad), `appmobile/README.md` (compilar, firmar
+      y publicar la app Android) y `backend/data/acudir/README.md` (fuentes de "A dónde acudir").
 - [x] **Sin emojis** en toda la documentación y el código (solo texto e íconos SVG).
 
 ---
@@ -389,14 +600,28 @@ estaciones evaluadas, 1 alerta real de 6 h en Cotahuasi, Arequipa)
   cercanos, incidentes de ejemplo). Los incidentes serán **reportes reales** de la comunidad.
 - **Reporte tipo Waze**: Inundación · Huayco/Deslizamiento · Lluvia intensa · Vía bloqueada · Atasco
   (leve/moderado/detenido) · Bache · Accidente · Otro. Ya validado en la BD (CHECK en `report.tipo`)
-  y en `frontend/src/lib/reportTypes.js`; falta la pantalla de creación. Policía quedó fuera.
+  y en `frontend/src/lib/reportTypes.js`; la pantalla de creación (`/comunidad/nuevo`) se hizo el
+  14 oct. Policía quedó fuera.
 - **Solo se reporta donde uno está** (GPS, sin pin manual) para evitar reportes troll.
 
 ## En progreso / parcial
-- [ ] **Frontend** — página Mapa lista; faltan las demás (Alertas, Comunidad, Chat, Cuenta, crear
-      reporte) + **react-router** para la navegación de la barra lateral. Ver `frontend-brief.md`.
-- [ ] **Reportes reales**: la capa ya lee `report` (vigentes); falta login (Supabase Auth) y la
-      pantalla de creación y voto. El contrato para el front está en `frontend/README.md`.
+- [x] **Frontend** — páginas Alertas, Comunidad (con crear reporte y detalle), Chat, Cuenta e
+      Histórico con react-router (14 oct; ver "Software terminado"). `frontend-brief.md` queda como
+      el brief original.
+- [x] **Reportes reales**: login con Supabase Auth, pantalla de creación (solo con GPS real, foto
+      opcional al bucket `reportes`), votos y detalle (14 oct). Todavía sin reportes ni usuarios
+      reales en la BD (0 y 0 al 20-10).
+- [x] **Software terminado desplegado (20 oct)**: 7 migraciones aplicadas (`comunidad_fotos_y_chat_realtime`,
+      `punto_acudir`, `rio_cauce`, `titular_zona`, `report_foto_solo_bucket`,
+      `aviso_hidrologico_sentido_indeterminado`, `titular_zona_titular_corto`), ríos del país y
+      puntos de "A dónde acudir" cargados, tarea `titular` corriendo; frontend, worker y API de
+      Docker reconstruidos. Kevin, tras el pull: reconstruir frontend, worker y API (`docker compose
+      up -d --build frontend backend worker`); **no hay que cargar nada**: los datos ya están en la
+      BD.
+- [ ] **Supabase Auth en un dominio real**: el registro y "olvidé mi contraseña" mandan al usuario
+      de vuelta a la URL de la web (`emailRedirectTo` / `redirectTo`); en el panel de Supabase hay
+      que agregar esa URL (y la de la app, `https://localhost`) a las Redirect URLs y configurar un
+      SMTP propio antes de tener usuarios reales (ver "Notas y riesgos").
 - [x] **Alertas de lluvia desplegadas** (migración aplicada, imágenes reconstruidas). Kevin, tras el
       pull: reconstruir frontend, worker y API. Consulta de control en `README-tecnico.md` §5.6.2.
 - [x] **Avisos con ícono, pronóstico y nowcasting desplegados** (migraciones `avisos_iconos`,
@@ -438,10 +663,24 @@ estaciones evaluadas, 1 alerta real de 6 h en Cotahuasi, Arequipa)
 - [ ] Validar con SENAMHI o Defensa Civil, en temporada de lluvias (oct–abr), esa referencia como
       disparador de "Atentos a la lluvia": cada cuánto sale (`latido.alertas`, `alertas_6h`), las
       estaciones de valle amazónico con 5 mm/h y las de la costa con 1 mm/h (`README-tecnico.md` §10).
-- [ ] **Otros ríos vigilados**: el Chonta, el San Lucas y el Namora (estación SENAMHI 220206, que
-      también tiene avisos hidrológicos). Por río: una carpeta en `backend/data/rios/<id>/` con sus 6
-      archivos revisados y `cargar_rios --rio <id> --aplicar`; la tarea `rios` ya baja sus avisos si
-      tiene `estacion_senamhi`.
+- [ ] **Otros ríos vigilados con zonas**: el Chonta, el San Lucas y el Namora (estación SENAMHI
+      220206, que también tiene avisos hidrológicos). Hoy esos ríos ya salen resaltados con el trazo
+      de ANA si tienen estación (capa nacional), pero sin zona que podría afectar ni desbordes
+      pasados. Por río: una carpeta en `backend/data/rios/<id>/` con sus 6 archivos revisados y
+      `cargar_rios --rio <id> --aplicar`; la tarea `rios` ya baja sus avisos si tiene
+      `estacion_senamhi`.
+- [ ] **Recargar los cauces del país** cuando `caudal_actual` gane estaciones (`cargar_cauces
+      --desde-copia` en seco lista los ríos sin fila); RJ056 es de 2018 y la capa IGN cambió en
+      abril de 2026. No hay tarea Celery: es carga a mano.
+- [ ] **Clave del LLM** (`SIMPAC_LLM_KEY` en `.env` y `docker compose up -d worker`): hoy los 25
+      titulares salen por reglas. Antes de prenderla, acordar el gasto (ver "Notas y riesgos") y
+      revisar una semana de `latido.resumen` de `titular` (descartados y motivos).
+- [ ] **Albergues y zonas seguras** de "A dónde acudir": pedir la lista georreferenciada a la
+      Municipalidad Provincial de Cajamarca / COER (mesa de partes); los servidores de INDECI
+      (`geoserver.indeci.gob.pe`, `geosinpad`) no respondían el 14-10. Los tipos `albergue` y
+      `zona_segura` ya existen en la tabla.
+- [ ] **Imagen del frontend a `node:22-alpine`** (`frontend/Dockerfile`): `@supabase/supabase-js`
+      2.116.0 pide node >= 22; hoy compila con aviso `EBADENGINE`.
 - [ ] Decidir lo abierto de los ríos vigilados: ODbL (o cauce de Copernicus) y si el aviso
       hidrológico suma al contador y al badge.
 
@@ -452,19 +691,48 @@ estaciones evaluadas, 1 alerta real de 6 h en Cotahuasi, Arequipa)
 - [ ] **Mapas FEN: cargar los demás trimestres.** Cada registro de IDESEP trae varios (DEF, EFM,
       FMA) y hoy se guarda solo el primero (dic a feb; en 2023, ene a mar), así que el mapa de
       2017 no muestra marzo, cuando se desbordó el río Piura. La capa ya rotula los meses.
-- [ ] **Web (resto)**: páginas Alertas, Comunidad, Chat, Cuenta, crear reporte + react-router.
-- [ ] **Inicio de sesión** (Supabase Auth): lo necesitan los reportes y las capas recordadas en la
-      cuenta (`preferencia_mapa` ya está lista; sin sesión, solo en el navegador).
-- [ ] **Validar con usuarios** las zonas de los ríos: si el rayado ámbar sobre un aviso naranja se lee
-      bien y si la zona azul (sin señales) debe verse siempre desde zoom 13 (la propuesta es que sí).
-- [ ] **App móvil**: arrancar `appmobile/` (React Native); GPS + push.
-- [ ] Crear el proyecto **Firebase (FCM)** para push y conseguir la server key.
+- [x] **Web (resto)**: páginas Alertas, Comunidad, Chat, Cuenta, crear reporte, Histórico y
+      react-router (14 oct).
+- [x] **Inicio de sesión** (Supabase Auth): entrar, registro, recuperar contraseña, perfil y "Mis
+      reportes" (14 oct). Con sesión, las capas recordadas también se guardan en la cuenta
+      (`useLayerVisibility.js` sube a `preferencia_mapa` 1,5 s después del último cambio y al
+      entrar aplica la copia más reciente entre el navegador y la cuenta); sin sesión, solo en el
+      navegador. Probado sin usuarios reales (0 en `auth.users`).
+- [ ] **Validar con usuarios** (gente de Cajamarca sin formación técnica): la hoja "Tu zona ahora"
+      (se entiende el semáforo y la instrucción en 5 segundos), las zonas de los ríos (rayado ámbar
+      sobre un aviso naranja; zona azul sin señales desde zoom 13), los textos de "Ríos muy bajos" y
+      el flujo de reportar. Hasta ahora todo se probó con los verificadores, no con usuarios.
+- [ ] **Radios de "A dónde acudir"**: la tarjeta busca en una caja de 30 km y prefiere un hospital
+      de 24 h si está a menos de 15 km; son criterios de SIMPAC, no de una norma. Revisarlos con
+      Defensa Civil o la DIRESA (en zona rural 30 km puede dejar la tarjeta vacía).
+- [ ] **Pendientes de la hoja**: nowcasting animado de 3 cuadros, recorrido "Si el río se desborda"
+      y la línea recta hasta el punto de acudir.
+- [x] **App móvil**: Android con Capacitor sobre la misma web (`frontend/android/`, APK de 5,06 MiB
+      compilado y probado en emulador el 20-10; guía en `appmobile/README.md`). Queda descartado
+      reescribirla en React Native.
+- [ ] **Notificaciones push (FCM)**: crear el proyecto Firebase, `google-services.json` en
+      `frontend/android/app/` (no versionado), `@capacitor/push-notifications` y una tarea del
+      worker que envíe cuando entre un aviso de nivel 3 o 4 para el departamento elegido (solo lo
+      oficial; la lluvia medida no se notifica).
+- [ ] **Publicar en Play Console**: crear la upload key (`keytool`, fuera del repo), subir
+      `versionCode`, `npm run android:aab`, cuenta de desarrollador (25 USD; una cuenta personal
+      nueva exige prueba cerrada con 12 probadores durante 14 días), ficha, política de privacidad
+      pública y cuestionario de seguridad de datos (ubicación solo en primer plano). Ícono y
+      pantalla de inicio propios con `@capacitor/assets` (hoy va el splash de Capacitor).
+- [ ] **Stadia Maps fuera de localhost**: al publicar la web en un dominio real hace falta una API
+      key de Stadia (o cambiar la base a OSM/CARTO con su atribución); la app usa `https://localhost`
+      y por eso hoy carga tiles sin llave.
 
 ---
 
 ## Reparto (para no duplicar)
-- **Tú (Fabricio) + Claude:** datos, conectores, Supabase/BD, backend, documentación.
-- **Kevin:** frontend web + app móvil + cuenta Firebase; hizo el pipeline de mapas FEN históricos.
+- **Tú (Fabricio) + Claude:** datos, conectores, Supabase/BD, backend, frontend (páginas, hoja
+  "Tu zona ahora", ríos del país, a dónde acudir), app Android con Capacitor y documentación.
+- **Kevin:** hizo el pipeline de mapas FEN históricos; le quedan la cuenta Firebase (push) y la
+  cuenta de Play Console. **Tras el pull del 20 oct**: reconstruir frontend, worker y API
+  (`docker compose up -d --build frontend backend worker`); **no cargar nada**: migraciones, ríos
+  del país, puntos de "A dónde acudir" y titulares ya están en la BD compartida. Para compilar la
+  app: JDK 21, Android SDK 36 y `npm run android:apk` desde `frontend/` (ver `appmobile/README.md`).
 
 ## Notas y riesgos activos
 - **Conexión a la BD: usar el pooler**, no `db.<ref>.supabase.co` (solo IPv6; falla en Docker y en
@@ -528,3 +796,42 @@ estaciones evaluadas, 1 alerta real de 6 h en Cotahuasi, Arequipa)
   a las 3 h de la última lectura de la lista.
 - **Ubicación de los incidentes**: es aproximada (prensa, municipio, ANA); cada rombo cita su fuente y
   su precisión.
+- **Supabase gratuito se pausa**: el proyecto estuvo pausado del 15 al 19 oct (se reanudó el 19-10
+  a las 22:10 desde el panel). Mientras está pausado la web no carga datos y el worker falla en
+  cada tarea; al reanudar todo vuelve solo. Si va a quedar días sin uso, entrar al panel o pasar a
+  un plan de pago antes de la entrega.
+- **Stadia Maps en un dominio real y en la app**: las tiles salen sin llave solo desde `localhost`.
+  La app cumple porque su origen es `https://localhost` (`androidScheme`), pero la web publicada en
+  un dominio necesita una API key de Stadia (variable `VITE_...` en el build) o cambiar la base a
+  OpenStreetMap/CARTO con su atribución (`frontend/src/map/baseMap.js`). Si Stadia cambia su regla
+  de `localhost`, la app se queda sin fondo (el mapa se ve gris).
+- **Correo de confirmación de Supabase Auth**: el registro exige confirmar el correo y el servidor
+  de correo que trae Supabase por defecto tiene un límite bajo de envíos por hora y puede caer en
+  spam; para usuarios reales hay que configurar un SMTP propio (Authentication > SMTP) y agregar la
+  URL de la web y `https://localhost` a las Redirect URLs. Hoy (0 usuarios) no se ha probado un
+  registro de punta a punta con correo real.
+- **Costo del LLM del titular** (solo si se pone `SIMPAC_LLM_KEY`): Haiku 4.5 cuesta USD 1 por
+  millón de tokens de entrada y 5 por millón de salida; cada pedido lleva unos 900-1200 tokens de
+  entrada y devuelve 60-120 (tope 200): ~USD 0,0015 por pedido. Se pide una vez por departamento y
+  solo cuando cambia la huella de sus insumos. Peor caso teórico (los 25 cambian en las 48 corridas
+  del día): 1200 pedidos, ~USD 1,80/día (~54/mes); realista en lluvias, 150-500 pedidos/día (USD
+  0,25-0,75); en época seca, centavos. Sin clave no sale ningún pedido a internet. El modelo solo
+  redacta sobre cifras ya calculadas y el texto se descarta si no pasa la validación.
+- **Licencias de los datos nuevos**: el trazo de los ríos del país es de ANA - GeoSNIRH (RJ056 2018
+  e IGN), que no publica texto de licencia: se trata como información pública del Estado con
+  atribución obligatoria y cada fila guarda `fuente`, `licencia`, `atribucion` y `url_consulta`;
+  no se deriva de él ninguna zona inundable. RENIPRESS (SUSALUD) es ODC-By; el padrón de comisarías
+  (MININTER 2019) es ODC-By pero el servicio de CENEPRED que lo sirve no declara licencia y es de
+  2019 (la web lo dice); el directorio del CGBVP es información institucional sin licencia
+  declarada. Todo se muestra con fuente, fecha y atribución; nada se redistribuye como propio.
+- **Avisos hidrológicos de vaciante**: en temporada seca SENAMHI publica "SITUACIÓN ACTUAL DEL
+  NIVEL" de ríos amazónicos (descenso); desde el 20-10 se guardan con `sentido = 'descenso'` o
+  `'indeterminado'` y no tiñen el río ni la zona. Un título nuevo que no diga descenso ni crecida
+  queda `indeterminado` (se muestra como información, nunca como crecida).
+- **Service worker**: `sw.js` solo cachea la cáscara propia. En el navegador integrado de la
+  verificación el registro falló ("An unknown error occurred when fetching the script") aunque nginx
+  sirve `/sw.js` con 200; no se pudo confirmar en Chrome. La app no depende de él.
+- **Dockerfile del frontend en `node:20-alpine`** con `@supabase/supabase-js` 2.116.0 (pide node
+  >= 22): compila y corre con el aviso `EBADENGINE`; conviene subirlo a `node:22-alpine`.
+- **Push todavía no existe**: ninguna alerta llega al teléfono si la app está cerrada; hoy la
+  persona tiene que abrir la web o la app. Es el pendiente principal de la app.

@@ -30,14 +30,40 @@ dist/
 *.geojson
 # Excepción: los ríos vigilados son datos revisados a mano que carga backend/mapas/cargar_rios.py
 !/backend/data/rios/**/*.geojson
+# ... y las copias simplificadas de los cauces del país (ANA - GeoSNIRH, ~2,8 MB) que
+# carga backend/mapas/cargar_cauces.py --desde-copia sin volver a consultar a ANA
+!/backend/data/cauces/*.geojson
 
 # Base de datos local del prototipo
 *.db
 *.sqlite
 *.sqlite3
 
+# Documentos del curso (informe, backlogs, matrices): viven en el OneDrive del equipo
+/Proyecto_G01/
+
 # SO / editores
 .DS_Store
 Thumbs.db
 .idea/
 .vscode/
+
+# App Android (Capacitor, proyecto en frontend/android). El proyecto nativo se versiona;
+# lo generado por Gradle, Capacitor y Android Studio, no.
+/frontend/android/.gradle/
+/frontend/android/build/
+/frontend/android/app/build/
+/frontend/android/capacitor-cordova-android-plugins/
+/frontend/android/local.properties
+/frontend/android/.idea/
+/frontend/android/*.iml
+/frontend/android/app/*.iml
+/frontend/android/app/src/main/assets/public/
+/frontend/android/app/src/main/assets/capacitor.config.json
+/frontend/android/app/src/main/assets/capacitor.plugins.json
+/frontend/android/app/src/main/res/xml/config.xml
+/frontend/android/app/google-services.json
+# Firma de la app: nunca al repo
+key.properties
+*.jks
+*.keystore

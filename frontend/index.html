@@ -3,7 +3,24 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>SIMPAC — Mapa</title>
+    <title>SIMPAC</title>
+    <meta name="description" content="Mapa con los datos oficiales de lluvia, ríos y El Niño en el Perú, explicados en lenguaje claro." />
+    <meta name="theme-color" content="#1e3a8a" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="icon" href="/iconos/icono-192.png" type="image/png" />
+    <link rel="apple-touch-icon" href="/iconos/icono-192.png" />
+    <!-- Conexiones adelantadas (DNS + TLS) a lo que la app pide apenas arranca: la base de datos, el
+         mapa base y las fuentes. La URL de Supabase la inyecta Vite desde el .env en el build. -->
+    <link rel="preconnect" href="%VITE_SUPABASE_URL%" crossorigin />
+    <link rel="preconnect" href="https://tiles.stadiamaps.com" crossorigin />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <!-- Las fuentes van aquí y no en un @import del CSS: así el navegador las descubre al leer el HTML
+         y no recién al terminar de bajar y leer la hoja de estilos. -->
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700&family=Inter:wght@400;500;600;700&display=swap"
+    />
   </head>
   <body>
     <div id="root"></div>

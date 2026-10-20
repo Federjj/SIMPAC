@@ -12,19 +12,45 @@ import { DIAS_CORTOS, diaMesCorto, fechaPeru } from "@/lib/tiempo";
 // lib/zonaRio.js; aquí solo se arman, siempre escapados.
 // Los glifos (map/iconos.js) son constantes y van sin escapar.
 
-// Ancho fijo; alto con tope que cabe entre los márgenes (en el celular, sobre el panel de estado,
-// que ocupa cerca del 45% de abajo). `acento` (nivel 2 a 4) pinta la franja de 4 px del color del
-// aviso en el borde de arriba del popup (sigue a la vista aunque el contenido se desplace). En
-// pantallas angostas los chips de arriba se apartan mientras hay un popup abierto (MapView + CSS).
+// Lo que tapa el mapa en el celular (más angosto que lg): abajo, la hoja (data-tapa-mapa="abajo") y
+// los controles de Leaflet que suben sobre ella (la atribución; index.css .leaflet-bottom); arriba,
+// nada que cuente: con un popup abierto los chips se apartan (MapView + index.css html[data-popup]).
+// Desde lg la hoja es una tarjeta a la izquierda y mandan los márgenes de siempre (chips arriba).
+//   -> { compacto, arriba, abajo, lado, libre } en píxeles del contenedor del mapa
+export function medidasPopup(map) {
+  const m = map.getContainer().getBoundingClientRect();
+  if (innerWidth >= 1024) return { compacto: false, arriba: 70, abajo: 24, lado: 16, libre: m.height - 94 };
+  let abajo = 16;
+  for (const el of document.querySelectorAll('[data-tapa-mapa="abajo"], .leaflet-control-attribution')) {
+    const r = el.getBoundingClientRect();
+    if (!r.width || !r.height || r.top > m.bottom || r.bottom < m.top) continue;
+    abajo = Math.max(abajo, Math.round(m.bottom - r.top) + 8);
+  }
+  const arriba = 16;
+  return { compacto: true, arriba, abajo, lado: 12, libre: m.height - arriba - abajo };
+}
+
+// Alto máximo del contenido y relleno del autoPan para que el popup quede entero en lo que queda
+// libre: entre 140 px (menos no se lee; el mapa se corre antes) y 480. En el celular se vuelve a
+// calcular al abrir cada popup (map/baseMap.js), porque la hoja cambia de alto. `lado` de 12 px en
+// el celular: el .pop-ancho mide calc(100vw - 28px) con sus marcos y con 16 no entraba.
+export function ajustePopup(map) {
+  const { arriba, abajo, lado, libre } = medidasPopup(map);
+  return {
+    maxHeight: Math.max(140, Math.min(480, libre - 50)), // 50: marcos del popup y su pico
+    autoPanPaddingTopLeft: [lado, arriba],
+    autoPanPaddingBottomRight: [lado, abajo],
+  };
+}
+
+// Ancho fijo; alto y relleno de ajustePopup. `acento` (nivel 2 a 4) pinta la franja de 4 px del
+// color del aviso en el borde de arriba del popup (sigue a la vista aunque el contenido se desplace).
 export function opcionesPopup(map, { acento } = {}) {
-  const abajo = innerWidth < 640 ? Math.round(innerHeight * 0.45) : 24;
   return {
     maxWidth: 320,
     minWidth: 280,
     className: acento ? `pop-ancho acento-${acento}` : "pop-ancho",
-    maxHeight: Math.max(200, Math.min(480, Math.round(map.getSize().y * 0.6), innerHeight - 70 - abajo - 50)),
-    autoPanPaddingTopLeft: [16, 70],
-    autoPanPaddingBottomRight: [16, abajo],
+    ...ajustePopup(map),
   };
 }
 

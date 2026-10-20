@@ -3,7 +3,7 @@ import { Radio } from "lucide-react";
 import { getEstaciones } from "@/lib/queries";
 import { TRANSMISION, nombreEstacion } from "@/lib/lenguaje";
 import { ESTACION_HEX } from "../palette";
-import { SVG, markerIcon, popupHtml } from "../markers";
+import { SVG, escapeHtml, markerIcon, popupHtml } from "../markers";
 
 export default {
   id: "est",
@@ -27,7 +27,12 @@ export default {
             meta: [hid ? "Estación de río" : "Estación de lluvia y clima", e.departamento],
             filas: [["Transmisión", TRANSMISION[e.estado] ?? e.estado]],
             nota: "Red de estaciones de SENAMHI.",
-          })
+          }) +
+            // histórico de lluvia por hora (solo las automáticas de lluvia lo tienen; Mapa.jsx
+            // navega los <a data-ruta> sin recargar)
+            (!hid && e.estado === "AUTOMATICA"
+              ? `<div class="pop"><p class="enl"><a data-ruta href="/historico?tipo=lluvia&amp;id=${escapeHtml(encodeURIComponent(e.cod))}">Ver histórico de lluvia</a></p></div>`
+              : "")
         )
         .addTo(group);
     }

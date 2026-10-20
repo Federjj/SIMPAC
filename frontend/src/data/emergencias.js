@@ -1,0 +1,26 @@
+// Números de emergencia oficiales, con su fuente, para el panel "Llama a" de "A dónde acudir".
+// Es una COPIA de backend/data/acudir/numeros.json (misma lista, mismo orden): si cambias uno,
+// cambia el otro; backend/tests/test_cargar_acudir.py comprueba que coincidan. Verificados el
+// 14-10-2026 en gob.pe. El COER Cajamarca no tiene número publicado vigente (el único es de una
+// nota de prensa de 2017): no está hasta confirmarlo por teléfono con la central del GORE.
+// 106 (SAMU) se muestra con su salvedad: gob.pe no lista a Cajamarca entre las regiones con SAMU.
+export const EMERGENCIAS_ACTUALIZADO = "2026-10-14";
+
+export const EMERGENCIAS = [
+  { ambito: "nacional", servicio: "Policía Nacional del Perú (central)", numero: "105", nota: null, fuente_url: "https://www.gob.pe/547", verificado: "2026-10-14" },
+  { ambito: "nacional", servicio: "Bomberos (CGBVP)", numero: "116", nota: null, fuente_url: "https://www.gob.pe/547", verificado: "2026-10-14" },
+  { ambito: "nacional", servicio: "Defensa Civil (INDECI)", numero: "115", nota: null, fuente_url: "https://www.gob.pe/547", verificado: "2026-10-14" },
+  { ambito: "nacional", servicio: "SAMU, ambulancia de urgencia", numero: "106", nota: "gob.pe lista las regiones con SAMU: Amazonas, Áncash, Ayacucho, Huancavelica, Huánuco, Junín, La Libertad, Loreto, Madre de Dios, Piura, Lima Región, Tacna, Tumbes, Ucayali, Lambayeque y Pasco. Cajamarca no figura en esa lista.", fuente_url: "https://www.gob.pe/547", verificado: "2026-10-14" },
+  { ambito: "nacional", servicio: "Infosalud (MINSA, orientación de salud, 24 h)", numero: "113", nota: null, fuente_url: "https://www.gob.pe/547", verificado: "2026-10-14" },
+  { ambito: "nacional", servicio: "Policía de carreteras", numero: "110", nota: null, fuente_url: "https://www.gob.pe/547", verificado: "2026-10-14" },
+  { ambito: "nacional", servicio: "INDECI, sede central (central telefónica)", numero: "(01) 225-9898", nota: null, fuente_url: "https://www.gob.pe/institucion/indeci/sedes", verificado: "2026-10-14" },
+  { ambito: "Cajamarca", servicio: "INDECI Cajamarca (Dirección Desconcentrada, Jr. El Inca 601)", numero: "988061992 / 950090534", nota: null, fuente_url: "https://www.gob.pe/institucion/indeci/sedes", verificado: "2026-10-14" },
+  { ambito: "Cajamarca", servicio: "Bomberos Cajamarca (Compañía Nº 59 y XXIII Comandancia, Av. Atahualpa 107)", numero: "076 36 3333 / 076 36 6787", nota: null, fuente_url: "https://www.gob.pe/institucion/municajamarca/contacto-y-numeros-de-emergencias", verificado: "2026-10-14" },
+  { ambito: "Cajamarca", servicio: "Policía Nacional del Perú, Cajamarca", numero: "076 34 1245", nota: null, fuente_url: "https://www.gob.pe/institucion/municajamarca/contacto-y-numeros-de-emergencias", verificado: "2026-10-14" },
+  { ambito: "Cajamarca", servicio: "Serenazgo Cajamarca (Municipalidad Provincial)", numero: "076 602330 / 948 542 364", nota: null, fuente_url: "https://www.gob.pe/institucion/municajamarca/contacto-y-numeros-de-emergencias", verificado: "2026-10-14" },
+  { ambito: "Cajamarca", servicio: "Municipalidad Provincial de Cajamarca (central)", numero: "076-602660 / 076-602661", nota: null, fuente_url: "https://www.gob.pe/institucion/municajamarca/contacto-y-numeros-de-emergencias", verificado: "2026-10-14" },
+  { ambito: "Cajamarca", servicio: "Gobierno Regional de Cajamarca (central; pedir el COER)", numero: "076 600040 / 076 600041 / 076 600042", nota: "El COER Cajamarca no tiene un número publicado vigente; la central del Gobierno Regional deriva.", fuente_url: "https://www.gob.pe/institucion/regioncajamarca/contacto-y-numeros-de-emergencias", verificado: "2026-10-14" },
+  { ambito: "Cajamarca", servicio: "DIRESA Cajamarca (call center regional)", numero: "076480129", nota: null, fuente_url: "https://www.gob.pe/institucion/regioncajamarca-diresa/contacto-y-numeros-de-emergencias", verificado: "2026-10-14" },
+  { ambito: "Cajamarca", servicio: "Hospital Regional Docente de Cajamarca (24 h)", numero: "076599040 / 076599030", nota: null, fuente_url: "https://www.datosabiertos.gob.pe/sites/default/files/RENIPRESS_30-09-2026.csv", verificado: "2026-10-14" },
+  { ambito: "Cajamarca", servicio: "Hospital II Cajamarca EsSalud (24 h)", numero: "076-362557", nota: null, fuente_url: "https://www.datosabiertos.gob.pe/sites/default/files/RENIPRESS_30-09-2026.csv", verificado: "2026-10-14" },
+];

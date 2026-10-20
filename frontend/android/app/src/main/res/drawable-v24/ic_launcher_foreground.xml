@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Icono de SIMPAC: una gota de agua blanca con una onda (lluvia y rios) sobre fondo azul oscuro.
+     Icono adaptable (API 26+): el sistema recorta la forma; lo importante va en el centro (66 de 108). -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Gota -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M54,26 C54,26 34,48 34,62 A20,20 0 0 0 74,62 C74,48 54,26 54,26 Z" />
+    <!-- Onda dentro de la gota (agua que sube) -->
+    <path
+        android:fillColor="#1D4ED8"
+        android:pathData="M39,66 C43,62 47,62 51,66 C55,70 59,70 63,66 C66,63 68,63 69,64 A15,15 0 0 1 39,66 Z" />
+</vector>

@@ -1,0 +1,130 @@
+{
+ "type": "FeatureCollection",
+ "features": [
+  {
+   "type": "Feature",
+   "id": 177,
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     -78.50976499999996,
+     -7.164543999999978
+    ]
+   },
+   "properties": {
+    "objectid": 177,
+    "id_dpto": "06",
+    "departamen": "CAJAMARCA",
+    "id_prov": "0601",
+    "provincia": "CAJAMARCA",
+    "id_dist": "060101",
+    "distrito": "CAJAMARCA",
+    "nombre": "Cajamarca Nº59",
+    "comandanci": "XXIII Comandancia Departamental Cajamarca",
+    "cia": "B-59",
+    "objectid_12": 177,
+    "objectid_1": 177
+   }
+  },
+  {
+   "type": "Feature",
+   "id": 178,
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     -78.81087499999995,
+     -5.708347999999944
+    ]
+   },
+   "properties": {
+    "objectid": 178,
+    "id_dpto": "06",
+    "departamen": "CAJAMARCA",
+    "id_prov": "0608",
+    "provincia": "JAEN",
+    "id_dist": "060801",
+    "distrito": "JAEN",
+    "nombre": "Manuel Ugarte Y Moscoso Nº69",
+    "comandanci": "XXIII Comandancia Departamental Cajamarca",
+    "cia": "B-69",
+    "objectid_12": 178,
+    "objectid_1": 178
+   }
+  },
+  {
+   "type": "Feature",
+   "id": 179,
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     -78.14545199999998,
+     -6.8609219999999596
+    ]
+   },
+   "properties": {
+    "objectid": 179,
+    "id_dpto": "06",
+    "departamen": "CAJAMARCA",
+    "id_prov": "0603",
+    "provincia": "CELENDIN",
+    "id_dist": "060301",
+    "distrito": "CELENDIN",
+    "nombre": "Celendín Nº158",
+    "comandanci": "XXIII Comandancia Departamental Cajamarca",
+    "cia": "B-158",
+    "objectid_12": 179,
+    "objectid_1": 179
+   }
+  },
+  {
+   "type": "Feature",
+   "id": 180,
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     -78.46085799999997,
+     -7.162595999999951
+    ]
+   },
+   "properties": {
+    "objectid": 180,
+    "id_dpto": "06",
+    "departamen": "CAJAMARCA",
+    "id_prov": "0601",
+    "provincia": "CAJAMARCA",
+    "id_dist": "060108",
+    "distrito": "LOS BAÑOS DEL INCA",
+    "nombre": "Los Baños Del Inca Nº159",
+    "comandanci": "XXIII Comandancia Departamental Cajamarca",
+    "cia": "B-159",
+    "objectid_12": 180,
+    "objectid_1": 180
+   }
+  },
+  {
+   "type": "Feature",
+   "id": 1,
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     -80.62605499999995,
+     -5.194033999999931
+    ]
+   },
+   "properties": {
+    "objectid": 1,
+    "id_dpto": "20",
+    "departamen": "PIURA",
+    "id_prov": "2001",
+    "provincia": "PIURA",
+    "id_dist": "200101",
+    "distrito": "PIURA",
+    "nombre": "Piura Nº25",
+    "comandanci": "I Comandancia Departamental - Piura",
+    "cia": "B-25",
+    "objectid_12": 1,
+    "objectid_1": 1
+   }
+  }
+ ]
+}

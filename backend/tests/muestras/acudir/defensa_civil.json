@@ -1,0 +1,76 @@
+{
+  "nota": "Puntos capturados a mano de fichas de gob.pe (una por institución). Dirección, teléfonos y coordenadas salen de la misma ficha: las coordenadas son las del enlace 'Ver mapa' de la sede (maps.google.com/maps?daddr=lat,lon). Se revisan cada temporada de lluvias; detalle.verificado_en dice cuándo se comprobó la ficha por última vez. No hay aquí albergues ni zonas seguras: al 14-10-2026 ninguna fuente oficial abierta los publica para Cajamarca; cuando la municipalidad publique su lista se cargará con su fuente_url.",
+  "puntos": [
+    {
+      "clave": "manual:indeci_cajamarca",
+      "tipo": "otro",
+      "nombre": "Dirección Desconcentrada INDECI Cajamarca",
+      "categoria": "Defensa Civil (INDECI)",
+      "direccion": "Jr. El Inca 601, Cajamarca",
+      "telefono": "988061992 / 950090534",
+      "departamento": "Cajamarca",
+      "provincia": "Cajamarca",
+      "distrito": "Cajamarca",
+      "ubigeo": "060101",
+      "lat": -7.15886,
+      "lon": -78.508295,
+      "fuente": "gob.pe (INDECI, sedes)",
+      "fuente_url": "https://www.gob.pe/institucion/indeci/sedes",
+      "licencia": null,
+      "atribucion": "Fuente: INDECI, ficha de sedes en gob.pe",
+      "actualizado": "2026-10-14",
+      "detalle": {
+        "verificado_en": "2026-10-14",
+        "nota": "Oficina de INDECI en Cajamarca (orientación y coordinación de Defensa Civil; no es un albergue). Para una emergencia llama al 115 o a tu municipalidad."
+      }
+    },
+    {
+      "clave": "manual:municipalidad_cajamarca",
+      "tipo": "otro",
+      "nombre": "Municipalidad Provincial de Cajamarca",
+      "categoria": "Municipalidad: Defensa Civil y serenazgo",
+      "direccion": "Av. Alameda de los Incas, Cajamarca",
+      "telefono": "076 602330 / 948 542 364",
+      "departamento": "Cajamarca",
+      "provincia": "Cajamarca",
+      "distrito": "Cajamarca",
+      "ubigeo": "060101",
+      "lat": -7.162941,
+      "lon": -78.495102,
+      "fuente": "gob.pe (Municipalidad Provincial de Cajamarca, contacto)",
+      "fuente_url": "https://www.gob.pe/institucion/municajamarca/contacto-y-numeros-de-emergencias",
+      "licencia": null,
+      "atribucion": "Fuente: Municipalidad Provincial de Cajamarca, ficha de contacto en gob.pe",
+      "actualizado": "2026-10-14",
+      "detalle": {
+        "verificado_en": "2026-10-14",
+        "serenazgo": "076 602330 / 948 542 364",
+        "central": "076-602660 / 076-602661",
+        "nota": "La municipalidad es quien define las zonas seguras y albergues de la ciudad (Defensa Civil municipal). El teléfono que se muestra es el de serenazgo; la central está en detalle.central."
+      }
+    },
+    {
+      "clave": "manual:gore_cajamarca",
+      "tipo": "otro",
+      "nombre": "Gobierno Regional de Cajamarca (sede central)",
+      "categoria": "Gobierno Regional: central telefónica (COER)",
+      "direccion": "Jr. Santa Teresa de Journet 351, La Alameda, Cajamarca",
+      "telefono": "076 600040 / 076 600041 / 076 600042",
+      "departamento": "Cajamarca",
+      "provincia": "Cajamarca",
+      "distrito": "Cajamarca",
+      "ubigeo": "060101",
+      "lat": -7.14683,
+      "lon": -78.509443,
+      "fuente": "gob.pe (Gobierno Regional de Cajamarca, contacto)",
+      "fuente_url": "https://www.gob.pe/institucion/regioncajamarca/contacto-y-numeros-de-emergencias",
+      "licencia": null,
+      "atribucion": "Fuente: Gobierno Regional de Cajamarca, ficha de contacto en gob.pe",
+      "actualizado": "2026-10-14",
+      "detalle": {
+        "verificado_en": "2026-10-14",
+        "nota": "El Centro de Operaciones de Emergencia Regional (COER) no tiene un número publicado vigente (el único conocido es de una nota de prensa de 2017): se llama a la central y se pide el COER."
+      }
+    }
+  ]
+}

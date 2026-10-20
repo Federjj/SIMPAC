@@ -1,4 +1,5 @@
 import L from "leaflet";
+import { conMemoria, elegirLugares, medioTexto } from "./rotuloBusqueda";
 
 // Nombre de un río escrito sobre su trazo (SVG <textPath>), como en los mapas impresos. Va sobre una
 // guía: el trazo simplificado a ~120 m (rio_vigilado_mapa.guia_rotulo), porque sobre un cauce que
@@ -18,10 +19,20 @@ import L from "leaflet";
 // `dy` lo corre a un lado de la línea (negativo: arriba) y `clase` es la clase del texto. El del
 // río se ve solo desde zoom 13 (index.css: .rio-nombre por [data-zoom-banda]). Al quitar la guía
 // del mapa (se apaga la capa o se vuelve a dibujar) se suelta el evento y se borra el texto.
+//
+// Costo: getPointAtLength es lo más caro de cada zoom y de cada arrastre (era la mitad del tiempo
+// de JS de un zoom). Por eso:
+//   - los puntos se piden una sola vez por largo entero en cada pasada (memoria);
+//   - tras un arrastre (mismo zoom), si los rótulos que ya están siguen a la vista y libres, no se
+//     busca ni se toca el DOM; se vuelve a buscar solo si cambió el zoom o alguno quedó tapado;
+//   - la búsqueda espera 120 ms después de moveend: un arrastre con paradas cortas no la corre en
+//     cada parada;
+//   - la búsqueda avanza de a 3 % del trazo y mira la curvatura cada 8 px (antes 2 % y 4 px: el
+//     resultado es el mismo).
+// La búsqueda en sí (map/rotuloBusqueda.js elegirLugares) no toca el DOM: la prueba rotuloLinea.test.js.
 const SVG_NS = "http://www.w3.org/2000/svg";
 const TAPA_MAPA = "[data-tapa-mapa], .leaflet-control-zoom";
-const ANCHO_LETRA = 7.5; // px por letra (12 px, seminegrita, con espaciado)
-const MAX_GIRO = Math.PI / 2; // en todo el texto
+const ESPERA_MS = 120; // tras moveend
 
 // Chaikin: cada pasada corta las esquinas a 1/4 y 3/4 de cada tramo (las puntas no se mueven)
 function suavizar(pts, pasadas = 2) {
@@ -60,79 +71,48 @@ export function rotuloLinea(
   // noClip: el trazo entero (no solo la parte a la vista), así el largo y los lugares no saltan
   const guia = L.polyline(suavizar(latlngs), { pane, stroke: false, fill: false, interactive: false, noClip: true });
   let nodo = null;
+  let hecho = null; // { zoom, largo, elegidos } de lo que está dibujado
 
   const borrar = () => {
     nodo?.remove();
     nodo = null;
+    hecho = null;
   };
 
   const dibujar = () => {
-    borrar();
     const path = guia._path;
     const svg = path?.ownerSVGElement;
-    if (!svg || !guia._map) return;
+    if (!svg || !guia._map) return borrar();
     // de izquierda a derecha en la pantalla (si no, el texto queda cabeza abajo)
     const pts = guia.getLatLngs();
-    if (pts.length < 2) return;
+    if (pts.length < 2) return borrar();
     if (map.latLngToLayerPoint(pts[0]).x > map.latLngToLayerPoint(pts[pts.length - 1]).x) {
       guia.setLatLngs([...pts].reverse()); // vuelve a armar el trazo (mismo <path>)
+      borrar();
     }
     const id = `simpac-guia-${L.stamp(guia)}`;
     path.id = id;
     const largo = path.getTotalLength();
-    if (!largo) return;
-    const tam = map.getSize();
-    const origen = map.containerPointToLayerPoint([0, 0]); // el SVG usa coordenadas de capa
-    const lejos = evitar.map((ll) => map.latLngToLayerPoint(ll));
-    const cajas = tapas(map);
-    const medio = (texto.length * ANCHO_LETRA) / 2 + 6; // medio largo del texto sobre la línea
-    const punto = (l) => path.getPointAtLength(Math.max(0, Math.min(largo, l)));
-    const rumbo = (l) => {
-      const a = punto(l - 3);
-      const b = punto(l + 3);
-      return Math.atan2(b.y - a.y, b.x - a.x);
+    if (!largo) return borrar();
+    const zoom = map.getZoom();
+    const ctx = {
+      largo,
+      punto: conMemoria((l) => path.getPointAtLength(l), largo),
+      tam: map.getSize(),
+      origen: map.containerPointToLayerPoint([0, 0]), // el SVG usa coordenadas de capa
+      lejos: evitar.map((ll) => map.latLngToLayerPoint(ll)),
+      cajas: tapas(map),
+      medio: medioTexto(texto),
+      lejosPx,
+      entrePx,
+      repetir,
+      dy,
     };
-    // lo más que puede girar la guía en 16 px sin que las letras se enciman (a la altura de su centro)
-    const maxLocal = 2.5 / (Math.abs(dy) + 4);
-    // cuánto gira la guía de l a l + 16 (con signo: en la pantalla, negativo = hacia la izquierda del
-    // avance, que es el lado del texto si dy < 0)
-    const doblez = (l) => {
-      const d = rumbo(l + 16) - rumbo(l);
-      return Math.atan2(Math.sin(d), Math.cos(d));
-    };
-    const haciaElTexto = (g) => (dy < 0 ? g < 0 : g > 0);
-    // false si entre l0 y l1 la guía tiene un quiebre cerrado o gira demasiado en total
-    const recta = (l0, l1) => {
-      let total = 0;
-      for (let i = 0, l = l0; l + 16 <= l1; i++, l += 4) {
-        const g = doblez(l);
-        if (Math.abs(g) > (haciaElTexto(g) ? maxLocal : 3 * maxLocal)) return false;
-        if (i % 4 === 0) total += Math.abs(g); // tramos de 16 px seguidos, sin contar dos veces
-      }
-      return total <= MAX_GIRO;
-    };
-    // todo el texto (cada ~10 px a lo largo, corrido `dy`) a la vista y fuera de chips y paneles
-    const libre = (l0) => {
-      for (let l = l0 - medio; l <= l0 + medio; l += 10) {
-        const q = punto(l);
-        const x = q.x - origen.x;
-        const y = q.y - origen.y + dy;
-        if (x < 8 || y < 8 || x > tam.x - 8 || y > tam.y - 8) return false;
-        if (cajas.some((c) => x > c.x0 && x < c.x1 && y > c.y0 && y < c.y1)) return false;
-      }
-      return true;
-    };
-    const elegidos = [];
-    for (let f = 0.06; f <= 0.94 && elegidos.length < repetir; f += 0.02) {
-      const l = f * largo;
-      if (l - medio < 0 || l + medio > largo) continue;
-      const q = punto(l);
-      if (lejos.some((p) => Math.hypot(q.x - p.x, q.y - p.y) < lejosPx)) continue;
-      if (elegidos.some((g) => Math.abs(g - f) * largo < entrePx)) continue;
-      if (!recta(Math.max(3, l - medio - 6), Math.min(largo - 3, l + medio + 6))) continue;
-      if (!libre(l)) continue;
-      elegidos.push(f);
-    }
+    // tras un arrastre, si lo dibujado sigue a la vista y libre, no se toca nada
+    const previos = nodo && hecho && hecho.zoom === zoom && hecho.largo === largo ? hecho.elegidos : null;
+    const { elegidos, iguales } = elegirLugares(ctx, previos);
+    if (iguales) return;
+    borrar();
     if (!elegidos.length) return;
     nodo = document.createElementNS(SVG_NS, "text");
     nodo.setAttribute("class", clase);
@@ -147,21 +127,32 @@ export function rotuloLinea(
       nodo.appendChild(tp);
     }
     svg.appendChild(nodo);
+    hecho = { zoom, largo, elegidos };
   };
 
-  // en el cuadro siguiente: el SVG ya rehízo el trazo con la vista nueva
+  // La primera vez, en el cuadro siguiente (el SVG ya rehízo el trazo con la vista nueva); después
+  // de cada movimiento, 120 ms más tarde: un arrastre con paradas cortas no busca en cada parada.
   let cuadro = 0;
-  const pedir = () => {
+  let espera = 0;
+  const cancelar = () => {
     cancelAnimationFrame(cuadro);
+    clearTimeout(espera);
+  };
+  const pedir = () => {
+    cancelar();
     cuadro = requestAnimationFrame(dibujar);
   };
+  const pedirLuego = () => {
+    cancelar();
+    espera = setTimeout(pedir, ESPERA_MS);
+  };
   guia.on("add", () => {
-    map.on("moveend", pedir);
+    map.on("moveend", pedirLuego);
     pedir();
   });
   guia.on("remove", () => {
-    map.off("moveend", pedir);
-    cancelAnimationFrame(cuadro);
+    map.off("moveend", pedirLuego);
+    cancelar();
     borrar();
   });
   return guia;

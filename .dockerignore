@@ -9,6 +9,9 @@
 **/*.geojson
 # los ríos vigilados sí van en la imagen: los lee backend/mapas/cargar_rios.py
 !backend/data/rios/**/*.geojson
+# ... y las copias simplificadas de los cauces del país (ANA - GeoSNIRH, ~2,8 MB) que
+# carga backend/mapas/cargar_cauces.py --desde-copia sin volver a consultar a ANA
+!backend/data/cauces/*.geojson
 .git
 .venv
 venv

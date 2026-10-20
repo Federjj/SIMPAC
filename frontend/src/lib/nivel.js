@@ -49,9 +49,11 @@ export const NIVEL = {
 
 // Nivel a partir de las alertas vigentes (vista alerta_actual: lluvia, caudal, nivel bajo y
 // avisos de SENAMHI). La lluvia (una estación que pasó la referencia de SENAMHI; no es aviso
-// oficial) es siempre "aviso", venga como venga de la BD. Los avisos de SENAMHI: amarillo =
-// aviso, naranja = alerta, rojo = emergencia.
-const nivelEfectivo = (a) => (a.tipo === "lluvia" ? "aviso" : a.nivel);
+// oficial) es siempre "aviso", venga como venga de la BD. Un río muy bajo (tipo nivel_bajo,
+// vaciante) tampoco es una crecida: en el semáforo vale como máximo "aviso", aunque ANA lo
+// publique como alerta, para que no encienda el modo emergencia ni "aléjate de la orilla". Los
+// avisos de SENAMHI: amarillo = aviso, naranja = alerta, rojo = emergencia.
+const nivelEfectivo = (a) => (a.tipo === "lluvia" || a.tipo === "nivel_bajo" ? "aviso" : a.nivel);
 
 export function nivelDeAlertas(alertas) {
   if (alertas.some((a) => nivelEfectivo(a) === "emergencia")) return "emergencia";
@@ -101,10 +103,13 @@ function describir(alertas) {
 
 // Rótulo de la zona: "Aviso naranja" si su nivel sale solo de avisos de SENAMHI (con o sin
 // lluvia medida), "Atentos a la lluvia" si sale solo de estaciones que pasaron la referencia
-// de SENAMHI (que no es un aviso oficial), y si no, el del semáforo.
-function etiqueta(nivel, alertas) {
+// de SENAMHI (que no es un aviso oficial), "Río muy bajo" si sale solo de ríos en vaciante
+// (ANA), y si no, el del semáforo.
+export function etiqueta(nivel, alertas) {
   const deEse = alertas.filter((a) => nivelEfectivo(a) === nivel);
-  if (!deEse.length || deEse.some((a) => a.tipo !== "aviso" && a.tipo !== "lluvia")) return NIVEL[nivel].label;
+  if (!deEse.length) return NIVEL[nivel].label;
+  if (deEse.every((a) => a.tipo === "nivel_bajo")) return deEse.length === 1 ? "Río muy bajo" : "Ríos muy bajos";
+  if (deEse.some((a) => a.tipo !== "aviso" && a.tipo !== "lluvia")) return NIVEL[nivel].label;
   if (deEse.some((a) => a.tipo === "aviso")) return `Aviso ${COLOR_AVISO[nivel]}`;
   return "Atentos a la lluvia";
 }
@@ -124,6 +129,8 @@ export function frasesEstado(alertas, depto, cobertura = { rios: 0, lluvia: 0, l
       cuantasFuera: 0,
       cuantasTotal: 0,
       avisosAqui: [],
+      riosAqui: [],
+      bajosAqui: 0,
       lluviaAqui: [],
       local: error ? "No se pudo consultar las alertas. Revisa tu conexión." : "Consultando las alertas…",
       pais: "",
@@ -178,6 +185,10 @@ export function frasesEstado(alertas, depto, cobertura = { rios: 0, lluvia: 0, l
     cuantasTotal: contar(alertas), // un aviso que cubre tu zona y otras cuenta una vez
     // qué dicen los avisos de SENAMHI que cubren la zona (ya en lenguaje claro, desde el worker)
     avisosAqui: aqui.filter((a) => a.tipo === "aviso").map((a) => ({ nivel: a.nivel, detalle: a.detalle, referencia: a.referencia })),
+    // ríos de ANA de la zona que pasaron su nivel de alerta o emergencia (tipo caudal), y cuántos
+    // están muy bajos (vaciante): la tarjeta de inicio dice la causa del nivel con esto, no la adivina
+    riosAqui: aqui.filter((a) => a.tipo === "caudal").map((a) => ({ nivel: a.nivel, detalle: a.detalle, referencia: a.referencia })),
+    bajosAqui: aqui.filter((a) => a.tipo === "nivel_bajo").length,
     // estaciones de la zona que pasaron la referencia de SENAMHI, la que más la pasó primero
     // (el detalle ya viene del worker listo para mostrar)
     lluviaAqui: aqui

@@ -1,4 +1,5 @@
-@import url("https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700&family=Inter:wght@400;500;600;700&display=swap");
+/* Las fuentes (Geist e Inter, Google Fonts) se cargan desde index.html con <link>: un @import aquí
+   recién se descubría al leer esta hoja y atrasaba el primer dibujo. */
 
 @tailwind base;
 @tailwind components;
@@ -254,6 +255,14 @@
   height: 100%;
   display: block;
 }
+/* glifo como imagen en los marcadores (map/iconos.js ESTILO_GLIFOS pone cada background-image):
+   el mismo dibujo que el SVG en línea, pero decodificado una vez y reusado en cientos de discos */
+.glifo-img {
+  display: block;
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: contain;
+}
 .mkr {
   position: absolute;
   left: 0;
@@ -279,7 +288,7 @@
   border: 4px solid var(--aro);
   box-shadow: 0 0 0 5px var(--halo), 0 3px 10px rgba(15, 23, 42, 0.3);
 }
-.mk-ins .ins-cuerpo svg {
+.mk-ins .ins-cuerpo .glifo-img {
   width: 24px;
   height: 24px;
 }
@@ -305,7 +314,7 @@
   height: 30px;
   border-width: 3px;
 }
-[data-escala="pais"] .mk-ins .ins-cuerpo svg {
+[data-escala="pais"] .mk-ins .ins-cuerpo .glifo-img {
   width: 18px;
   height: 18px;
 }
@@ -313,7 +322,7 @@
   width: 44px;
   height: 44px;
 }
-[data-escala="local"] .mk-ins .ins-cuerpo svg {
+[data-escala="local"] .mk-ins .ins-cuerpo .glifo-img {
   width: 26px;
   height: 26px;
 }
@@ -322,7 +331,7 @@
   height: 28px;
   box-shadow: 0 2px 6px rgba(15, 23, 42, 0.25);
 }
-.mk-loc .loc-cuerpo svg {
+.mk-loc .loc-cuerpo .glifo-img {
   width: 20px;
   height: 20px;
 }
@@ -337,7 +346,7 @@
   width: 32px;
   height: 32px;
 }
-[data-escala="local"] .mk-loc .loc-cuerpo svg {
+[data-escala="local"] .mk-loc .loc-cuerpo .glifo-img {
   width: 22px;
   height: 22px;
 }
@@ -357,8 +366,8 @@
   width: 7px;
   height: 7px;
 }
-[data-escala="pais"] .mk-loc .loc-cuerpo svg,
-.mk-loc.es-punto .loc-cuerpo svg {
+[data-escala="pais"] .mk-loc .loc-cuerpo .glifo-img,
+.mk-loc.es-punto .loc-cuerpo .glifo-img {
   display: none;
 }
 [data-escala="pais"] .mk-loc .loc-cuerpo::before,
@@ -469,7 +478,7 @@
   transform: translate(calc(-50% + var(--dx, 0px)), calc(-50% + var(--dy, 0px)));
   transition: opacity 0.18s, transform 0.18s;
 }
-.rio-cuerpo svg {
+.rio-cuerpo .glifo-img {
   width: 22px;
   height: 22px;
 }
@@ -485,7 +494,7 @@
   height: 30px;
   border-width: 3px;
 }
-[data-escala="region"] .rio-cuerpo svg {
+[data-escala="region"] .rio-cuerpo .glifo-img {
   width: 17px;
   height: 17px;
 }
@@ -498,8 +507,8 @@
   background: var(--c);
   box-shadow: 0 1px 3px rgba(15, 23, 42, 0.35);
 }
-[data-escala="pais"] .rio-cuerpo svg,
-.mk-rio.es-punto .rio-cuerpo svg {
+[data-escala="pais"] .rio-cuerpo .glifo-img,
+.mk-rio.es-punto .rio-cuerpo .glifo-img {
   display: none;
 }
 /* en alerta o emergencia: aro que late (quieto si la persona pidió menos movimiento) */
@@ -1236,4 +1245,359 @@
   margin: 6px 0 0;
   font-weight: 500;
   font-size: 0.78rem;
+}
+
+/* --- acudir-frontend: marcadores y popup de "A dónde acudir" (map/layers/acudir.js) --- */
+.mk-acudir {
+  display: grid;
+  width: 26px;
+  height: 26px;
+  place-items: center;
+  border-radius: 9999px;
+  background: var(--c, #475569);
+  border: 2.5px solid #fff;
+  box-shadow: 0 1px 4px rgba(15, 23, 42, 0.35);
+}
+.mk-acudir svg {
+  width: 15px;
+  height: 15px;
+}
+.mk-acudir.ac-otro {
+  border-radius: 7px; /* las oficinas (Defensa Civil, municipalidad) se distinguen por la forma */
+}
+.pop-acudir .tel {
+  margin: 4px 0 0;
+  font-weight: 500;
+}
+.pop-acudir .enl {
+  margin: 6px 0 0;
+  font-weight: 500;
+  font-size: 0.78rem;
+}
+/* tarjeta "A dónde acudir" (components/AcudirCercanos.jsx): el ícono del tipo */
+.ac-icono {
+  display: grid;
+  place-items: center;
+  width: 2rem;
+  height: 2rem;
+  border-radius: 9999px;
+  color: #fff;
+  flex-shrink: 0;
+}
+.ac-icono svg {
+  width: 1.05rem;
+  height: 1.05rem;
+}
+
+/* --- rios-frontend: ríos del país con trazo de ANA (map/layers/rios.js y zonasRio.js, lib/cauces.js) ---
+   Mismo halo y cauce que el Mashcón (.rio-halo/.rio-cauce por banda de zoom). Con el mapa en vista
+   país (zoom 6 o menos) los ríos sin alerta van en gris fino sin halo y solo los .fuerte (alerta o
+   emergencia) conservan su color; en región (7 y 8) todos van más finos. El nombre (.rio-nombre.nac)
+   lo escribe la capa solo desde zoom 10, así que no se oculta por banda como el del Mashcón. El aura
+   de un río del país (.zona-aura.nac) se ve a todo zoom (no tiene polígonos que la reemplacen). */
+[data-escala="pais"] .rio-halo.rio-nac:not(.fuerte) {
+  display: none;
+}
+[data-escala="pais"] .rio-cauce.rio-nac:not(.fuerte) {
+  stroke: #94a3b8;
+  stroke-width: 1.5px;
+  stroke-opacity: 0.9;
+}
+[data-escala="pais"] .rio-halo.rio-nac.fuerte {
+  stroke-width: 5px;
+}
+[data-escala="pais"] .rio-cauce.rio-nac.fuerte {
+  stroke-width: 2.5px;
+}
+[data-escala="region"] .rio-halo.rio-nac {
+  stroke-width: 5px;
+}
+[data-escala="region"] .rio-cauce.rio-nac {
+  stroke-width: 2.5px;
+}
+[data-zoom-banda="z10"] .rio-nombre.nac,
+[data-zoom-banda="z12"] .rio-nombre.nac {
+  display: inline;
+}
+.zona-aura.nac {
+  display: inline;
+  stroke-width: 28px;
+  stroke-opacity: 0.35;
+}
+[data-zoom-banda="z10"] .zona-aura.nac {
+  stroke-width: 16px;
+  stroke-opacity: 0.55;
+}
+[data-zoom-banda="z12"] .zona-aura.nac {
+  stroke-width: 24px;
+  stroke-opacity: 0.55;
+}
+[data-escala="pais"] .zona-aura.nac {
+  stroke-width: 8px;
+  stroke-opacity: 0.45;
+}
+
+/* --- inicio-impacto: "Tu zona ahora" (TuZona.jsx), hoja de 3 alturas (StatusPanel.jsx), medidor de
+   caudal, barras de lluvia y bienvenida del GPS. Reglas: solo transform y opacity (y
+   stroke-dashoffset en SVG); pulsos de 3 ciclos salvo en alerta o emergencia; con
+   prefers-reduced-motion todo queda en su estado final y el color se mantiene. --- */
+:root {
+  --dur-rapida: 150ms;
+  --dur-base: 280ms;
+  --dur-dato: 900ms;
+  --dur-barra: 500ms;
+  --dur-vuelo: 800ms;
+  --pulso: 1.8s;
+  --respiro: 1.6s;
+  --ease-salida: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --ease-dato: cubic-bezier(0.16, 1, 0.3, 1);
+}
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --dur-rapida: 0ms;
+    --dur-base: 0ms;
+    --dur-dato: 0ms;
+    --dur-barra: 0ms;
+    --dur-vuelo: 0ms;
+    --pulso: 0s;
+    --respiro: 0s;
+  }
+}
+/* Tonos por nivel (lib/zonaAhora.js TONOS): --nv relleno (franja, disco, botón), --nv-tinta texto
+   sobre fondo claro (contraste >= 4,5:1), --nv-sobre texto sobre el relleno, --nv-suave fondo. */
+.tz-normal { --nv: #3BEB40; --nv-tinta: #15803D; --nv-sobre: #1F2937; --nv-suave: rgba(59, 235, 64, 0.1); }
+.tz-aviso { --nv: #EAB308; --nv-tinta: #A16207; --nv-sobre: #1F2937; --nv-suave: rgba(234, 179, 8, 0.15); }
+.tz-alerta { --nv: #F58E27; --nv-tinta: #C2410C; --nv-sobre: #FFFFFF; --nv-suave: rgba(245, 142, 39, 0.1); }
+.tz-emergencia { --nv: #DB0404; --nv-tinta: #B91C1C; --nv-sobre: #FFFFFF; --nv-suave: rgba(219, 4, 4, 0.1); }
+.tz-sin_dato { --nv: #9CA3AF; --nv-tinta: #6B7280; --nv-sobre: #FFFFFF; --nv-suave: rgba(156, 163, 175, 0.12); }
+.tz-tinta { color: var(--nv-tinta); }
+.tz-relleno { background: var(--nv); color: var(--nv-sobre); }
+.tz-relleno:hover { background: color-mix(in srgb, var(--nv) 88%, #000); }
+.tz-suave { background: var(--nv-suave); }
+
+/* la hoja inferior (móvil) o tarjeta abajo a la izquierda (lg): entra una sola vez subiendo 16 px */
+.hoja {
+  transition: background-color 400ms;
+}
+.hoja-entra {
+  animation: hoja-entra var(--dur-base) var(--ease-salida) both;
+  will-change: transform, opacity;
+}
+@keyframes hoja-entra {
+  from { transform: translateY(16px); opacity: 0; }
+  to { transform: none; opacity: 1; }
+}
+.hoja-franja {
+  height: 6px;
+  background: var(--nv);
+  transition: background-color 400ms;
+}
+.hoja.es-emergencia .hoja-franja {
+  height: 10px;
+  animation: franja-respira var(--respiro) ease-in-out infinite;
+}
+@keyframes franja-respira {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.7; }
+}
+.hoja-asa {
+  width: 36px;
+  height: 4px;
+  border-radius: 9999px;
+  background: hsl(var(--muted-foreground) / 0.45);
+}
+.hoja-arrastre {
+  touch-action: none;
+  cursor: grab;
+  user-select: none;
+}
+.hoja-arrastre:active { cursor: grabbing; }
+/* mientras se arrastra, la hoja sigue al dedo solo con transform (sin reflow) */
+.hoja.arrastrando { transition: none; }
+
+/* semáforo grande: disco del color del nivel con ícono (nunca solo color) y etiqueta debajo */
+.tz-disco {
+  display: grid;
+  place-items: center;
+  width: 56px;
+  height: 56px;
+  border-radius: 9999px;
+  background: var(--nv);
+  color: var(--nv-sobre);
+  animation: tz-respiro 600ms var(--ease-salida) 1; /* un solo "respiro" al cambiar de nivel (key) */
+}
+.tz-disco svg { width: 28px; height: 28px; }
+@media (min-width: 1024px) {
+  .tz-disco { width: 64px; height: 64px; }
+  .tz-disco svg { width: 32px; height: 32px; }
+}
+@keyframes tz-respiro {
+  0% { transform: scale(1); }
+  50% { transform: scale(1.06); }
+  100% { transform: scale(1); }
+}
+.tz-etiqueta {
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  font-weight: 700;
+  line-height: 1.1;
+}
+.tz-titular {
+  font-size: 1.25rem;
+  line-height: 1.3;
+  font-weight: 600;
+  text-wrap: balance;
+}
+@media (min-width: 1024px) {
+  .tz-titular { font-size: 1.4rem; }
+}
+.tz-chip {
+  animation: chip-entra var(--dur-base) var(--ease-salida) both;
+  animation-delay: calc(var(--i, 0) * 60ms);
+}
+@keyframes chip-entra {
+  from { transform: translateY(6px); opacity: 0; }
+  to { transform: none; opacity: 1; }
+}
+.tz-num { font-variant-numeric: tabular-nums; }
+
+/* medidor de caudal (MedidorCaudal.jsx): el arco de progreso se dibuja con stroke-dashoffset y la
+   aguja gira con transform; en alerta o emergencia el arco late suave (opacity) */
+.med-progreso { transition: stroke-dashoffset var(--dur-dato) var(--ease-dato); }
+.med-aguja { transition: transform var(--dur-dato) var(--ease-dato); }
+.med-late { animation: med-late var(--respiro) ease-in-out infinite; }
+@keyframes med-late {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.75; }
+}
+.med-numero { font-size: 2rem; line-height: 1; font-weight: 700; font-variant-numeric: tabular-nums; }
+
+/* barras de lluvia (BarrasLluvia.jsx): crecen desde abajo con scaleY, escalonadas 40 ms */
+.bl-barra {
+  transform-origin: bottom;
+  transform: scaleY(var(--f, 0));
+  transition: transform var(--dur-barra) var(--ease-salida);
+  transition-delay: calc(var(--i, 0) * 40ms);
+}
+.bl-barra.plegada { transform: scaleY(0); }
+.bl-ref {
+  border-top: 2px dashed currentColor;
+}
+
+/* tu ubicación: el pulso va por ::after con transform y opacity (ya no por box-shadow), 3 ciclos y
+   para; con la zona en alerta o emergencia (html[data-nivel]) sigue */
+.mkself {
+  position: relative;
+  animation: none;
+}
+.mkself::after {
+  content: "";
+  position: absolute;
+  inset: -3px;
+  border-radius: 9999px;
+  border: 2px solid hsl(var(--primary) / 0.45);
+  pointer-events: none;
+  animation: pulso-anillo var(--pulso) ease-out 3;
+}
+html[data-nivel="alerta"] .mkself::after,
+html[data-nivel="emergencia"] .mkself::after {
+  animation-iteration-count: infinite;
+}
+@keyframes pulso-anillo {
+  0% { transform: scale(1); opacity: 0.45; }
+  100% { transform: scale(2.2); opacity: 0; }
+}
+/* río en alerta o emergencia: el aro que late también por ::after (antes box-shadow en cada cuadro) */
+.mk-rio.fuerte .rio-cuerpo { animation: none; }
+.mk-rio.fuerte .rio-cuerpo::after {
+  content: "";
+  position: absolute;
+  inset: -4px;
+  border-radius: 9999px;
+  border: 3px solid var(--c);
+  pointer-events: none;
+  animation: pulso-anillo var(--respiro) ease-out infinite;
+}
+
+/* bienvenida del GPS (OnboardingGps.jsx): el disco del ícono pulsa 3 ciclos y para */
+.gps-disco { position: relative; }
+.gps-disco::after {
+  content: "";
+  position: absolute;
+  inset: -3px;
+  border-radius: 9999px;
+  border: 2px solid hsl(var(--primary) / 0.45);
+  pointer-events: none;
+  animation: pulso-anillo var(--pulso) ease-out 3;
+}
+
+/* chip de estado de arriba: hereda el nivel máximo (fondo fuerte en alerta y emergencia) */
+.chip-estado { transition: background-color 400ms, color 400ms; }
+
+@media (prefers-reduced-motion: reduce) {
+  .hoja-entra,
+  .tz-disco,
+  .tz-chip,
+  .hoja.es-emergencia .hoja-franja,
+  .med-late,
+  .mkself::after,
+  .mk-rio.fuerte .rio-cuerpo::after,
+  .gps-disco::after {
+    animation: none;
+  }
+  .hoja-entra { opacity: 1; transform: none; }
+  .tz-chip { opacity: 1; transform: none; }
+}
+/* en el celular los controles de Leaflet (zoom y atribución, abajo a la derecha) suben por encima
+   de la hoja (hooks/useAltoHoja.js publica --hoja-alto); desde lg la hoja va a la izquierda */
+@media (max-width: 1023px) {
+  .leaflet-bottom {
+    bottom: var(--hoja-alto, 0px);
+  }
+}
+/* con el mapa cerca (zoom 13 o más) el relleno del aviso amarillo baja: a esa escala el área cubre
+   toda la pantalla y se leía como fondo roto, no como zona; el borde y la insignia siguen igual
+   (el pane lleva la opacidad en línea desde MapView: hace falta !important) */
+[data-zoom-banda="z13"] .leaflet-aviso2-pane,
+[data-zoom-banda="z14"] .leaflet-aviso2-pane,
+[data-zoom-banda="z16"] .leaflet-aviso2-pane {
+  opacity: 0.12 !important;
+}
+/* atribución corta del celular (map/baseMap.js Atribucion): una línea plegada; "más" la despliega */
+.leaflet-control-attribution.atrib-corta {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+  max-width: calc(100vw - 16px);
+  font-size: 11px;
+  white-space: nowrap;
+}
+/* si no entra, se recorta el texto y "más" sigue a la vista */
+.leaflet-control-attribution.atrib-corta > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.leaflet-control-attribution .atrib-mas {
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: 0;
+  padding: 0 2px;
+  text-decoration: underline;
+  cursor: pointer;
+}
+/* los controles de Leaflet (zoom y atribución; Leaflet les da 1000) van debajo de los paneles de
+   la app (chips, panel de capas y hoja: 600 y más): la atribución ya no cruza el panel de capas */
+.leaflet-top,
+.leaflet-bottom {
+  z-index: 590;
+}
+@media (max-width: 1023px) {
+  /* suben con la hoja solo mientras quede al menos 160 px de mapa; con la hoja más alta se quedan
+     detrás de ella (la hoja ya tapa el mapa) en vez de subir hasta los chips */
+  .leaflet-bottom {
+    bottom: min(var(--hoja-alto, 0px), calc(100% - 160px));
+  }
 }

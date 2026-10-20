@@ -1,0 +1,143 @@
+{
+ "comandancias": [
+  {
+   "codidenest": "201000",
+   "nombre": "I Comandancia Departamental - Piura",
+   "direccion": "Calle Tacna No. 160  A",
+   "telefonos": "073 - 334797",
+   "fecha_fundacion": "16/07/2014"
+  },
+  {
+   "codidenest": "223000",
+   "nombre": "XXIII Comandancia Departamental Cajamarca",
+   "direccion": "Av. Atahualpa No. 107 - Barrio La Florida - Cajamarca",
+   "telefonos": "076-366787",
+   "fecha_fundacion": "10/11/2014"
+  }
+ ],
+ "companias": {
+  "201000": [
+   {
+    "codidenest": "302500",
+    "nombre": "Piura Nº25",
+    "direccion": "Calle Tacna No. 160 - Piura",
+    "telefonos": "073-309999",
+    "fecha_fundacion": "15/08/1933"
+   },
+   {
+    "codidenest": "303100",
+    "nombre": "Paita Nº31",
+    "direccion": "Calle La Merced No. 203 - Paita",
+    "telefonos": "073-212900",
+    "fecha_fundacion": "07/04/1940"
+   },
+   {
+    "codidenest": "304000",
+    "nombre": "Catacaos Nº40",
+    "direccion": "Av. Cayetano Heredia No. 537",
+    "telefonos": "073-371111",
+    "fecha_fundacion": "28/09/1952"
+   },
+   {
+    "codidenest": "304300",
+    "nombre": "Sullana Nº43",
+    "direccion": "Leoncio Prado No. 236 - Sucre No. 735",
+    "telefonos": "073-503333 - 073-502191",
+    "fecha_fundacion": "26/03/1956"
+   },
+   {
+    "codidenest": "305100",
+    "nombre": "Chulucanas Nº51",
+    "direccion": "Av. Ramón Castilla s/n",
+    "telefonos": "073-378888",
+    "fecha_fundacion": "20/11/1963"
+   },
+   {
+    "codidenest": "306200",
+    "nombre": "Negritos Nº62",
+    "direccion": "Av. José Gálvez No. 205",
+    "telefonos": "073-386600",
+    "fecha_fundacion": "14/05/1973"
+   },
+   {
+    "codidenest": "306700",
+    "nombre": "Talara Nº67",
+    "direccion": "Mz. A Lt. 1 Urb. Aproviser Zona Comercial",
+    "telefonos": "073-386600",
+    "fecha_fundacion": "24/10/1977"
+   },
+   {
+    "codidenest": "307900",
+    "nombre": "Santa Rosa Nº79",
+    "direccion": "Av. John Kennedy s/n Mz. X Lt. 2",
+    "telefonos": "073-355555",
+    "fecha_fundacion": "20/05/1990"
+   },
+   {
+    "codidenest": "311700",
+    "nombre": "Bellavista - Sullana Nº117",
+    "direccion": "Calle Ancash No. 199",
+    "telefonos": "073-506699",
+    "fecha_fundacion": "30/01/1997"
+   },
+   {
+    "codidenest": "315100",
+    "nombre": "Morropón Nº151",
+    "direccion": "Av. Ramón Dominguez y Jr. San Antonio",
+    "telefonos": "073-369037",
+    "fecha_fundacion": "20/11/1999"
+   },
+   {
+    "codidenest": "319000",
+    "nombre": "Illescas Nº190",
+    "direccion": "",
+    "telefonos": "073-477858",
+    "fecha_fundacion": "20/08/2010"
+   },
+   {
+    "codidenest": "319100",
+    "nombre": "Maizavilca Nº191",
+    "direccion": "Carretera Panamericana al costado de comisaria Marcavelica con Calle Grau s/n  Manzana N Lote 3-A, Distrito de Marcavelica, Provincia de Sullana, Departamento Piura.",
+    "telefonos": "073-477858",
+    "fecha_fundacion": "19/12/2010"
+   },
+   {
+    "codidenest": "324000",
+    "nombre": "LA UNION Nº240",
+    "direccion": "",
+    "telefonos": "",
+    "fecha_fundacion": "19/10/2020"
+   }
+  ],
+  "223000": [
+   {
+    "codidenest": "305900",
+    "nombre": "Cajamarca Nº59",
+    "direccion": "av atahualpa 107",
+    "telefonos": "076 - 363333",
+    "fecha_fundacion": "16/04/1970"
+   },
+   {
+    "codidenest": "306900",
+    "nombre": "Manuel Ugarte Y Moscoso Nº69",
+    "direccion": "Av. Santa Rosa No. 511 Jaén",
+    "telefonos": "076-431309",
+    "fecha_fundacion": "08/10/1979"
+   },
+   {
+    "codidenest": "315800",
+    "nombre": "Celendín Nº158",
+    "direccion": "Jr. Dos de Mayo No. 1298 Celendín",
+    "telefonos": "076-555491",
+    "fecha_fundacion": "10/06/2000"
+   },
+   {
+    "codidenest": "315900",
+    "nombre": "Los Baños Del Inca Nº159",
+    "direccion": "Av. Manco Cápac No. 140",
+    "telefonos": "076-348344",
+    "fecha_fundacion": "11/06/2000"
+   }
+  ]
+ }
+}
