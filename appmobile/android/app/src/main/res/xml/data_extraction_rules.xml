@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Copia de seguridad (Android 12+): los ajustes si; la cache de datos y el almacen cifrado, no -->
+<data-extraction-rules>
+    <cloud-backup>
+        <exclude domain="sharedpref" path="simpac_seguro.xml" />
+        <exclude domain="file" path="simpac_cache" />
+    </cloud-backup>
+    <device-transfer>
+        <exclude domain="sharedpref" path="simpac_seguro.xml" />
+        <exclude domain="file" path="simpac_cache" />
+    </device-transfer>
+</data-extraction-rules>

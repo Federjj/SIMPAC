@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Icono pequeno de las notificaciones: la gota de SIMPAC en blanco (Android lo tine con el color de acento) -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M54,14 C54,14 26,46 26,64 A28,28 0 0 0 82,64 C82,46 54,14 54,14 Z" />
+</vector>

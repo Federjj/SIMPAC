@@ -4,17 +4,20 @@ Web en **React + Vite + Tailwind + shadcn/ui + Leaflet + react-router** que lee 
 Al 14-10-2026 la web está completa: el **mapa** con sus capas, el inicio **"Tu zona ahora"** (hoja
 inferior con semáforo y titular), y las páginas **Alertas, Comunidad, Chat, Cuenta e Histórico** con
 sesión de Supabase Auth. El diseño original de las pantallas está en `docs/frontend-brief.md`
-(estilo Waze). La misma web empaquetada con Capacitor es la **app Android** (`appmobile/README.md`).
+(estilo Waze). Desde el 20-10-2026 (integrado el 24-10) la hoja de inicio y la capa de zonas cubren
+también los **ríos del país con zonas estimadas con el relieve** (ver "Ríos del país"). La **app
+Android** es nativa en Kotlin + Compose (`appmobile/android/`, `appmobile/README.md`) y abre esta web
+en un WebView solo para el mapa; la app anterior con Capacitor se retiró del repo el 2026-10-24 (ver
+"App Android").
 
 ## Arranque
 ```bash
 npm install
 cp .env.example .env # llaves públicas de Supabase (en PowerShell: Copy-Item .env.example .env)
 npm run dev          # http://localhost:5173 (SPA: cualquier ruta recarga bien)
-npm test             # 148 pruebas de los módulos puros (node --test src/lib/*.test.js src/map/*.test.js, ~1 s)
+npm test             # 157 pruebas de los módulos puros (node --test src/lib/*.test.js src/map/*.test.js, ~1 s)
 npm run build        # compila a dist/ y deja un .gz al lado de cada .js/.css (plugin precomprimir de vite.config.js)
 npm run preview      # sirve dist/ para mirarlo
-npm run android:apk  # build + cap sync + APK de depuración (ver "App Android")
 ```
 Variables (`.env`, solo públicas; Vite las expone al navegador): `VITE_SUPABASE_URL` y
 `VITE_SUPABASE_PUBLISHABLE_KEY`. Sin ellas la app no arranca (`supabaseUrl is required`). Cliente:
@@ -63,8 +66,8 @@ src/
                 Vacio, ErrorCarga, EntraPara, Mensaje) · TarjetaAlerta · TarjetaReporte · Votos · IconoReporte ·
                 NivelBadge · GraficoSerie (SVG propio) · ContextoApp (useApp) · ErrorBoundary · Glifo ·
                 InsigniaCapa · ui/ (shadcn)
-  hooks/        usePanorama(depto) (estado de tu zona y del país, se refresca solo) · useGeolocation (web o
-                plugin de Capacitor) · useLayerVisibility (capas recordadas, con la cuenta) · usePronosticoLocal ·
+  hooks/        usePanorama(depto) (estado de tu zona y del país, se refresca solo) · useGeolocation
+                (navigator.geolocation) · useLayerVisibility (capas recordadas, con la cuenta) · usePronosticoLocal ·
                 useRiosVigilados(depto) · useZonaAhora (todo lo de la tarjeta de inicio) · useSesion
                 (SesionProvider/useSesion) · useAltoHoja (publica --hoja-alto) · useContador (números que cuentan,
                 prefers-reduced-motion)
@@ -98,19 +101,21 @@ public/         manifest.webmanifest · sw.js (cáscara de la app, nunca datos) 
 ```
 Los módulos puros (`lib/tiempo.js`, `geo.js`, `pronostico.js`, `avisoTexto.js`, `lenguaje.js`,
 `zonaRio.js`, `zonaAhora.js`, `nivel.js`, `medidor.js`, `serie24h.js`, `cauces.js`, `acudir.js`,
-`alertas.js`, `comunidad.js`, `historico.js`, `preferencias.js`, `consultaCache.js`,
+`alertas.js`, `comunidad.js`, `historico.js`, `preferencias.js`, `consultaCache.js`, `fen.js`,
 `map/colocar.js`, `map/iconos.js`, `map/palette.js`, `map/atribucion.js`, `map/rotuloBusqueda.js`)
 usan imports relativos que terminan en `.js` (sin `@/`) para que `node --test` los lea tal cual; sus
-pruebas son los `*.test.js` de al lado. Al 20-10-2026: 148 pruebas en 19 archivos (zonaRio 16,
-colocar 21, preferencias 15, cauces 12, zonaAhora 12, alertas 9, acudir 8, comunidad 7, pronostico 7,
-avisoTexto 6, historico 6, rotuloLinea 6, medidor 5, consultaCache 4, iconos 4, nivel 3, serie24h 3,
-atribucion 2, geo 2), todas pasan.
+pruebas son los `*.test.js` de al lado. Al 25-10-2026: **162 pruebas en 20 archivos** (colocar 21,
+zonaAhora 17, cauces 16, zonaRio 16, preferencias 16, alertas 9, acudir 8, comunidad 7, pronostico 7,
+avisoTexto 6, historico 6, rotuloLinea 6, medidor 5, consultaCache 4, fen 4, iconos 4, nivel 3,
+serie24h 3, atribucion 2, geo 2), todas pasan (el 24-10 eran 157: fen y preferencias sumaron 5 por los
+trimestres de los mapas El Niño, HU-15).
 
 ## Capas del mapa
 Cada archivo de `src/map/layers/` exporta la misma forma (detalle en `layers/index.js`): `id`,
 `grupo`, `label`, `Icon`, `defaultVisible`, `legend` (lista o función de la opción), `fuente`,
-`opciones` (opcional: un selector, p. ej. el evento El Niño; con `vinculo`, las capas del mismo
-vínculo comparten la opción), `insignia` (opcional: "Oficial" o "Experimental"), `load(opcion)` y
+`opciones` (opcional: un selector, p. ej. el evento y trimestre El Niño; con `vinculo`, las capas del
+mismo vínculo comparten la opción; con `migrar(valor)`, un valor recordado con un formato viejo pasa
+al actual antes de validarse), `insignia` (opcional: "Oficial" o "Experimental"), `load(opcion)` y
 `render(group, datos, { opcion, map, avisar, acomodo })`, que puede devolver una nota corta ("dato
 de las 14:30") o un objeto `{texto, corto, estado}` que el panel muestra bajo el switch; opcional
 `refreshMs`. `MapView` carga cada capa al encenderla y cada vez que cambia su opción (reintenta a los
@@ -129,7 +134,7 @@ debajo de los marcadores. Los grupos son `Alertas y avisos`, `Pronóstico`, `Llu
 | Alertas y avisos | Avisos de SENAMHI (hoy / mañana / pasado mañana), con insignia | `avisos.js` | vista `aviso_vigente` (tarea `avisos` del worker; `icono`, `lectura`, `texto_dia` y `anclas` de la migración de íconos) |
 | Pronóstico | Pronóstico por localidad (SENAMHI) | `pronostico.js` | vista `pronostico_vigente` (tarea `pronostico`): un disco por localidad, del mismo día que los avisos |
 | Pronóstico | Lluvia en las próximas 2 horas (experimental) | `nowcast.js` | vistas `nowcast_estado` y `nowcast_vigente` (tarea `nowcast`); solo con "Hoy" |
-| Alertas y avisos | Zonas que un río podría afectar | `zonasRio.js` | vistas `rio_zona_mapa`, `rio_senal`, `rio_vigilado_mapa`, tabla `rio_incidente` y `caudal_actual` (nivel en `lib/zonaRio.js`); además, para los ríos del país, `rio_cauce_mapa` y `rio_cauce_senal`: aura del nivel a lo largo del cauce si están en alerta o emergencia; el círculo de 2,5 km queda solo para una estación sin trazo |
+| Alertas y avisos | Zonas que un río podría afectar | `zonasRio.js` | vistas `rio_zona_mapa`, `rio_senal`, `rio_vigilado_mapa`, tabla `rio_incidente` y `caudal_actual` (nivel en `lib/zonaRio.js`); además, para los ríos del país, `rio_cauce_mapa` y `rio_cauce_senal`: aura del nivel a lo largo del cauce si están en alerta o emergencia (el círculo de 2,5 km queda solo para una estación sin trazo) y, desde el 24-10-2026, las **zonas estimadas con el relieve** de `rio_cauce_zona_mapa` (por río a la vista desde zoom 12, visibles desde 13, mismos estilos que el Mashcón) y la **franja de atención** (`franja` de `rio_cauce_mapa`, solo con el río en alerta o emergencia); ver "Ríos del país" |
 | Alertas y avisos | Quebradas que podrían activarse (huaycos) | `huaycos.js` | WMS SENAMHI `silvia:cuencas_nivel_12_prono1_silvia` (niveles 2 a 4) |
 | Lluvia | Lluvia de la última hora (estaciones) | `lluviaAhora.js` | vista `lluvia_senamhi_actual` (tarea `lluvia_nacional`); color por intensidad, borde amarillo si pasó la referencia de SENAMHI (1 h o 6 h); se dibuja en un `L.canvas` |
 | Lluvia | Lluvia de ayer / de la semana | `lluviaObservada.js` | WMS SENAMHI `prec_1` / `prec_1_ac07d` (superficie interpolada) |
@@ -138,7 +143,7 @@ debajo de los marcadores. Los grupos son `Alertas y avisos`, `Pronóstico`, `Llu
 | Ríos y estaciones | Ríos (disco con rótulo; el Mashcón y los ríos del país con estación resaltados con su trazo) | `rios.js` | vista `caudal_actual` (última lectura de ayer u hoy por estación), `rio_vigilado_mapa` y las fajas de `rio_zona_mapa`; ríos del país: `rio_cauce_mapa` (`cauce_lejos` ~50 m para todo el país de una vez; `cauce` ~6 m por río desde zoom 13) y `rio_cauce_senal` (avisos hidrológicos) |
 | Ríos y estaciones | Desbordes y daños pasados | `desbordes.js` | tabla `rio_incidente` (rombo con el año; "×n" si con ese zoom quedarían encimados) |
 | Ríos y estaciones | Estaciones SENAMHI | `estaciones.js` | `estacion` |
-| El Niño | Eventos El Niño pasados (1982-83, 1997-98, 2017, 2023, 2023-24; un trimestre de cada uno) | `fenHistorico.js` | `mapa` con `variable = 'FEN'` (miles de polígonos: `L.canvas`) |
+| El Niño | Eventos El Niño pasados (1982-83, 1997-98, 2017, 2023, 2023-24), con un selector por evento **y trimestre** ("El Niño 1997-1998, dic a feb" / "ene a mar" / "feb a abr": 13 opciones, lista en `lib/fen.js`; valor `"<periodo>\|<trimestre>"`, defecto `1997-1998\|DEF`; un valor recordado viejo como `"1997-1998"` pasa por `opciones.migrar` al primer trimestre). La nota y el popup dicen los meses reales de la BD (columna `meses`) | `fenHistorico.js` | `mapa` con `variable = 'FEN'`, una fila por `periodo` y `trimestre` (miles de polígonos: `L.canvas`) |
 | Comunidad | Reportes ciudadanos | `incidentes.js` | `report` (la BD solo entrega los vigentes) |
 | A dónde acudir | Salud, comisarías y bomberos (apagada por defecto; la enciende la tarjeta "A dónde acudir" o el panel) | `acudir.js` | tabla `punto_acudir` por caja a la vista (`getPuntosAcudirCaja`: columnas explícitas, filtro `.gte/.lte` por lat/lon, caja redondeada a 0,1 grados, caché 60 min); no dibuja bajo zoom 11, entre 11 y 12 omite salud sin atención 24 h, desde 13 todo; un `L.divIcon` por tipo con glifos lucide y colores fuera del semáforo |
 
@@ -255,12 +260,26 @@ Lo que se lee en 5 segundos al abrir la app (14-10-2026; ajustes de celular del 
   `tel:105` y `tel:116` con el pie oficial (SISMATE, INDECI y Defensa Civil).
 - `hooks/useZonaAhora.js`: junta `usePanorama` (`p`), `useRiosVigilados` (`rios`), el origen (GPS o
   centro de la ciudad), `rio_zona_mapa` (`getZonasRio`) y `caudal_actual` (`getCaudales`, la misma
-  caché que el mapa) y el titular de la BD (`getTitular`, tabla `titular_zona`, caché 5 min).
-  Devuelve `nivel`, `titular`, `instruccion`, `chips`, `boton`, `fuentes`, `principal`, `caudal`,
-  `zonas` y `resumenBd`.
-- `lib/zonaAhora.js` (puro, 12 pruebas): `nivelMaximo(nivelLocal, rios)` (la zona de un río
+  caché que el mapa), el titular de la BD (`getTitular`, tabla `titular_zona`, caché 5 min) y, desde el
+  24-10-2026, los **ríos del país con trazo** (`getCaucesRios` + `getSenalesCauces`, la misma caché que
+  la capa `rio`; `lib/zonaAhora.js riosTrazados` los empareja con `caudal_actual` y los avisos
+  hidrológicos) y las zonas estimadas del río más cercano (`getCaucesZonas([rio_ana])`,
+  `rio_cauce_zona_mapa`, solo para ese río). Devuelve `origen`, `porGps`, `nivel`, `titular`,
+  `instruccion`, `chips`, `boton`, `fuentes`, `principal` (el vigilado que manda en el titular o, si
+  no hay, el trazado a menos de 30 km: alimenta el medidor con la estación que manda), `cercano` (el
+  río de los chips: vigilado del departamento o trazado), `verRio` (lo que recibe "Ver el río X en el
+  mapa": para un trazado, la caja "tú y el cauce" a zoom 16, `rioParaVer`), `hayTrazadosDepto`,
+  `caudal`, `zonas` y `resumenBd`.
+- `lib/zonaAhora.js` (puro, 17 pruebas): `nivelMaximo(nivelLocal, rios)` (la zona de un río
   vigilado sube el semáforo aunque `alerta_actual` no lo cuente), `rioPrincipal` (nivel más alto; a
-  igual nivel el más cercano), `metrosAlCauce`, `distancias`, `chipsDistancia`, `titularCorto`
+  igual nivel el más cercano), `riosTrazados`, `rioCercano` (entre vigilados y trazados), `rioEnDepto`,
+  `rioParaVer`, `chipSinZonas`, `metrosAlCauce`, `puntoCercanoDelCauce`, `distancias`,
+  `chipsDistancia` (con un río trazado: "A 820 m del río Rímac (trazo de ANA)", "Dentro/Fuera de la
+  zona que podría inundarse (estimación SIMPAC con el relieve)" si tiene filas en `rio_cauce_zona_mapa`
+  o "Este río no tiene mapa de zonas; la franja junto al cauce es solo referencial" si no; a más de
+  30 km, "El río con trazo más cercano está a 34 km (Chicama)"; "Aquí SIMPAC no vigila ríos con mapa de
+  zonas todavía" solo si el departamento no tiene ningún río con trazo ni vigilado; frases en
+  `lib/lenguaje.js FRASES_RIO_PAIS`), `titularCorto`
   (prioridad: río vigilado en alerta/emergencia > `alerta_actual` en alerta/emergencia, con la causa
   leída por tipo: ríos de ANA que pasaron su nivel (`p.riosAqui`) o el aviso de SENAMHI del mismo
   nivel > aviso amarillo > lluvia medida ("ATENTOS") > ríos muy bajos según ANA ("RÍO MUY BAJO", sin
@@ -311,11 +330,12 @@ solo reemplaza el **texto** del titular cuando está fresco (menos de 90 min des
 mide 110 caracteres o menos, coincide en `nivel` con el calculado aquí y el nivel no es alerta ni
 emergencia (ahí manda la frase determinista con fuente y hora); el semáforo y la instrucción nunca
 dependen de él. Si se usa, la tarjeta dice "Resumen del servidor de SIMPAC" o "redactado
-automáticamente con las cifras oficiales" (`origen` `llm`). En la altura completa el texto largo
-aparece como resumen aunque no quepa arriba. Ojo: `getTitular` lee la columna `titular` (de 119 a
-234 caracteres el 20-10-2026) y no `titular_corto` (≤ 110, que el worker escribe desde la migración
-`20261020040343`), así que hoy el texto de la BD no llega a las dos líneas de la tarjeta: queda
-pendiente pedir `titular_corto` en `lib/queries.js` y `hooks/useZonaAhora.js`.
+automáticamente con las cifras oficiales" (`origen` `llm`). Desde el 20-10-2026 (integrado el 24-10)
+`getTitular` pide también **`titular_corto`** (≤ 110, que el worker escribe desde la migración
+`20261020040343`) y la tarjeta usa esa columna (hoy en Cajamarca: "Cajamarca: 3 avisos de SENAMHI por
+lluvias (el más alto, amarillo)."); el `titular` largo (≤ 240) y el `detalle` van en la altura completa
+("Qué dicen las fuentes hoy", una condición en `StatusPanel.jsx`). Antes se pedía solo `titular` (de
+119 a 234 caracteres) y el texto de la BD nunca cabía en las dos líneas.
 
 **Degradaciones**: sin `alerta_actual` el semáforo es gris ("SIN DATOS", "Consultando las alertas…"
 o "No se pudo consultar las alertas. Revisa tu conexión." con Reintentar); sin GPS las distancias
@@ -324,6 +344,9 @@ departamento el chip lo dice y el botón lleva a los avisos; un río sin mapa de
 hora de ANA o de SENAMHI va en naranja cuando el worker lleva más de 3 h (ríos) o 1,5 h (lluvia) sin
 correr. **Simulación** (solo `npm run dev`): `?simular=mashcon:15.4` (alerta), `:19` (emergencia),
 `:hidro4`, `:lluvia`, `:calma` mueven también la tarjeta, el chip, la barra lateral y el medidor;
+`?simular=rio:<rio_ana>:alerta` o `:emergencia` (p. ej. `rio:tumbes:alerta`; `lib/simulacion.js
+simularCauce`) pone un río del país en ese nivel (la peor estación mide 5 % sobre su umbral o, sin
+estación con umbrales, un aviso hidrológico falso) para ver la franja, el aura y la tarjeta;
 `?simular=calma` a secas no simula nada. Verificado el 20-10-2026 en `:8080`: titular visible a los
 468 ms desde el inicio de la navegación con los assets en caché (11 de las 19 consultas ya
 respondidas); en la primera carga `titular_zona` responde a los 727 ms.
@@ -503,9 +526,11 @@ Desde el 14-10-2026 la capa `rio` (y su aura en `zona`) resalta también los rí
 estación de caudal de ANA o aviso hidrológico de SENAMHI, con el trazo de **ANA - GeoSNIRH** (red
 hidrográfica R.J. 056-2018-ANA o Carta Nacional del IGN) que carga `backend/mapas/cargar_cauces.py`
 en `rio_cauce` (100 ríos; vistas `rio_cauce_mapa` y `rio_cauce_senal`). La lógica es
-`lib/cauces.js` (puro, 12 pruebas): emparejar cada trazo con sus filas de `caudal_actual` (mismo río
+`lib/cauces.js` (puro, 16 pruebas): emparejar cada trazo con sus filas de `caudal_actual` (mismo río
 y estación en la lista, sin tildes), estado del río, detalle por zoom, filtro por la caja de la vista,
-tramo visible más largo para el nombre y elección de rótulos. Reglas:
+tramo visible más largo para el nombre, elección de rótulos y, desde el 24-10-2026, qué ríos piden
+zonas (`riosParaZonas`, `ZONAS_DESDE = 12`), el ancho de la franja (`anchoFranja`), cuándo se dibuja
+(`conFranja`), `zonasDeCauce` y la nota `notaZonasPais`. Reglas:
 1. Cada río con estación de ANA se resalta igual que el Mashcón: halo blanco y cauce del color de la
    **peor** de sus estaciones de crecida (un umbral de nivel bajo cuenta como tranquilo); si hay un
    aviso hidrológico vigente de **crecida** más alto, el color del aviso (`estadoRio`, misma regla que
@@ -531,6 +556,34 @@ tramo visible más largo para el nombre y elección de rótulos. Reglas:
    (~50 m, 729 KB para los 100 ríos) llega de una vez con 60 min de caché, el trazo fino se pide por
    río solo a la vista desde zoom 13 (`getCauceRio`, por sesión) y se suelta al alejarse;
    `rio_cauce_senal` solo trae `rio_ana` y `avisos_hidro` (5 min).
+8. **Zonas estimadas con el relieve** (24-10-2026; `map/layers/zonasRio.js`): la capa "Zonas que un
+   río podría afectar" pide a `rio_cauce_zona_mapa` las zonas de los ríos cuya caja toca la vista (con
+   20 % de margen) desde zoom 12 (`getCaucesZonas(rioAnas)`, `rio_ana=in.(...)`, una consulta por río,
+   caché 60 min, nunca el país entero; `null` si la vista no existe) y las dibuja desde zoom 13 con los
+   mismos estilos del Mashcón: `bajo_2m` rayada, `bajo_3m` lisa y tenue, borde blanco, color por
+   `estadoRio` (azul sin señales). Popup en lenguaje claro con el método, la fuente, la licencia y
+   "Estimación de SIMPAC con el relieve; no es un mapa oficial." (`FRASES_RIO_PAIS.metodo`); nunca
+   metros. Hoy 20 ríos tienen zonas (`backend/mapas/zonas_relieve.py`, `README-tecnico.md` §5.6.11); un
+   río sin filas no dibuja nada y la nota de la capa (`notaZonasPais`, actualizada en vivo con
+   `avisar`) dice cuántos ríos a la vista tienen zonas y cuántos franja.
+9. **Franja de atención** (24-10-2026): solo con el río en **alerta o emergencia**, `getFranjaRio(rioAna)`
+   pide `rio_cauce_mapa` (`select=rio_ana,ancho_m,franja&rio_ana=eq.X`, caché 60 min) y la capa dibuja la
+   banda de `ancho_m` a cada lado del trazo (60 / 120 / 250 m según el largo del río) con contorno
+   punteado y relleno al 10 % del color del nivel, desde zoom 13 (`.zona-franja` se oculta en z10/z12; en
+   z13 el aura del río lleva `.con-franja` y se oculta; con el mapa más lejos sigue el aura). Popup propio
+   (`FRASES_RIO_PAIS.franjaPopup`) y leyenda "Franja de atención junto al río (referencial, no es un mapa
+   de inundación)" (forma `franja` en `LayersPanel`). Verificada el 20/24-10 solo con la simulación
+   `?simular=rio:tumbes:alerta` (ningún río del país estaba en alerta o emergencia por crecida).
+10. **La tarjeta "Tu zona ahora"** elige el río más cercano entre los vigilados del departamento y los
+   ríos trazados (`lib/zonaAhora.js riosTrazados`, `rioCercano`): chips de distancia con "(trazo de
+   ANA)", Dentro/Fuera con "(estimación SIMPAC con el relieve)" si el río tiene zonas, "Ver el río X en
+   el mapa" que encuadra a la persona y el tramo más cercano del cauce a zoom 16 (`rioParaVer`, no los
+   1700 km del Marañón). Verificado el 24-10 en `:8080`: Lima "A 820 m del río Rímac (trazo de ANA)" y
+   "Fuera de la zona que podría inundarse, a 680 m"; Tumbes "A 1.1 km del río Tumbes"; Iquitos "A 1.9 km
+   del río Itaya" + "Este río no tiene mapa de zonas"; Piura, Trujillo y Chiclayo "El río con trazo más
+   cercano está a 31-34 km" (el Piura no tiene estación emparejada, falta un alias; Moche y Reque no
+   tienen trazo). Medido el 20-10: zonas por río 320-850 ms (vista vacía), trazo fino 240-580 ms,
+   franja de 4 ríos ~140 ms en la BD.
 
 ## A dónde acudir
 Tarjeta (`components/AcudirCercanos.jsx`) y capa (`map/layers/acudir.js`) sobre la tabla
@@ -606,7 +659,9 @@ después el país. Nunca se dice "todo normal" a secas: solo lo que SIMPAC mide.
 
 | UI | Tabla / consulta | Notas |
 |---|---|---|
-| Tu zona ahora (semáforo, titular, chips) | `alerta_actual` (vía `usePanorama`), `rio_vigilado_mapa` + `rio_senal` (vía `useRiosVigilados`), `rio_zona_mapa`, `caudal_actual`, y opcional `titular_zona` (`departamento,titular,detalle,nivel,generado_en,revisado_en,origen` where `departamento = …`) | el nivel y la instrucción se calculan en el cliente; el texto de la BD solo si está fresco, cabe y coincide en nivel (ver "Inicio"); caché 5 min; `null` si la tabla no existe |
+| Tu zona ahora (semáforo, titular, chips) | `alerta_actual` (vía `usePanorama`), `rio_vigilado_mapa` + `rio_senal` (vía `useRiosVigilados`), `rio_zona_mapa`, `caudal_actual`, `rio_cauce_mapa` + `rio_cauce_senal` (los ríos del país, misma caché que la capa `rio`), `rio_cauce_zona_mapa` solo del río más cercano, y opcional `titular_zona` (`departamento,titular,titular_corto,detalle,nivel,generado_en,revisado_en,origen` where `departamento = …`) | el nivel y la instrucción se calculan en el cliente; `titular_corto` de la BD solo si está fresco (90 min), cabe (110) y coincide en nivel (ver "Inicio"); caché 5 min; `null` si la tabla no existe |
+| Zonas estimadas de los ríos del país | `rio_cauce_zona_mapa` (`clave,rio_ana,subtipo,area_km2,metodo,fuente,licencia,atribucion,nota,geojson` con `rio_ana=in.(...)`) | una consulta por río a la vista desde zoom 12 (`getCaucesZonas`), caché 60 min por río; `null` si la vista no existe; nunca el país entero |
+| Franja de atención de un río del país | `rio_cauce_mapa` (`rio_ana,ancho_m,franja` where `rio_ana = …`) | solo con el río en alerta o emergencia (`getFranjaRio`), caché 60 min; PostgREST calcula la columna al vuelo |
 | Medidor del río | `caudal_actual` (fila del río principal) | misma caché que el mapa |
 | Lluvia cerca de ti | `lluvia_senamhi_actual` + `lectura_lluvia` (`cod,medido_en,precip_mm,estacion!inner(nombre,departamento)` del depto, 24 h) | se pide al abrir la altura media |
 | A dónde acudir (tarjeta y capa) | `punto_acudir` (`COLUMNAS_ACUDIR`: `clave,tipo,nombre,categoria,atiende_24h,direccion,distrito,provincia,departamento,telefono,lat,lon,fuente,fuente_url,atribucion,actualizado,detalle`) por caja `.gte/.lte` de lat/lon | nunca `select("*")` ni la tabla entera; caja redondeada a 0,1 grados; por páginas de 1000; caché 60 min |
@@ -630,7 +685,7 @@ después el país. Nunca se dice "todo normal" a secas: solo lo que SIMPAC mide.
 | Capas recordadas (con sesión) | `preferencia_mapa` (`usuario,version,datos`) | RLS por usuario; sin sesión, solo `localStorage` |
 | Histórico de un río | `lectura_caudal` (`fecha,hora,valor,unidad,umbral_alerta,umbral_emergencia,tendencia,estado` where `estacion = …` [and `rio = …`] and `fecha >= …`), por páginas; umbrales de `caudal_actual` | la primera lectura guardada para decir "hay datos desde…" |
 | Histórico de lluvia | `lectura_lluvia` (`ts,medido_en,precip_mm,temp_c` where `cod = …` and `medido_en >= …`) + `estacion` para el nombre | ordenar por `medido_en` (ya en hora correcta) |
-| Mapas FEN históricos | `mapa` con `variable = 'FEN'` | se pide el `geojson` del evento elegido (`periodo`); solo trae la propiedad `RANGO` (mm frente a lo normal) |
+| Mapas FEN históricos | `mapa` con `variable = 'FEN'` (`titulo,periodo,trimestre,meses,fuente,geojson`) | se pide el `geojson` del evento y trimestre elegidos (`periodo` + `trimestre`, `getMapaFEN("1997-1998\|DEF")`); solo trae la propiedad `RANGO` (mm frente a lo normal) |
 | Comunidad (lista y detalle) | `report` (`id,tipo,subtipo,descripcion,foto_url,likes,dislikes,confianza,estado,creado_en,expira_en,lat,lon`, hasta 500), `voto` (`report_id,valor` de los propios), `comentario` (`id,report_id,texto,creado_en`, hasta 200) | la capa del mapa pide `report` sin `foto_url` ni `confianza` |
 | Chat | `message` (`id,autor,zona,contenido,expira_en,creado_en` where `zona = depto` and `expira_en > now`, hasta 300) + canal realtime `postgres_changes` | solo con sesión |
 | Cuenta | `perfil` (`id,nombre,reputacion,zona`) y `rpc mis_reportes` | `zona` llega como EWKB hex; `mis_reportes` es la única forma de ver los propios (`autor` no es legible) |
@@ -707,8 +762,7 @@ evaluados y descartados con datos; 5b, fuentes autoalojadas, pendiente: siguen e
   los ríos del país fuera de los datos de la capa, trazo fino solo a la vista desde zoom 13.
 - **PWA**: `public/manifest.webmanifest`, `public/iconos/`, `public/sw.js` (solo la cáscara:
   `/assets/` con caché primero, `index.html` y manifest con red primero; nunca datos de Supabase ni
-  tiles: sin red la app misma lo dice) y `src/pwa.js` (registra solo en `PROD` y fuera de
-  Capacitor). Pendiente de confirmar en Chrome: en el navegador integrado del 20-10-2026 el
+  tiles: sin red la app misma lo dice) y `src/pwa.js` (registra solo en `PROD`). Pendiente de confirmar en Chrome: en el navegador integrado del 20-10-2026 el
   registro falló ("An unknown error occurred when fetching the script") aunque nginx sirve `/sw.js`
   con 200, 2227 bytes y `no-cache`.
 
@@ -739,9 +793,9 @@ estático a la vez (sin efecto). Servido por nginx en `:8080`: `index-*.js` lleg
 carga con caché fría: 19 peticiones REST a 17 vistas/tablas, 0 duplicadas, de los 483 a los 3216 ms;
 con assets en caché `DOMContentLoaded` 106 ms, `load` 114 ms y el titular visible a los 468 ms. Al
 cambiar de ciudad solo se suman `titular_zona`, `punto_acudir` por caja, nowcast y `report`.
-Aviso de la imagen Docker: `node:20-alpine` y `@supabase/supabase-js` 2.116.0 (el lock) pide
-Node 22 (`npm warn EBADENGINE`); compila y corre igual, conviene subir el Dockerfile a
-`node:22-alpine`.
+Imagen Docker: `frontend/Dockerfile` es `node:22-alpine` desde el 20-10-2026 (antes `node:20-alpine`
+con el aviso `EBADENGINE` de `@supabase/supabase-js` 2.116.0); build del 24-10 OK en 11,6 s, 1801
+módulos.
 
 **Cómo medir** (lo que se usó): DevTools > Network con filtro `rest/v1` para contar consultas, sus
 tiempos de inicio y si alguna se repite; Performance para grabar un arrastre o un zoom y leer el
@@ -753,20 +807,25 @@ tiempo de script; en la consola `document.querySelectorAll("*").length` y
 nginx. Comparar siempre la misma vista, el mismo tamaño de ventana y la misma pestaña.
 
 ## App Android
-La app es **la misma web empaquetada con Capacitor 8.5.3** (`appId` `pe.simpac.app`, proyecto nativo
-en `frontend/android/`, configuración en `frontend/capacitor.config.json`, origen de la web
-`https://localhost` por `androidScheme: https`). Toda mejora de la web llega a la app con un nuevo
-empaquetado: `npm run android:sync` (build + `npx cap sync android`), `npm run android:apk` (APK de
-depuración), `npm run android:aab` (paquete para Play Console), `npm run android:apk:release`,
-`npm run android:open`, `npm run android:run`. `hooks/useGeolocation.js` usa `@capacitor/geolocation`
-dentro de la app (import dinámico) y `navigator.geolocation` en la web; `src/pwa.js` no registra el
-service worker dentro de Capacitor. Verificado el 20-10-2026 (Windows, PowerShell, JDK 21, SDK con
-`android-36`): `npm run build` 9,4 s, `npx cap sync android` 1,7 s, `gradlew assembleDebug` 9 s (214
-tareas), APK `android/app/build/outputs/apk/debug/app-debug.apk` de 5 304 253 bytes. Los `.gz` del
-build se excluyen del paquete con `!*.gz` en `ignoreAssetsPattern` (`android/app/build.gradle`): sin
-eso AAPT los tomaba como recursos duplicados. Desde Git Bash `cmd //c gradlew.bat` no encuentra el
-script: usar PowerShell o `./gradlew.bat`. Requisitos, firma, publicación en Play, emulador sin
-ventana y pendientes (push, ícono propio, iOS) en **`appmobile/README.md`**.
+**Desde el 20-10-2026 la app de SIMPAC es nativa en Kotlin + Jetpack Compose** y vive en
+`appmobile/android/` (`applicationId` `pe.simpac.app`, `versionCode 2`; guía en `appmobile/README.md`,
+técnica en `docs/README-tecnico.md` §8.4). Lee Supabase y la API por su cuenta y abre **esta web en un
+WebView solo en la pestaña Mapa** (URL configurable; por defecto `http://10.0.2.2:8080`, el Docker de la
+PC visto desde el emulador) y `<WEB>/cuenta` desde su pestaña Cuenta; la sesión de Supabase Auth no se
+comparte. Recibe push por FCM (temas `pais` y `zona_<slug>`) cuando la tarea `push` del worker avisa
+una alerta o emergencia. Lo que cambie en esta web lo ve la app al recargar el WebView, sin recompilar.
+
+**App anterior (Capacitor), retirada el 2026-10-24:** entre el 14-10 y el 24-10 la app fue esta misma
+web empaquetada con Capacitor 8.5.3 (`frontend/android/`, `capacitor.config.json`, origen
+`https://localhost`, GPS por `@capacitor/geolocation`). La app Kotlin la reemplazó al instalarse (mismo
+`applicationId`) y, al confirmarse el 24-10 que su WebView pinta el mapa (el `WebView` dentro de
+`AndroidView` necesitaba `LayoutParams` `MATCH_PARENT`: con `WRAP_CONTENT` Chromium resuelve `100vh` y
+`height: 100%` como 0 y esta web, que usa `h-screen`, quedaba en blanco), se retiró todo lo de
+Capacitor: la carpeta `android/`, `capacitor.config.json`, los scripts `android:*` de `package.json`,
+las dependencias `@capacitor/*`, la rama nativa de `hooks/useGeolocation.js` (ahora solo
+`navigator.geolocation`, que el WebView de la app Kotlin atiende con el GPS del sistema) y la condición
+`window.Capacitor` de `src/pwa.js`. Requisitos, firma, publicación en Play y emulador sin ventana de la
+app actual (Kotlin) en **`appmobile/README.md`**.
 
 ## Notas
 - **Lectura pública**: los datos oficiales y los reportes se leen con la publishable key (RLS).
@@ -782,3 +841,22 @@ ventana y pendientes (push, ícono propio, iOS) en **`appmobile/README.md`**.
 - **Supabase pausado** (del 15 al 19 de octubre de 2026): la web arranca igual, el semáforo queda en
   "SIN DATOS" con "No se pudo consultar las alertas. Revisa tu conexión." y Reintentar; nada se
   inventa.
+
+## Ríos del país con zonas y franja (24-10-2026)
+Resumen de lo integrado el 24-10 (detalle en "Inicio: Tu zona ahora" y en "Ríos del país", reglas 8
+a 10; `npm test` 157, `npm run build` OK):
+- `lib/zonaAhora.js` elige el río más cercano entre los vigilados del departamento y los ríos con trazo
+  de ANA (`rio_cauce_mapa`); chips "A X km del río Y (trazo de ANA)", "Dentro/Fuera de la zona que
+  podría inundarse (estimación SIMPAC con el relieve)" cuando el río tiene filas en
+  `rio_cauce_zona_mapa`, y "Este río no tiene mapa de zonas; la franja junto al cauce es solo
+  referencial" cuando no. "Ver el río X en el mapa" encuadra a la persona y el tramo más cercano.
+- Capa `zona` (`map/layers/zonasRio.js`): zonas de `rio_cauce_zona_mapa` por río visible desde zoom 12
+  (caché 60 min, nunca el país entero), visibles desde zoom 13; franja de atención (`franja` de
+  `rio_cauce_mapa`) solo con el río en alerta o emergencia. Simulación DEV:
+  `?simular=rio:<rio_ana>:alerta|emergencia`.
+- Verificado el 24-10 con la build de Docker (`node:22-alpine`): Cajamarca (Mashcón, "Fuera de la zona"),
+  Lima ("A 820 m del río Rímac", "Fuera de la zona ..., a 680 m", zonas del Rímac dibujadas),
+  Tumbes ("A 1.1 km del río Tumbes", "Fuera de la zona"), Iquitos (Itaya, sin mapa de zonas); Trujillo,
+  Chiclayo y Piura todavía muestran "El río con trazo más cercano está a 31-34 km" (Moche y Reque no
+  tienen trazo; la estación del Piura no quedó emparejada: falta un alias en
+  `backend/data/rios/cauces_alias.json`).

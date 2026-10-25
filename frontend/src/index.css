@@ -1601,3 +1601,19 @@ html[data-nivel="emergencia"] .mkself::after {
     bottom: min(var(--hoja-alto, 0px), calc(100% - 160px));
   }
 }
+
+/* rios-frontend-zonas: zonas estimadas y franja de atención de los ríos del país (layers/zonasRio.js).
+   Las zonas (.zona-pol.nac) siguen la regla de las del Mashcón (desde zoom 13 se ven; en zoom 12 se
+   piden y ya están listas al acercarse: ZONAS_DESDE = 12 en lib/cauces.js); la franja punteada se ve
+   desde zoom 13 (a 60-250 m de ancho, antes mide 1-6 px) y en zoom 13 reemplaza al aura del río. */
+.zona-franja {
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+[data-zoom-banda="z10"] .zona-franja,
+[data-zoom-banda="z12"] .zona-franja {
+  display: none;
+}
+[data-zoom-banda="z13"] .zona-aura.con-franja {
+  display: none;
+}

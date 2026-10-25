@@ -6,25 +6,28 @@
 -- cualquier cambio nuevo va como un archivo de migración nuevo, y luego se
 -- refleja aquí. Para una BD desde cero, aplicar las migraciones en orden.
 --
--- Estado al 2026-10-14 (comparado con la BD real el 2026-10-20, solo lectura):
--- 27 tablas y 13 vistas propias en el esquema public (más spatial_ref_sys,
--- geometry_columns y geography_columns, que son de PostGIS), 7 funciones de
--- trigger en el esquema privado (que el Data API no expone) y 2 en public,
--- 1 función rpc (mis_reportes), 1 bucket de storage (reportes) y la tabla
--- message en la publicación supabase_realtime. Secciones de este archivo:
+-- Estado al 2026-10-24 (comparado con la BD real el 2026-10-24, solo lectura):
+-- 29 tablas y 14 vistas propias en el esquema public (la BD lista 30 y 16 con
+-- spatial_ref_sys, geometry_columns y geography_columns, que son de PostGIS),
+-- 7 funciones de trigger en el esquema privado (que el Data API no expone) y
+-- 2 en public, 1 función rpc (mis_reportes), 1 bucket de storage (reportes) y
+-- la tabla message en la publicación supabase_realtime. Secciones de este archivo:
 --   A) datos oficiales (solo lectura; escribe el worker o un cargador manual)
 --   B) comunidad (reportes, votos, comentarios, chat, perfil, preferencias)
 --   C) seguridad: RLS y permisos por columna
 --   D) storage y realtime de la comunidad
 --   E) ríos del país (rio_cauce y sus vistas)
 --   F) titular interpretado por departamento (titular_zona)
+--   G) avisador push (push_estado; sin lectura pública)
+--   H) franja de atención de los ríos del país (rio_cauce_mapa: ancho_m y franja)
+--   I) zonas que podrían inundarse junto a los ríos del país (rio_cauce_zona y su vista)
 --
--- Migraciones aplicadas (supabase_migrations.schema_migrations, 32), en orden:
+-- Migraciones aplicadas (supabase_migrations.schema_migrations, 36), en orden:
 --   20260910225207 init_simpac_schema                 estacion, lectura_lluvia, lectura_caudal, indice, alerta, comunidad v1
 --   20260914212945 add_latlon_generated_columns       lat/lon generadas desde geom
 --   20260914220902 add_mapa_table                     mapa (shapefiles de IDESEP como GeoJSON)
 --   20260915200807 community_votes_comments           voto y comentario
---   20260922181302 mapa_uuid_unique                   índice único mapa.uuid
+--   20260922181302 mapa_uuid_unique                   índice único mapa.uuid (reemplazado el 25-10 por mapa_uuid_trimestre_key)
 --   20260922191827 datos_oficiales_caudal_actual_y_horas   vista caudal_actual, fecha/hora de ANA
 --   20260922191903 comunidad_uuid_y_permisos          ids uuid, esquema privado, triggers de votos y perfil
 --   20260922191913 permisos_api_endurecidos           permisos por columna para anon/authenticated
@@ -52,6 +55,10 @@
 --   20261020035127 report_foto_solo_bucket            report.foto_url solo del bucket reportes (CHECK + trigger)
 --   20261020040341 aviso_hidrologico_sentido_indeterminado   sentido 'indeterminado', función y trigger del sentido
 --   20261020040343 titular_zona_titular_corto         titular_zona.titular_corto (<= 110)
+--   20261020164538 push_estado                        memoria del avisador push por FCM (último nivel notificado por zona)
+--   20261020164715 rio_cauce_mapa_franja              rio_cauce_mapa.ancho_m y franja (franja de atención referencial)
+--   20261020165455 rio_cauce_zona                     zonas estimadas con el relieve junto a los ríos del país y rio_cauce_zona_mapa
+--   20261025020623 mapa_trimestre                     mapa.trimestre y mapa.meses (una fila FEN por evento y trimestre) e índice único (uuid, coalesce(trimestre, ''))
 -- ============================================================================
 
 create extension if not exists postgis;
@@ -394,11 +401,19 @@ create table mapa (
   titulo     text not null,
   variable   text,                      -- 'precipitacion' = anomalía mensual; 'FEN' = eventos El Niño históricos
   periodo    text,                      -- ej. "2026-08" (mensual) o "1982-1983" (evento)
+  trimestre  text,                      -- FEN: 'DEF' | 'EFM' | 'FMA' (código de SENAMHI); null en el mensual
+  meses      text,                      -- FEN: "diciembre de 1997 a febrero de 1998" (lo calcula el cargador)
   fuente     text default 'SENAMHI/IDESEP',
   geojson    jsonb not null,            -- FeatureCollection (shapefile -> GeoJSON)
   ts_captura timestamptz default now()
 );
-create unique index mapa_uuid_key on mapa (uuid);   -- upsert idempotente de backend/mapas/cargar_fen.py
+comment on column mapa.trimestre is
+  'Trimestre del mapa como lo nombra SENAMHI (DEF, EFM, FMA); null en el mapa mensual. Con uuid forma la clave del upsert.';
+comment on column mapa.meses is
+  'Meses que cubre el mapa, en palabras ("diciembre de 1997 a febrero de 1998"); lo calcula backend/mapas/cargar_fen.py.';
+-- upsert idempotente de backend/mapas/cargar_fen.py: una fila por registro de IDESEP (uuid) y
+-- trimestre; null cuenta como un valor, así el mapa mensual sigue cabiendo una sola vez por uuid
+create unique index mapa_uuid_trimestre_key on mapa (uuid, (coalesce(trimestre, '')));
 
 -- Ríos vigilados (primero el Mashcón, Cajamarca): el río resaltado, las zonas que podría afectar si
 -- se desborda, sus incidentes pasados documentados y las señales de hoy. rio_vigilado, rio_zona y
@@ -1056,3 +1071,111 @@ alter table titular_zona enable row level security;
 revoke all on titular_zona from anon, authenticated;
 grant select on titular_zona to anon, authenticated;
 create policy "lectura publica titular" on titular_zona for select using (true);
+
+-- ===========================================================================
+-- G) AVISADOR PUSH (HU-20; migración push_estado, 20261020164538).
+--    Memoria de la tarea 'push' del worker (backend/ingesta/push.py, cada
+--    5 min): el último nivel que notificó por Firebase Cloud Messaging para
+--    cada departamento, para no repetir nunca el mismo mensaje. La tarea lee
+--    titular_zona y manda a los temas 'pais' y 'zona_<slug>' (zona_cajamarca,
+--    zona_la_libertad, zona_madre_de_dios, zona_callao) SOLO cuando el nivel
+--    sube a alerta o emergencia (o pasa de alerta a emergencia) y "vuelve la
+--    calma" cuando baja de alerta/emergencia a normal o aviso. Nunca por un
+--    aviso amarillo ni por lluvia medida (esos nunca llegan a 'alerta' en
+--    titular_zona). Un nivel 'sin_dato' (fuente caída) no toca la fila: no es
+--    calma. Sin FIREBASE_CREDENCIALES la tarea no escribe aquí (solo deja su
+--    latido con el aviso), así al activarlas las alertas vigentes se avisan
+--    una vez. No es un dato público: RLS activo, sin políticas ni grants
+--    (la lee y escribe solo el worker, rol postgres).
+-- ===========================================================================
+create table push_estado (
+  zona           text primary key,              -- departamento canónico (backend/ingesta/departamentos.py), incluye 'Callao'
+  nivel          text not null check (nivel in ('normal', 'aviso', 'alerta', 'emergencia', 'sin_dato')),
+                                                 -- último nivel conocido por el avisador; los cambios por
+                                                 -- debajo de alerta se anotan sin enviar (línea base)
+  titular        text,                           -- cuerpo del último mensaje enviado (titular_corto de ese momento)
+  enviado_en     timestamptz,                    -- cuándo se envió el último mensaje a la zona (null: nunca)
+  mensaje_id     text,                           -- nombre que devuelve FCM: projects/<proyecto>/messages/<id>
+  actualizado_en timestamptz not null default now()   -- última corrida que tocó la fila (con o sin envío)
+);
+comment on table push_estado is
+  'Memoria del avisador push (tarea push del worker): último nivel notificado por departamento y el último mensaje '
+  'enviado por FCM, para no repetir mensajes. Solo la escribe y lee el worker; no es un dato público.';
+alter table push_estado enable row level security;
+revoke all on push_estado from anon, authenticated;
+
+-- ===========================================================================
+-- H) FRANJA DE ATENCIÓN de los ríos del país (migración rio_cauce_mapa_franja,
+--    20261020164715). La vista rio_cauce_mapa gana dos columnas al final (las
+--    demás no cambian): ancho_m (60 si km < 50, 120 si km < 200, 250 si km >= 200)
+--    y franja (GeoJSON del ST_Buffer de geom_lejos en geografía con ese ancho,
+--    simplificado a ~6 m, 5 decimales). Es una franja de atención REFERENCIAL
+--    junto al cauce: no sale del relieve ni de un estudio y no es un mapa de
+--    inundación; el frontend (map/layers/zonasRio.js) la pide por río
+--    (.eq('rio_ana', ...)) solo cuando el río está en alerta o emergencia y la
+--    dibuja punteada con relleno muy suave. Se calcula al vuelo: PostgREST solo
+--    evalúa las columnas que se piden (4 ríos, Marañón incluido, ~140 ms).
+-- ===========================================================================
+create or replace view rio_cauce_mapa with (security_invoker = true) as
+select c.rio_ana, c.rio, c.nombre, c.departamento, c.estaciones, c.estaciones_senamhi, c.capa, c.nombre_capa,
+       c.km, c.dist_estacion_m, c.nota, c.fuente, c.fuente_url, c.licencia, c.atribucion, c.fecha_fuente, c.ts_carga,
+       exists (select 1 from rio_vigilado v where v.rio_ana = c.rio or v.estacion_ana = any (c.estaciones)) as vigilado,
+       st_asgeojson(c.geom_lejos, 5)::json as cauce_lejos,
+       st_asgeojson(c.geom, 5)::json as cauce,
+       a.ancho_m,
+       st_asgeojson(st_simplifypreservetopology(st_buffer(c.geom_lejos::geography, a.ancho_m)::geometry, 0.00005), 5)::json as franja
+from rio_cauce c
+cross join lateral (select (case when c.km < 50 then 60 when c.km < 200 then 120 else 250 end)::int as ancho_m) a;
+revoke all on rio_cauce_mapa from anon, authenticated;
+grant select on rio_cauce_mapa to anon, authenticated;
+comment on view rio_cauce_mapa is
+  'Trazo de los ríos del país en GeoJSON (cauce_lejos ~50 m, cauce ~6 m) y la franja de atención referencial '
+  '(franja: banda de ancho_m a cada lado del trazo: 60 m si km < 50, 120 m si km < 200, 250 m si km >= 200). '
+  'La franja no es un mapa de inundación ni sale del relieve: el frontend la muestra solo con el río en alerta o emergencia.';
+
+-- ===========================================================================
+-- I) ZONAS QUE PODRÍAN INUNDARSE junto a los ríos del país, ESTIMADAS con el
+--    relieve (migración rio_cauce_zona). Como la zona "estimada" del Mashcón
+--    (rio_zona): altura sobre el drenaje más cercano (HAND) sobre el Copernicus
+--    DEM GLO-30 con el trazo de ANA grabado, relleno de depresiones y D8, en
+--    un tramo de hasta 60 km alrededor de la estación o la ciudad principal
+--    (backend/mapas/zonas_relieve.py). Dos umbrales por río: 'bajo_2m' (~2 m
+--    sobre el cauce; la web la dibuja rayada) y 'bajo_3m' (~3 m; lisa y tenue).
+--    Honestidad del dato: es una estimación, no un mapa oficial; no considera
+--    muros, puentes ni drenajes; el error vertical del modelo (2-3 m) es del
+--    orden de los umbrales, por eso el usuario nunca ve metros. Carga ÚNICA con
+--    backend/mapas/cargar_cauces_zonas.py (upsert por clave; nada se borra sin
+--    --podar). Los ríos de selva baja muy plana no se calculan.
+-- ===========================================================================
+create table rio_cauce_zona (
+  clave        text primary key check (clave ~ '^[a-z0-9_]+:relieve:[0-9]+$'),  -- 'rimac:relieve:2'
+  rio_ana      text not null check (rio_ana ~ '^[a-z0-9_]+$'),   -- = rio_cauce.rio_ana (sin FK: cargadores independientes)
+  subtipo      text not null check (subtipo in ('bajo_2m', 'bajo_3m')),
+  geom         geometry(MultiPolygon, 4326) not null,            -- 5 decimales, ya simplificada por el pipeline
+  area_km2     numeric not null check (area_km2 > 0),
+  metodo       text not null,                                    -- 'HAND sobre Copernicus GLO-30, umbral ~2 m / ~3 m, tramo de N km alrededor de X'
+  fuente       text not null,
+  licencia     text not null,
+  atribucion   text not null,                                    -- aviso Copernicus (DLR, Airbus, UE y ESA) + ANA
+  fecha_fuente date not null,                                    -- cuándo se bajaron las teselas
+  nota         text not null,                                    -- la advertencia de estimación que ve el usuario
+  cargado_en   timestamptz not null default now(),
+  unique (rio_ana, subtipo)
+);
+create index rio_cauce_zona_geom_idx on rio_cauce_zona using gist (geom);
+create index rio_cauce_zona_rio_idx on rio_cauce_zona (rio_ana);
+comment on table rio_cauce_zona is
+  'Zonas que podrían inundarse junto a los ríos del país, estimadas con el relieve (HAND sobre Copernicus GLO-30 con el trazo de ANA; backend/mapas/zonas_relieve.py). Carga única: backend/mapas/cargar_cauces_zonas.py. Estimación, no mapa oficial: nunca se muestra en metros.';
+
+-- Para el frontend: GeoJSON con 5 decimales de la geometría simplificada a ~6 m (0.00006 grados).
+-- Si la vista no existe o está vacía, la web no dibuja nada.
+create view rio_cauce_zona_mapa with (security_invoker = true) as
+select z.clave, z.rio_ana, z.subtipo, z.area_km2, z.metodo, z.fuente, z.licencia, z.atribucion, z.nota,
+       st_asgeojson(st_simplifypreservetopology(z.geom, 0.00006), 5)::json as geojson
+from rio_cauce_zona z;
+
+-- Seguridad (misma regla que la sección E): lectura pública, escribe solo el cargador.
+alter table rio_cauce_zona enable row level security;
+revoke all on rio_cauce_zona, rio_cauce_zona_mapa from anon, authenticated;
+grant select on rio_cauce_zona, rio_cauce_zona_mapa to anon, authenticated;
+create policy "lectura publica rio cauce zona" on rio_cauce_zona for select using (true);

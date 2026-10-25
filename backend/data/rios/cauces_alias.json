@@ -79,6 +79,9 @@
       "capa": "ana_ign",
       "nota": "La estación Llauta (ANA: río Palpa) está sobre el río Llauta, que forma el Palpa aguas abajo."
     },
+    "piura": {
+      "nota": "No necesita radio_m: la estación Puente Sanchez Cerro de ANA (-5.1936, -80.6235) queda a 35 m de la línea central de RJ056 (tramo 13781). La fila quedó sin estación de ANA (estaciones = []) porque en la carga del 14-10-2026 caudal_actual todavía no traía esa estación y solo la ancló TAMBO GRANDE (SENAMHI); se volvió a correr --rio piura --aplicar el 24-10-2026. Cuando caudal_actual gane estaciones hay que repetir la carga: la prueba en seco no avisa de filas que ya existen sin esa estación."
+    },
     "quilvire": {
       "radio_m": 2000,
       "nota": "Solo está en la Carta Nacional (cuenca Mauri), a 1,4 km de la coordenada de ANA de la estación Vilacota."

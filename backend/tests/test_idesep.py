@@ -89,9 +89,72 @@ class TestEnlaceShapefile(unittest.TestCase):
             with self.assertRaises(ValueError):
                 self.enlace(pagina)
 
+    def test_todos_los_zip_sin_repetir_y_en_orden(self):
+        # Un registro FEN trae un .zip por trimestre; la URL suelta del script repite la primera.
+        pagina = ('<a href="/geonetwork/srv/api/records/x/attachments/Anom_Pp_Ninio_97_98_DEF.zip">1</a>'
+                  '<a href="/geonetwork/srv/api/records/x/attachments/Anom_Pp_Ninio_97_98_EFM.zip">2</a>'
+                  '<a href="/geonetwork/srv/api/records/x/attachments/Anom_Pp_Ninio_97_98_FMA.zip">3</a>'
+                  '<script>var u="https://idesep.senamhi.gob.pe/geonetwork/srv/api/records/x/attachments/Anom_Pp_Ninio_97_98_DEF.zip";</script>')
+        with mock.patch.object(_http, "get", lambda url, params=None: pagina):
+            enlaces = idesep.enlaces_shapefile("x")
+        self.assertEqual([e.rsplit("/", 1)[-1] for e in enlaces],
+                         ["Anom_Pp_Ninio_97_98_DEF.zip", "Anom_Pp_Ninio_97_98_EFM.zip", "Anom_Pp_Ninio_97_98_FMA.zip"])
+        self.assertEqual([idesep.trimestre_de_nombre(e) for e in enlaces], ["DEF", "EFM", "FMA"])
+
+
+class TestTrimestre(unittest.TestCase):
+    def test_trimestre_de_nombre(self):
+        casos = {
+            "https://idesep.senamhi.gob.pe/geonetwork/srv/api/records/x/attachments/Anom_Pp_Ninio_82_83_DEF.zip": "DEF",
+            "Precipitacion_EFM_Ninio_2023.zip": "EFM",
+            "Precipitacion_FMA_Ninio_2023": "FMA",
+            "anom_pp_ninio_2017_fma.shp": "FMA",
+            "Anom_Pp_Ninio_2017.zip": None,          # sin trimestre en el nombre
+            "DEFENSA_civil.zip": None,               # DEF pegado a otras letras no cuenta
+            "": None,
+        }
+        for nombre, esperado in casos.items():
+            with self.subTest(nombre=nombre):
+                self.assertEqual(idesep.trimestre_de_nombre(nombre), esperado)
+
+    def test_anios_del_evento(self):
+        self.assertEqual(cargar_fen.anios_del_evento("1997-1998"), (1997, 1998))
+        self.assertEqual(cargar_fen.anios_del_evento("2017"), (2016, 2017))
+        with self.assertRaises(ValueError):
+            cargar_fen.anios_del_evento("sin año")
+
+    def test_meses_legibles(self):
+        casos = [
+            ("DEF", "1997-1998", "diciembre de 1997 a febrero de 1998"),
+            ("EFM", "1997-1998", "enero a marzo de 1998"),
+            ("FMA", "1997-1998", "febrero a abril de 1998"),
+            ("DEF", "2017", "diciembre de 2016 a febrero de 2017"),
+            ("FMA", "2017", "febrero a abril de 2017"),          # marzo de 2017: desborde del Piura
+            ("EFM", "2023", "enero a marzo de 2023"),
+            ("DEF", "2023-2024", "diciembre de 2023 a febrero de 2024"),
+            ("NDE", "2023-2024", "noviembre de 2023 a enero de 2024"),
+            ("def", "1982-1983", "diciembre de 1982 a febrero de 1983"),   # sin distinguir mayúsculas
+            (None, "2017", None),
+            ("XYZ", "2017", None),
+        ]
+        for trimestre, periodo, esperado in casos:
+            with self.subTest(trimestre=trimestre, periodo=periodo):
+                self.assertEqual(cargar_fen.meses_legibles(trimestre, periodo), esperado)
+
 
 GEOJSON = json.dumps({"type": "FeatureCollection", "features": [
     {"type": "Feature", "geometry": {"type": "Polygon", "coordinates": []}, "properties": {"RANGO": "x"}}]})
+# lo que devuelve capas_de_registro: (trimestre, enlace, geojson) por cada .zip del registro
+CAPAS = [("DEF", "https://idesep.senamhi.gob.pe/x/attachments/a_DEF.zip", GEOJSON),
+         ("FMA", "https://idesep.senamhi.gob.pe/x/attachments/a_FMA.zip", GEOJSON)]
+
+
+import contextlib
+
+
+@contextlib.contextmanager
+def _ctx(obj):
+    yield obj
 
 
 class TestCargadorFEN(unittest.TestCase):
@@ -116,9 +179,30 @@ class TestCargadorFEN(unittest.TestCase):
         self.assertEqual([u for _, u in resueltos], ["u3"])
         self.assertEqual(faltan, ["No existe en el catalogo"])
 
-    @mock.patch.object(idesep, "geojson_de_registro", lambda uuid, s=None, d=None: GEOJSON)
+    @mock.patch.object(idesep, "capas_de_registro", lambda uuid, s=None, d=None: CAPAS)
     def test_prueba_en_seco(self):
         self.assertEqual(cargar_fen.main([]), 0)
+
+    def test_aplicar_guarda_una_fila_por_evento_y_trimestre(self):
+        filas = []
+
+        class Cursor:
+            def execute(self, sql, params):
+                filas.append(params)
+
+        class Conn:
+            def cursor(self):
+                return _ctx(Cursor())
+
+        with mock.patch.object(idesep, "capas_de_registro", lambda uuid, s=None, d=None: CAPAS),                 mock.patch.object(cargar_fen, "conectar", lambda: _ctx(Conn())):
+            self.assertEqual(cargar_fen.main(["--aplicar"]), 0)
+        self.assertEqual(len(filas), 5 * len(CAPAS))
+        de_2017 = [f for f in filas if f[3] == "2017"]
+        self.assertEqual([(f[4], f[5]) for f in de_2017], [
+            ("DEF", "diciembre de 2016 a febrero de 2017"),
+            ("FMA", "febrero a abril de 2017"),
+        ])
+        self.assertIn("on conflict (uuid, (coalesce(trimestre, '')))", cargar_fen.UPSERT)
 
     def test_un_mapa_caido_no_frena_al_resto(self):
         caido = cargar_fen.EVENTOS_FEN[-1].uuid
@@ -128,13 +212,28 @@ class TestCargadorFEN(unittest.TestCase):
             pedidos.append(uuid)
             if uuid == caido:
                 raise RuntimeError("caido")
-            return GEOJSON
+            return CAPAS
 
-        with mock.patch.object(idesep, "geojson_de_registro", a_veces):
+        with mock.patch.object(idesep, "capas_de_registro", a_veces), mock.patch.object(cargar_fen.time, "sleep"):
             self.assertEqual(cargar_fen.main([]), 1)
-        self.assertEqual(len(pedidos), 5)
+        # los 4 buenos una vez; el caído se reintenta (IDESEP devuelve 400 a ratos) y recién después se da por perdido
+        self.assertEqual(len(pedidos), 4 + cargar_fen.INTENTOS_POR_EVENTO)
+        self.assertEqual(pedidos.count(caido), cargar_fen.INTENTOS_POR_EVENTO)
 
-    @mock.patch.object(idesep, "geojson_de_registro", lambda uuid, s=None, d=None: GEOJSON)
+    def test_reintento_por_evento_recupera_un_400_pasajero(self):
+        llamadas = []
+
+        def falla_una_vez(uuid, s=None, d=None):
+            llamadas.append(uuid)
+            if llamadas.count(uuid) == 1:
+                raise RuntimeError("HTTP Error 400")
+            return CAPAS
+
+        with mock.patch.object(idesep, "capas_de_registro", falla_una_vez), mock.patch.object(cargar_fen.time, "sleep"):
+            self.assertEqual(cargar_fen.main([]), 0)
+        self.assertEqual(len(llamadas), 10)
+
+    @mock.patch.object(idesep, "capas_de_registro", lambda uuid, s=None, d=None: CAPAS)
     def test_aplicar_sin_dsn(self):
         config.ajustes.cache_clear()
         self.addCleanup(config.ajustes.cache_clear)

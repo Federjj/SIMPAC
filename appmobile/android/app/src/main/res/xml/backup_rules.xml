@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Copia de seguridad (Android 11 o menos): los ajustes si; la cache de datos y el almacen cifrado, no -->
+<full-backup-content>
+    <exclude domain="sharedpref" path="simpac_seguro.xml" />
+    <exclude domain="file" path="simpac_cache" />
+</full-backup-content>

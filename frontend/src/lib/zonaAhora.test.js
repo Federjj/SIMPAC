@@ -261,3 +261,135 @@ test("caja para encuadrar a la persona y el tramo más cercano del río", () => 
   assert.equal(chips[0].antes, "A ");
   assert.equal(chips[0].despues, " del río Mashcón");
 });
+
+// ---------------------------------------------------------------------------
+// Ríos del país con trazo de ANA (rios-frontend-zonas): el río más cercano entre vigilados y
+// trazados, los chips por caso y "ver el río en el mapa"
+// ---------------------------------------------------------------------------
+import { chipSinZonas, rioCercano, rioEnDepto, rioParaVer, riosTrazados } from "./zonaAhora.js";
+import { GEOMETRIAS, aligerar, zonasDeCauce } from "./cauces.js";
+import { simularCauce } from "./simulacion.js";
+
+// el Rímac (trazo de ~50 m recortado): una línea este-oeste por la latitud -12.04 entre -77.10 y -76.90
+const RIMAC = {
+  rio_ana: "rimac", rio: "Rimac", nombre: "Río Rímac", departamento: "Lima", km: 135.27, fuente: "ANA - GeoSNIRH",
+  estaciones: ["Chosica"], estaciones_senamhi: [], vigilado: false,
+  cauce_lejos: { type: "MultiLineString", coordinates: [[[-77.1, -12.04], [-77.0, -12.04], [-76.9, -12.04]]] },
+};
+const CHILLON = { ...RIMAC, rio_ana: "chillon", rio: "Chillon", nombre: "Río Chillón", estaciones: ["Obrajillo"], cauce_lejos: { type: "MultiLineString", coordinates: [[[-77.1, -11.9], [-76.9, -11.9]]] } };
+const SIN_ESTACION = { ...RIMAC, rio_ana: "biabo", rio: "Biabo", nombre: "Río Biabo", departamento: "San Martín", estaciones: [], estaciones_senamhi: ["221"], cauce_lejos: { type: "MultiLineString", coordinates: [[[-76.4, -7.2], [-76.3, -7.1]]] } };
+const CHOSICA = { estacion: "Chosica", rio: "Rimac", valor: 20, unidad: "m³/s", umbral_alerta: 100, umbral_emergencia: 150, tendencia: "Estable", lat: -11.93, lon: -76.69 };
+const OBRAJILLO = { estacion: "Obrajillo", rio: "Chillon", valor: 5, unidad: "m³/s", umbral_alerta: 40, umbral_emergencia: 60, lat: -11.45, lon: -76.62 };
+// zona estimada del Rímac: un cuadrado de ~400 m pegado al río por el sur, a la altura de -77.04
+const ZONA_RIMAC = {
+  clave: "rimac:relieve:1", rio_ana: "rimac", subtipo: "bajo_2m", area_km2: 0.2, metodo: "relieve", fuente: "Copernicus GLO-30", licencia: "libre",
+  geojson: { type: "Polygon", coordinates: [[[-77.045, -12.04], [-77.041, -12.04], [-77.041, -12.044], [-77.045, -12.044], [-77.045, -12.04]]] },
+};
+const LIMA = [-12.0464, -77.0428]; // el centro de Lima: ~700 m al sur del río de prueba
+const MASHCON_V = conCaudal(0.13); // el vigilado de Cajamarca (RIO, a 8 grados de Lima)
+
+test("riosTrazados: un candidato por río dibujado, con estación que manda, cauce y departamento", () => {
+  const cauces = aligerar([RIMAC, CHILLON, SIN_ESTACION]); // las geometrías quedan en GEOMETRIAS
+  assert.ok(GEOMETRIAS.get("rimac").lejos.length);
+  const t = riosTrazados(cauces, [CHOSICA, OBRAJILLO], [], [RIO]);
+  assert.deepEqual(t.map((x) => x.rio.id), ["rimac", "chillon"]); // el Biabo sin estación ni aviso no entra
+  assert.equal(t[0].rio.estacion_ana, "Chosica");
+  assert.equal(t[0].rio.rio_ana, "Rimac");
+  assert.equal(t[0].rio.trazado, true);
+  assert.equal(t[0].estado.nivel, "sin_senales");
+  assert.equal(t[0].rio.cauce.type, "MultiLineString");
+  assert.equal(riosTrazados(null, [CHOSICA]).length, 0);
+  // con aviso hidrológico vigente el río sin estación sí entra
+  const h = { numero: 1, sentido: "crecida", nivel: 3, fin: new Date(AHORA.getTime() + 21 * 3_600_000).toISOString() };
+  const conAviso = riosTrazados(cauces, [], [{ rio_ana: "biabo", avisos_hidro: [h] }], []);
+  assert.deepEqual(conAviso.map((x) => x.rio.id), ["biabo"]);
+  assert.equal(conAviso[0].estado.nivel, "alerta");
+  assert.equal(rioEnDepto({ departamento: "Huánuco, Loreto, San Martín" }, "Loreto"), true);
+  assert.equal(rioEnDepto({ departamento: "Lima" }, "Callao"), false);
+});
+
+test("río más cercano: entre vigilados y trazados, el de menos metros; sin origen, el vigilado principal", () => {
+  const cauces = aligerar([RIMAC, CHILLON]);
+  const trazados = riosTrazados(cauces, [CHOSICA, OBRAJILLO], [], [RIO]);
+  const cercano = rioCercano([MASHCON_V], trazados, LIMA);
+  assert.equal(cercano.rio.id, "rimac");
+  assert.ok(cercano.metros > 600 && cercano.metros < 800, `${cercano.metros}`);
+  // desde Cajamarca manda el Mashcón (vigilado, a ~220 m) aunque haya trazados
+  assert.equal(rioCercano([MASHCON_V], trazados, [-7.16, -78.498]).rio.id, "mashcon");
+  assert.equal(rioCercano([MASHCON_V], trazados, null).rio.id, "mashcon");
+  assert.equal(rioCercano([], [], LIMA), null);
+  // un departamento sin vigilados: el trazado más cercano, aunque esté lejos (el chip lo dice)
+  const lejos = rioCercano([], trazados, [-8.1091, -79.0215]); // Trujillo
+  assert.equal(lejos.rio.id, "chillon");
+  assert.ok(lejos.metros > 30_000);
+});
+
+test("chips por caso: trazo de ANA, dentro/fuera de la zona estimada, sin zonas, y lejos", () => {
+  const cauces = aligerar([RIMAC]);
+  const [rimac] = riosTrazados(cauces, [CHOSICA], [], []);
+  const zonas = zonasDeCauce([ZONA_RIMAC]);
+  assert.equal(zonas[0].rio, "rimac");
+  assert.equal(zonas[0].tipo, "estimada");
+  // a 700 m del río, fuera de la zona (a ~250 m de ella)
+  const d = distancias(LIMA, rimac.rio, zonas);
+  const chips = chipsDistancia(d, rimac.rio, rimac.estado.nivel);
+  assert.match(chips[0].texto, /^A \d+ m del río Rímac \(trazo de ANA\)$/);
+  assert.equal(chips[0].despues, " del río Rímac (trazo de ANA)");
+  assert.match(chips[1].texto, /^Fuera de la zona que podría inundarse, a \d+ m \(estimación SIMPAC con el relieve\)$/);
+  assert.equal(chips[1].nivel, "normal");
+  assert.equal(chipSinZonas(d, rimac.rio, true), null); // ya hay chip de zona
+  // dentro de la zona, en el color del nivel del río
+  const dentro = chipsDistancia(distancias([-12.042, -77.043], rimac.rio, zonas), rimac.rio, "alerta");
+  assert.equal(dentro[1].texto, "Dentro de la zona que podría inundarse (estimación SIMPAC con el relieve)");
+  assert.equal(dentro[1].nivel, "alerta");
+  assert.equal(dentro[1].dentro, true);
+  // lejos de la zona (más de 1 km): sin distancia
+  const lejosZona = chipsDistancia(distancias([-12.06, -76.95], rimac.rio, zonas), rimac.rio, "sin_senales");
+  assert.equal(lejosZona[1].texto, "Fuera de la zona que podría inundarse (estimación SIMPAC con el relieve)");
+  // sin zonas cargadas para el río: el chip punteado, solo cuando ya se consultaron
+  const sinZonas = distancias(LIMA, rimac.rio, []);
+  assert.equal(chipsDistancia(sinZonas, rimac.rio).length, 1);
+  assert.equal(chipSinZonas(sinZonas, rimac.rio, false), null);
+  assert.equal(chipSinZonas(sinZonas, rimac.rio, true).texto, "Este río no tiene mapa de zonas; la franja junto al cauce es solo referencial");
+  assert.equal(chipSinZonas(sinZonas, rimac.rio, true).punteado, true);
+  // el Mashcón sin zonas conserva su texto
+  assert.equal(chipSinZonas(distancias([-7.16, -78.498], RIO, []), RIO, true).texto, "Este río aún no tiene mapa de la zona que podría inundarse");
+  // más de 30 km: "el río con trazo más cercano"
+  const lejos = chipsDistancia({ metrosRio: 34_000, zona: null }, rimac.rio);
+  assert.equal(lejos.length, 1);
+  assert.equal(lejos[0].texto, "El río con trazo más cercano está a 34 km (Rímac)");
+  assert.equal(chipSinZonas({ metrosRio: 34_000, zona: null }, rimac.rio, true), null);
+  // el Mashcón no cambia
+  assert.equal(chipsDistancia(distancias([-7.16, -78.498], RIO, [ZONA]), RIO, "alerta")[0].texto, "A 220 m del río Mashcón");
+});
+
+test("ver el río en el mapa: para un trazado, la caja de tú y el cauce; el vigilado va tal cual", () => {
+  const cauces = aligerar([RIMAC]);
+  const [rimac] = riosTrazados(cauces, [CHOSICA], [], []);
+  const v = rioParaVer(rimac.rio, LIMA);
+  assert.equal(v.nombre, "Río Rímac");
+  assert.equal(v.zoom, 16);
+  assert.equal(v.cauce.type, "LineString");
+  const caja = cajaTuYRio(LIMA, rimac.rio.cauce);
+  assert.deepEqual(v.cauce.coordinates, [[caja[0][1], caja[0][0]], [caja[1][1], caja[1][0]]]);
+  assert.ok(Math.abs(v.centro_lat - -12.04) < 1e-9 && Math.abs(v.centro_lon - -77.0428) < 0.05); // el vértice más cercano del trazo
+  assert.equal(rioParaVer(RIO, LIMA), RIO);
+  assert.equal(rioParaVer(null, LIMA), null);
+});
+
+test("simulación de un río del país (solo desarrollo): cambia las entradas, no el resultado", () => {
+  const cauces = aligerar([RIMAC, SIN_ESTACION]);
+  const sim = (e) => simularCauce(e, "rio:rimac:alerta,rio:biabo:emergencia");
+  const t = riosTrazados(cauces, [CHOSICA], [], [], { simular: sim });
+  const rimac = t.find((x) => x.rio.id === "rimac");
+  assert.equal(rimac.estado.nivel, "alerta");
+  assert.equal(rimac.simulado, true);
+  assert.equal(rimac.est.peor.valor, 105); // 5 % sobre el nivel de alerta de Chosica
+  const biabo = t.find((x) => x.rio.id === "biabo"); // sin estación: aviso hidrológico rojo falso
+  assert.equal(biabo.estado.nivel, "emergencia");
+  assert.equal(biabo.est.zona.avisoHidro.titulo, "SIMULACIÓN");
+  // sin parámetro, o de otro río, nada cambia
+  assert.equal(simularCauce({ rioAna: "rimac", lecturas: [CHOSICA] }, null).activa, false);
+  assert.equal(simularCauce({ rioAna: "rimac", lecturas: [CHOSICA] }, "rio:chillon:alerta").activa, false);
+  assert.equal(simularCauce({ rioAna: "rimac", lecturas: [CHOSICA] }, "mashcon:15").activa, false);
+});

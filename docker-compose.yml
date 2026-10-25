@@ -35,6 +35,14 @@ services:
       SNAPSHOT_TTL: ${SNAPSHOT_TTL:-900}
       SIMPAC_LLM_KEY: ${SIMPAC_LLM_KEY:-}               # vacío = titular por reglas, sin pedidos externos
       SIMPAC_LLM_MODELO: ${SIMPAC_LLM_MODELO:-}
+      FIREBASE_CREDENCIALES: ${FIREBASE_CREDENCIALES:-}   # vacío = la tarea push no envía nada (solo latido)
+      FIREBASE_PROYECTO: ${FIREBASE_PROYECTO:-}
+      # Con FIREBASE_CREDENCIALES_ARCHIVO (ruta en el host al JSON de la cuenta de servicio) el archivo
+      # se monta abajo de solo lectura y esta variable le dice al worker dónde quedó (backend/config.py);
+      # sin ella queda vacía y se monta un JSON vacío versionado para que Docker no cree una carpeta.
+      FIREBASE_CREDENCIALES_MONTADA: ${FIREBASE_CREDENCIALES_ARCHIVO:+/run/secrets/firebase.json}
+    volumes:
+      - "${FIREBASE_CREDENCIALES_ARCHIVO:-./.firebase-vacio.json}:/run/secrets/firebase.json:ro"
     depends_on: [redis]
 
   frontend:                      # React build servido por nginx

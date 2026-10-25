@@ -522,6 +522,12 @@ class TestAliasReal(unittest.TestCase):
         self.assertIn("sin_trazo", alias["rios"]["titicaca"])
         self.assertIn("sin_trazo", alias["rios"]["canopampa"])
         self.assertEqual(alias["rios"]["chancay_lambayeque"]["nombre"], "Río Chancay")
+        # Piura: la estación Puente Sanchez Cerro queda a 35 m del trazo de RJ056; la nota documenta que la
+        # fila perdió la estación por el orden de carga, no por la distancia (sin radio_m ni sin_trazo)
+        piura = alias["rios"]["piura"]
+        self.assertIn("Puente Sanchez Cerro", piura["nota"])
+        self.assertNotIn("radio_m", piura)
+        self.assertNotIn("sin_trazo", piura)
 
 
 if __name__ == "__main__":

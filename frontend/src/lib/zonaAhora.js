@@ -7,8 +7,9 @@
 // avisos, horas y banderas) y `rios` lo que devuelve hooks/useRiosVigilados.js: [{ rio, estado }]
 // con estado = estadoZona de lib/zonaRio.js (nivel sin_senales|atentos|alerta|emergencia).
 // Las frases de SENAMHI por nivel de aviso viven en lib/lenguaje.js (ACCION_AVISO).
-import { ACCION_AVISO } from "./lenguaje.js";
+import { ACCION_AVISO, FRASES_RIO_PAIS } from "./lenguaje.js";
 import { distanciaAZona, fraseCorta, metrosEntre } from "./zonaRio.js";
+import { GEOMETRIAS, avisosDe, emparejarCauces, estadoRio, partesDe } from "./cauces.js";
 import { dentroDe } from "./geo.js";
 import { horaPeru } from "./tiempo.js";
 
@@ -175,28 +176,60 @@ export const LEJOS_M = 30_000;
 
 // Chips de distancia de la tarjeta: [{ clave, texto, nivel? }] (nivel pinta el chip de la zona).
 //   d = distancias(...)  rio = el río principal  nivelZona = r.estado.nivel (zonaRio)
+// Un río del país con trazo de ANA (rio.trazado, ver riosTrazados) dice "(trazo de ANA)" al lado de
+// la distancia y, si tiene zonas en rio_cauce_zona_mapa, "(estimación SIMPAC con el relieve)" en el
+// chip de la zona; el Mashcón conserva sus textos de siempre.
 export function chipsDistancia(d, rio, nivelZona = "sin_senales") {
   if (!d || !rio) return [];
   const chips = [];
+  const corto = rio.nombre.replace(/^R[ií]o /, "");
+  const despues = rio.trazado ? ` del ${nombreRio(rio)} (${FRASES_RIO_PAIS.trazo})` : ` del ${nombreRio(rio)}`;
   if (d.metrosRio != null) {
     // `metros` va aparte para que la tarjeta pueda contar el número de 0 al valor
     chips.push(
       d.metrosRio > LEJOS_M
-        ? { clave: "rio", texto: `El río vigilado más cercano está a ${textoMetros(d.metrosRio)} (${rio.nombre.replace(/^R[ií]o /, "")})`, lejos: true, metros: d.metrosRio }
-        : { clave: "rio", texto: `A ${textoMetros(d.metrosRio)} del ${nombreRio(rio)}`, metros: d.metrosRio, antes: "A ", despues: ` del ${nombreRio(rio)}` }
+        ? {
+            clave: "rio",
+            texto: `${rio.trazado ? FRASES_RIO_PAIS.lejosTrazo : "El río vigilado más cercano está a"} ${textoMetros(d.metrosRio)} (${corto})`,
+            lejos: true,
+            metros: d.metrosRio,
+          }
+        : { clave: "rio", texto: `A ${textoMetros(d.metrosRio)}${despues}`, metros: d.metrosRio, antes: "A ", despues }
     );
   }
   if (d.zona && d.metrosRio != null && d.metrosRio <= LEJOS_M) {
     const nivel = DE_ZONA[nivelZona] ?? "normal";
-    chips.push(
-      d.zona.dentro
-        ? { clave: "zona", texto: "Dentro de la zona que podría inundarse", nivel, dentro: true }
-        : d.zona.metros != null && d.zona.metros < 1000
-          ? { clave: "zona", texto: `Fuera de la zona que podría inundarse (a ${textoMetros(d.zona.metros)})`, nivel: "normal" }
-          : { clave: "zona", texto: "Fuera de la zona que podría inundarse", nivel: "normal" }
-    );
+    const cerca = d.zona.metros != null && d.zona.metros < 1000;
+    if (rio.trazado)
+      chips.push(
+        d.zona.dentro
+          ? { clave: "zona", texto: FRASES_RIO_PAIS.dentroZona, nivel, dentro: true }
+          : cerca
+            ? { clave: "zona", texto: `Fuera de la zona que podría inundarse, a ${textoMetros(d.zona.metros)} (estimación SIMPAC con el relieve)`, nivel: "normal" }
+            : { clave: "zona", texto: FRASES_RIO_PAIS.fueraZona, nivel: "normal" }
+      );
+    else
+      chips.push(
+        d.zona.dentro
+          ? { clave: "zona", texto: "Dentro de la zona que podría inundarse", nivel, dentro: true }
+          : cerca
+            ? { clave: "zona", texto: `Fuera de la zona que podría inundarse (a ${textoMetros(d.zona.metros)})`, nivel: "normal" }
+            : { clave: "zona", texto: "Fuera de la zona que podría inundarse", nivel: "normal" }
+      );
   }
   return chips;
+}
+
+// Chip punteado cuando el río más cercano (a menos de LEJOS_M) no tiene zonas cargadas: para un río
+// del país, que la franja junto al cauce es solo referencial; para un vigilado sin zonas, que aún no
+// hay mapa. null si no corresponde (sin río, lejos, zonas sin cargar todavía o ya hay chip de zona).
+export function chipSinZonas(d, rio, zonasCargadas = false) {
+  if (!d || !rio || !zonasCargadas || d.zona || d.metrosRio == null || d.metrosRio > LEJOS_M) return null;
+  return {
+    clave: "sin_zonas",
+    punteado: true,
+    texto: rio.trazado ? FRASES_RIO_PAIS.sinZonas : "Este río aún no tiene mapa de la zona que podría inundarse",
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -400,4 +433,86 @@ export function marcarGpsVisto(almacen) {
   } catch {
     /* ventana privada: volverá a salir, aceptable */
   }
+}
+
+// ---------------------------------------------------------------------------
+// Ríos del país con trazo de ANA (vista rio_cauce_mapa, lib/cauces.js) como candidatos de la
+// tarjeta: el río más cercano se elige entre los vigilados (Mashcón) y estos.
+// ---------------------------------------------------------------------------
+
+// [{ rio, estado, est, trazado: true }] con la forma de los vigilados de useRiosVigilados: `rio`
+// tiene id (rio_ana), nombre, departamento ("Cajamarca, La Libertad" si cruza varios), rio_ana y
+// estacion_ana (la estación que manda: así caudalDelRio encuentra su fila de ANA para el medidor),
+// el cauce de ~50 m en GeoJSON y km; `estado` es estadoZona (nivel sin_senales|atentos|alerta|
+// emergencia) y `est` el estadoRio completo. Entran solo los ríos que el mapa dibuja: con lectura de
+// ANA o aviso hidrológico vigente; el Mashcón no (rio_vigilado manda). `simular` (lib/simulacion.js
+// simularCauce, solo desarrollo) cambia las entradas de un río antes de calcular su estado.
+export function riosTrazados(cauces, caudales = [], senalesCauces = [], vigilados = [], { simular = null } = {}) {
+  if (!cauces?.length) return [];
+  const { rios } = emparejarCauces(cauces, caudales, vigilados);
+  const out = [];
+  for (const { fila, lecturas } of rios) {
+    const id = fila.rio_ana;
+    const partes = GEOMETRIAS.get(id)?.lejos ?? partesDe(fila.cauce_lejos);
+    if (!partes?.length) continue;
+    const entradas0 = { rioAna: id, lecturas, avisos_hidro: avisosDe(senalesCauces, id) };
+    const entradas = simular ? simular(entradas0) : entradas0;
+    const est = estadoRio(entradas);
+    if (!entradas.lecturas.length && !est.zona.avisoHidro) continue; // el mapa tampoco lo resalta
+    out.push({
+      rio: {
+        id,
+        nombre: fila.nombre,
+        departamento: fila.departamento,
+        rio_ana: fila.rio,
+        estacion_ana: est.peor?.estacion ?? fila.estaciones?.[0] ?? null,
+        cauce: { type: "MultiLineString", coordinates: partes },
+        km: fila.km,
+        fuente: fila.fuente,
+        trazado: true,
+      },
+      estado: est.zona,
+      est,
+      simulado: Boolean(entradas.activa),
+      trazado: true,
+    });
+  }
+  return out;
+}
+
+// Si un río del país pasa por el departamento ("Huánuco, Loreto, San Martín").
+export const rioEnDepto = (rio, depto) =>
+  Boolean(depto) && String(rio?.departamento ?? "").split(",").map((x) => x.trim()).includes(depto);
+
+// El río más cercano al origen ([lat, lon]) entre los vigilados y los trazados, con sus metros al
+// cauce; a igual distancia, el vigilado (va primero). Sin origen, el vigilado principal; sin
+// candidatos, null.
+export function rioCercano(vigilados = [], trazados = [], origen = null) {
+  if (!origen) return rioPrincipal(vigilados, null);
+  let mejor = null;
+  for (const r of [...(vigilados ?? []), ...(trazados ?? [])]) {
+    if (!r?.rio?.cauce) continue;
+    const metros = metrosAlCauce(origen[0], origen[1], r.rio.cauce);
+    if (metros == null) continue;
+    if (!mejor || metros < mejor.metros) mejor = { ...r, metros };
+  }
+  return mejor;
+}
+
+// Lo que recibe App.verRio para "Ver el río en el mapa" de un río del país: encuadra a la persona y
+// el tramo más cercano del cauce (cajaTuYRio), no los 1700 km del Marañón. Para un río vigilado se
+// devuelve tal cual (trae centro, zoom y cauce curado). null sin río.
+export function rioParaVer(rio, origen) {
+  if (!rio) return null;
+  if (!rio.trazado) return rio;
+  const caja = cajaTuYRio(origen, rio.cauce);
+  const cerca = origen ? puntoCercanoDelCauce(origen[0], origen[1], rio.cauce) : null;
+  return {
+    ...rio,
+    centro_lat: cerca?.[0] ?? origen?.[0] ?? null,
+    centro_lon: cerca?.[1] ?? origen?.[1] ?? null,
+    zoom: 16,
+    // cajaGeo (App.jsx) toma la caja de esta línea: las dos esquinas de "tú y el río"
+    cauce: caja ? { type: "LineString", coordinates: [[caja[0][1], caja[0][0]], [caja[1][1], caja[1][0]]] } : rio.cauce,
+  };
 }

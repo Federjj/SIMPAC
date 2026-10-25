@@ -1,5 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<resources>
-    <!-- Fondo del icono adaptable (mismo azul oscuro que la pantalla de inicio) -->
-    <color name="ic_launcher_background">#0F172A</color>
-</resources>

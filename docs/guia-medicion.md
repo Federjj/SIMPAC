@@ -4,14 +4,16 @@
 > Funcional** (ICF, IPR, IFU), **Ficha de registro de medición: Eficiencia de Desempeño** (TRP, PUR,
 > NUS) y los dos cuestionarios (usabilidad del sistema y acceso a la información). Las fichas y los
 > cuestionarios están en `Proyecto_G01/` (carpeta del curso, fuera del repo).
-> Actualizado: **2026-10-14** (los valores de referencia se midieron la noche del 19 al 20 de octubre
-> de 2026, sobre el software desplegado en local después de reanudar la BD de Supabase, que estuvo
-> pausada del 15 al 19 de octubre). Versión del software: la de la rama `main` con las 32
-> migraciones aplicadas (última `20261020040343_titular_zona_titular_corto`).
+> Actualizado: **2026-10-24** (los valores de referencia de la web se midieron la noche del 19 al 20
+> de octubre de 2026, sobre el software desplegado en local después de reanudar la BD de Supabase,
+> que estuvo pausada del 15 al 19 de octubre; la app Kotlin, el push y las zonas de los ríos del país
+> se verificaron el 24 de octubre). Versión del software: la de la rama `main` con las 35
+> migraciones aplicadas (última `20261020165455_rio_cauce_zona`).
 
 Reglas de la guía:
-- Se mide **lo que existe**: cada función de abajo tiene su archivo y su tabla. Lo que no está
-  (notificaciones push) se cuenta como no implementado, no se maquilla.
+- Se mide **lo que existe**: cada función de abajo tiene su archivo y su tabla. Lo que no está se
+  cuenta como no implementado, no se maquilla (desde el 24-10 las notificaciones push existen y
+  están verificadas; lo que sigue sin confirmar es el pintado del mapa de la app en un teléfono real).
 - Todo se corre contra el stack local (`docker compose up -d --build` desde la raíz): web en
   `http://localhost:8080`, API en `http://localhost:8000`, worker y redis. La BD es la de Supabase
   (proyecto DATASYMPAC), que la web consulta directo por la API REST de Supabase.
@@ -36,8 +38,8 @@ automáticas. El "Estado del backlog" es el que dice la hoja (desactualizado en 
 | HU-02 | Conector ANA | Hecho | **HECHO** | Capa "Ríos": disco de cada estación con su nivel; medidor de caudal de la hoja | `backend/connectors/ana.py`; vista `caudal_actual`: 127 estaciones, 96 ríos, 23 departamentos; `lectura_caudal` 5832 filas (desde el 10-09-2026) |
 | HU-03 | Conectores IGP + NOAA | Hecho | **HECHO** | Barra lateral ("mar más caliente", RONI) y panel "El Niño en gráficos" (ICEN mes a mes) | `backend/connectors/igp.py`, `noaa.py`; tablas `indice` e `icen_serie` (39 meses, hasta 2026-08) |
 | HU-04 | Conector ENFEN | Hecho | **HECHO** | Barra lateral: "Comunicado ENFEN 18-2026, 16 oct. Próximo: 30 oct"; panel El Niño con los 3 pasos del sistema de alerta | `backend/connectors/enfen.py` (PDF con `pypdf`); tarea `enfen` (6 h); tabla `comunicado_enfen` (último: CO 18-2026, "Alerta de El Niño Costero") |
-| HU-05 | Base de datos geoespacial | Hecho | **HECHO** | No se ve: lo usa todo | Supabase Postgres + PostGIS: **28 tablas, 15 vistas, 32 migraciones** en `supabase/migrations/`, RLS activo en 27 de 28 tablas (la que falta es `spatial_ref_sys`, de PostGIS, protegida con trigger); foto en `supabase/schema.sql`; 61 MB |
-| HU-06 | Ingesta programada + motor de umbrales | Hecho | **HECHO** | Contador de alertas de la barra lateral y de la pestaña Alertas; hora "ríos ANA 00:49 · lluvia SENAMHI 00:49" | `backend/celery_app.py` (beat: `ingesta` cada 3600 s y 8 tareas más), `backend/alerts.py` (umbrales de ANA y referencia de lluvia de SENAMHI); vista `alerta_actual`: 43 filas el 20-10 (32 aviso, 6 alerta por avisos de SENAMHI, 5 ríos muy bajos) |
+| HU-05 | Base de datos geoespacial | Hecho | **HECHO** | No se ve: lo usa todo | Supabase Postgres + PostGIS: **30 tablas, 16 vistas, 35 migraciones** en `supabase/migrations/` (al 24-10; el 20-10 eran 28, 15 y 32: se sumaron `push_estado`, `rio_cauce_zona` y `rio_cauce_zona_mapa`), RLS activo en 29 de 30 tablas (la que falta es `spatial_ref_sys`, de PostGIS, protegida con trigger); foto en `supabase/schema.sql`; 61 MB el 20-10 más 4,9 MB de `rio_cauce_zona` |
+| HU-06 | Ingesta programada + motor de umbrales | Hecho | **HECHO** | Contador de alertas de la barra lateral y de la pestaña Alertas; hora "ríos ANA 00:49 · lluvia SENAMHI 00:49" | `backend/celery_app.py` (beat: `ingesta` cada 3600 s y 9 tareas más, `push` desde el 24-10), `backend/alerts.py` (umbrales de ANA y referencia de lluvia de SENAMHI); vista `alerta_actual`: 43 filas el 20-10 (32 aviso, 6 alerta por avisos de SENAMHI, 5 ríos muy bajos) |
 | HU-07 | Mapa interactivo | Hecho | **HECHO** | Página `/` (Mapa): Leaflet con 15 capas en 7 grupos, selector de 25 ciudades, GPS, popups | `frontend/src/pages/Mapa.jsx`, `components/MapView.jsx`, `map/layers/*.js` (15 archivos), `data/cities.js` |
 | HU-08 | Mapa de precipitaciones / anomalías con leyenda | Hecho | **HECHO** | Panel de capas, grupo "Lluvia": "Lluvia de la última hora (estaciones)", "Lluvia de ayer / de la semana", "Lluvia por satélite (NASA)", "Lluvia del mes frente a lo normal"; cada una con leyenda y nota de fecha | `map/layers/lluviaAhora.js`, `lluviaObservada.js`, `lluviaSatelite.js`, `anomalias.js`; tabla `mapa` (`variable = 'precipitacion'`, 1 muestra de Cajamarca) y servicios de SENAMHI/NASA en vivo |
 | HU-09 | Panorama FEN (eventos pasados) | Hecho | **HECHO** | Panel "El Niño en gráficos" (botón de la barra lateral): estado ENFEN actual, ICEN de 24 meses y botones 1997-1998, 2017 y 2023 que pintan en el mapa cómo llovió; capa "Desbordes y daños pasados" del Mashcón (14 incidentes con fuente) | `components/ElNinoPanel.jsx`, `map/layers/fenHistorico.js`, `map/layers/desbordes.js`; tablas `mapa` (`FEN`, 5 eventos), `rio_incidente` (14) |
@@ -47,24 +49,26 @@ automáticas. El "Estado del backlog" es el que dice la hoja (desactualizado en 
 | HU-13 | Histórico de alertas | En proceso | **HECHO** | `/alertas`, pestaña "Pasadas": rango de fechas (hasta 30 días) y zona | `pages/Alertas.jsx` (`Pasadas`), `lib/queries.js getAlertasPasadas`; tabla `alerta` (43 filas en los últimos 30 días) |
 | HU-14 | Histórico hidrometeorológico | Planificada | **HECHO** (rangos fijos 24 h / 7 d / 30 d, no fechas libres) | `/historico?tipo=rio&id=...` y `?tipo=lluvia&id=...` desde "Ver histórico" del popup de una estación: gráfico, tabla y "Descargar CSV" | `pages/Historico.jsx`, `components/GraficoSerie.jsx`, `lib/historico.js` (con pruebas); tablas `lectura_caudal`, `lectura_lluvia` |
 | HU-15 | Mapas de eventos FEN pasados | Planificada | **HECHO** (solo el primer trimestre de cada evento) | Capa "Eventos El Niño pasados" con selector de evento (1982-83, 1997-98, 2017, 2023, 2023-24) y leyenda en mm frente a lo normal | `map/layers/fenHistorico.js`; tabla `mapa` (5 filas `FEN`, catálogo IDESEP de SENAMHI) |
-| HU-16 | Titular interpretado (NLG) | En proceso | **HECHO** (por reglas; el redactor con modelo de lenguaje existe pero está apagado hasta poner `SIMPAC_LLM_KEY`) | Hoja "Tu zona ahora": titular corto ("ALERTA en Cajamarca: aviso naranja de SENAMHI por lluvias.") y chip de arriba | `frontend/src/lib/zonaAhora.js titularCorto` (en el navegador) y `backend/ingesta/titular.py` (tarea `titular`, 30 min); tabla `titular_zona`: 25 departamentos, origen `reglas`, `titular_corto` de 43 a 100 caracteres |
+| HU-16 | Titular interpretado (NLG) | En proceso | **HECHO** (por reglas; el redactor con modelo de lenguaje existe pero está apagado hasta poner `SIMPAC_LLM_KEY`) | Hoja "Tu zona ahora": titular corto ("ALERTA en Cajamarca: aviso naranja de SENAMHI por lluvias."; desde el 24-10 la tarjeta usa el `titular_corto` de la BD cuando está fresco y coincide en nivel: "Cajamarca: 3 avisos de SENAMHI por lluvias (el más alto, amarillo).") y chip de arriba; Inicio de la app Kotlin | `frontend/src/lib/zonaAhora.js titularCorto` (en el navegador) y `backend/ingesta/titular.py` (tarea `titular`, 30 min); tabla `titular_zona`: 25 departamentos, origen `reglas`, `titular_corto` de 43 a 100 caracteres |
 | HU-17 | Cuentas: registro y login | Vacío | **HECHO** | `/cuenta`, `/cuenta/entrar`, `/cuenta/registro`: entrar, crear cuenta (correo, contraseña, nombre), "Olvidé mi contraseña", contraseña nueva; con sesión, nombre editable y "Cerrar sesión" | `pages/Cuenta.jsx`, `lib/sesion.js`, `hooks/useSesion.js`; Supabase Auth; tabla `perfil` (0 cuentas creadas al 20-10) |
 | HU-18 | Reportes ciudadanos | Vacío | **HECHO** | `/comunidad/nuevo` (solo con sesión y GPS): 8 tipos estilo Waze, subtipo de atasco, descripción de hasta 500 letras, foto opcional (hasta 3 MB, reducida a 1280 px); capa "Reportes ciudadanos" y lista `/comunidad` | `pages/ReporteNuevo.jsx`, `lib/comunidad.js`, `lib/reportTypes.js`, `map/layers/incidentes.js`; tabla `report` (0 reportes al 20-10), bucket `reportes` (CHECK: la foto solo puede venir de ese bucket) |
 | HU-19 | Validación comunitaria | Vacío | **HECHO** | `/comunidad/:id`: votos a favor / en contra y comentarios (hasta 500 letras) | `components/Votos.jsx`, `pages/ReporteDetalle.jsx`; tablas `voto`, `comentario` (la BD calcula `confianza` y `estado`; nadie vota su propio reporte) |
-| HU-20 | Notificaciones push (FCM) | Vacío | **FALTA** | No existe | No hay código: `appmobile/README.md` lo deja como siguiente paso (`@capacitor/push-notifications` + Firebase Cloud Messaging); `README-tecnico.md` §10 lo lista pendiente |
-| HU-21 | App móvil Android | Vacío | **HECHO** | APK `frontend/android/app/build/outputs/apk/debug/app-debug.apk` (5 304 253 bytes, compilado el 20-10): la misma web en un WebView con GPS del teléfono; probada en el emulador Pixel_7a | `frontend/android/` (Capacitor 8.5.3, `pe.simpac.app`, minSdk 24, targetSdk 36), `hooks/useGeolocation.js` (`@capacitor/geolocation`); documentación en `appmobile/README.md`. Las alertas se **ven** en la app; **recibirlas** como notificación es HU-20 |
-| HU-22 | Mi zona y preferencias de notificación | Vacío | **PARCIAL** | `/cuenta` > "Mi zona": ciudad guardada en la cuenta (y en este navegador sin cuenta). No hay preferencias de notificación porque no hay notificaciones | `lib/sesion.js guardarZona` (columna `perfil.zona`, punto de la ciudad), `guardarZonaLocal` (`simpac.zona`) |
+| HU-20 | Notificaciones push (FCM) | Vacío | **HECHO** (20-10, verificado de extremo a extremo el 24-10) | App Kotlin > Cuenta > interruptor "Avisarme si Cajamarca entra en alerta o emergencia"; la notificación "SIMPAC: ALERTA en <Depto>" (cuerpo = titular corto) llega al teléfono y al tocarla abre Alertas; "SIMPAC: vuelve la calma en <Depto>" al bajar. Nunca por aviso amarillo ni lluvia medida | `backend/ingesta/push.py` (tarea `push`, cada 5 min, 44 pruebas), tabla `push_estado` (memoria del último nivel notificado), `appmobile/android/.../push/` (temas `pais` y `zona_<slug>`); latido `push` del 24-10: `enviados 6` en la primera corrida (las alertas vigentes), después 0; prueba `--prueba --zona Cajamarca` recibida en el emulador. La web no recibe push |
+| HU-21 | App móvil Android | Vacío | **HECHO** (app nativa; falta probarla en un teléfono real) | APK `appmobile/android/app/build/outputs/apk/debug/app-debug.apk` (15 846 448 bytes, compilado el 24-10): app nativa en Kotlin + Compose con Inicio (semáforo y titular), Alertas, Mapa (la web en un WebView), Acudir y Cuenta; probada en el emulador Pixel_7a (Inicio, Alertas, Mapa, Acudir, Cuenta y push verificados; el Mapa pinta desde el 24-10, arreglo de `LayoutParams` del WebView en `MapaScreen.kt`) | `appmobile/android/` (AGP 9.0.1, Kotlin 2.3.20, Compose BOM 2026.03.01, `pe.simpac.app`, minSdk 26, targetSdk 36, `versionCode 2`), 22 pruebas JVM + 4 de Compose UI; documentación en `appmobile/README.md`. La app anterior (Capacitor, APK de 5 304 253 bytes del 20-10) se retiró del repo el 24-10 |
+| HU-22 | Mi zona y preferencias de notificación | Vacío | **HECHO** (la preferencia de notificación vive en la app, no en la cuenta web) | Web: `/cuenta` > "Mi zona": ciudad guardada en la cuenta (y en este navegador sin cuenta). App: Cuenta > Ajustes > departamento (o por GPS) e interruptor de notificaciones de esa zona (al cambiar de departamento se cambia el tema) | `lib/sesion.js guardarZona` (columna `perfil.zona`, punto de la ciudad), `guardarZonaLocal` (`simpac.zona`); app: `data/Ajustes.kt` (DataStore), `push/PushSimpac.kt` (suscripción a `pais` y `zona_<slug>`). Límite: la preferencia no se sincroniza con la cuenta web (la sesión no se comparte) |
 | HU-23 | Chat por zona | Vacío | **HECHO** | `/chat`: canal = departamento, mensajes de 2 horas, en tiempo real, solo con sesión | `pages/Chat.jsx`, `lib/queries.js getMensajes/escucharMensajes/enviarMensaje`; tabla `message` (publicación `supabase_realtime`; 0 mensajes al 20-10) |
 
 **Conteo para la ficha** (A = requeridas e implementadas, B = especificadas):
 
 | Criterio | A | B | ICF |
 |---|---|---|---|
-| Estricto: solo HECHO | 21 | 23 | **91,3 %** (Aceptable: 80-94 %) |
-| Contando HU-22 por la mitad (Mi zona sí, preferencias de notificación no) | 21,5 | 23 | 93,5 % (Aceptable) |
+| Al 20-10 (estricto: solo HECHO; HU-20 faltaba y HU-22 era parcial) | 21 | 23 | 91,3 % (Aceptable: 80-94 %) |
+| **Al 24-10 (estricto: solo HECHO)** | 23 | 23 | **100 %** (Excelente: 95 % o más) |
+| Al 24-10, conservador (HU-21 por la mitad mientras el mapa de la app no se confirme en un teléfono real) | 22,5 | 23 | 97,8 % (Excelente) |
 
-Lo que falta para pasar a "Excelente" (95 %): HU-20 (push) y la mitad de HU-22. Decirlo tal cual en
-"Observaciones": la app recibe las alertas al abrirla, no como notificación.
+Decirlo tal cual en "Observaciones": el push está verificado en el emulador con el envío real del
+worker (24-10); la preferencia de notificación de HU-22 vive en la app (no en la cuenta web); el
+mapa de la app carga pero su pintado queda por confirmar en un teléfono real.
 
 ### 1.2. IPR: casos de prueba
 
@@ -72,14 +76,16 @@ Dos fuentes, y se reportan las dos:
 
 **(a) Pruebas automáticas** (sin red ni BD; se corren desde la raíz del repo):
 
-| Juego | Comando | Resultado el 2026-10-20 |
+| Juego | Comando | Resultado el 2026-10-24 (el 20-10: 657 y 148) |
 |---|---|---|
-| Backend (conectores, ingesta, cargadores, API, titular) | `python -m unittest discover -s backend/tests -t .` | **657 pruebas, OK** (12 a 16 s según la máquina) |
-| Frontend (lógica pura: nivel, zona, cauces, alertas, comunidad, histórico, acudir, iconos, atribución) | `cd frontend && npm test` (`node --test src/lib/*.test.js src/map/*.test.js`) | **148 pruebas, 148 pasan, 0 fallan** (0,9 a 1,2 s) |
-| Total | | **805 / 805 = 100 %** |
+| Backend (conectores, ingesta, cargadores, API, titular, push, zonas de relieve) | `python -m unittest discover -s backend/tests -t .` | **720 pruebas, OK** (12 a 90 s según la máquina; 10 se omiten solas si no están numpy y shapely, que son del entorno aparte del relieve) |
+| Frontend (lógica pura: nivel, zona, cauces, alertas, comunidad, histórico, acudir, iconos, atribución) | `cd frontend && npm test` (`node --test src/lib/*.test.js src/map/*.test.js`) | **157 pruebas, 157 pasan, 0 fallan** (0,8 a 1,2 s) |
+| App Android (lógica pura: parseo, orden de alertas, distancia, slug del tema, "hace X", acudir, pronóstico, ríos) | `cd appmobile/android && .\gradlew.bat testDebugUnitTest` (PowerShell, JDK 21) | **22 pruebas, 0 fallas** (`DominioTest` 16, `ModelosTest` 6); las 4 de Compose UI (`connectedDebugAndroidTest`) necesitan emulador |
+| Total | | **899 / 899 = 100 %** |
 
 Anotar en la ficha la fecha, el commit (`git rev-parse --short HEAD`) y pegar la última línea de cada
-comando ("Ran 657 tests ... OK" y "pass 148 / fail 0").
+comando ("Ran 720 tests ... OK", "pass 157 / fail 0" y "BUILD SUCCESSFUL" con el informe de
+`app/build/reports/tests/testDebugUnitTest/index.html`).
 
 **(b) Casos manuales.** Un caso por función visible. Cada evaluador ejecuta los casos y marca
 Pasa / Falla / No aplica; C = pasan, D = ejecutados (los "No aplica" no cuentan en D). La columna
@@ -133,28 +139,37 @@ Convenciones: "hoja" = la tarjeta inferior "Tu zona ahora" (en escritorio, abajo
 | CP-39 | Celular (RNF09) | Ventana de 375x812 (o el APK): recorrer Mapa, Alertas, Comunidad, Chat, Cuenta | Barra inferior de 5 pestañas de 56 px con el contador de alertas; hoja plegada de ~295 px con semáforo, titular y botones; atribución del mapa en una línea con botón "más"; sin desplazamiento horizontal; los popups caben entre la hoja y el borde | Sí | Sí |
 | CP-40 | Teclado y lector de pantalla | Solo con Tab, Enter y Escape | El foco es visible en cada control; Escape cierra el selector de ciudad y el panel El Niño; con una página abierta sobre el mapa (celular), el mapa queda `inert` y Tab no entra a sus controles | No | Sí |
 | CP-41 | API (HU-11) | `curl -i http://localhost:8000/health`; `curl -s http://localhost:8000/api/snapshot \| head -c 300`; `curl -sI -H "Origin: https://ejemplo.com" http://localhost:8000/health` | 200 `{"ok":true,"service":"simpac-api"}`; JSON con contexto El Niño, caudales y alertas; sin `Access-Control-Allow-Origin` para un origen ajeno y con él para `http://localhost:8080`; `HEAD` da 405 (solo GET) | No (técnico) | Sí |
-| CP-42 | Worker (HU-01 a HU-06) | `docker compose logs --tail=200 worker`; `select servicio, ts from latido order by servicio;` | 9 tareas registradas (avisos, enfen, ingesta, lluvia_nacional, nowcast, pronostico, refresh_cache, rios, titular), sin `Traceback`; un latido por servicio con hora de hoy | No (técnico) | Sí |
-| CP-43 | App Android (HU-21) | Instalar `app-debug.apk` en un teléfono (Android 7 o más) o en el emulador con `-memory 3072`; abrir | La app carga el mapa con sus tiles, el chip de nivel, el río Mashcón con sus rombos, la pantalla de bienvenida del GPS y la barra inferior; el GPS usa el del teléfono | Sí | Sí (emulador Pixel_7a) |
+| CP-42 | Worker (HU-01 a HU-06, HU-20) | `docker compose logs --tail=200 worker`; `select servicio, ts from latido order by servicio;` | 10 tareas registradas (avisos, enfen, ingesta, lluvia_nacional, nowcast, pronostico, push, refresh_cache, rios, titular; eran 9 hasta el 20-10), sin `Traceback`; un latido por servicio con hora de hoy; el de `push` con `credenciales: true` si el `.env` tiene la cuenta de servicio | No (técnico) | Sí (24-10) |
+| CP-43 | App Android anterior, Capacitor (HU-21) | Instalar el `app-debug.apk` de `frontend/android/` en un teléfono (Android 7 o más) o en el emulador con `-memory 3072`; abrir | La app carga el mapa con sus tiles, el chip de nivel, el río Mashcón con sus rombos, la pantalla de bienvenida del GPS y la barra inferior; el GPS usa el del teléfono. (Desde el 20-10 la app es la Kotlin, CP-45 a CP-49; Capacitor se retiró del repo el 24-10: este caso queda solo como historia) | Sí | Sí (emulador Pixel_7a, 20-10) |
 | CP-44 | Sin conexión (condición de error de RE01) | Con la web abierta, cortar la red (DevTools > Network > Offline) y recargar; volver a conectar | Si el service worker quedó registrado, la cáscara de la app abre sin red (`public/sw.js` guarda solo JS, CSS e `index.html`); la hoja dice "No se pudo consultar las alertas. Revisa tu conexión." y nunca sale "Normal" en verde sin datos; al volver la red los datos cargan solos en el siguiente refresco (10 min) o al recargar | No | No |
+| CP-45 | App Kotlin: Inicio (HU-21, HU-16) | Instalar `appmobile/android/app/build/outputs/apk/debug/app-debug.apk` (Android 8 o más; emulador con `-memory 3072`); abrir; "Usar mi ubicación" o "Elegir departamento" | Disco grande del nivel con su etiqueta (nunca solo color), "Cajamarca · cambiar", tarjeta "Tu zona ahora" con el `titular_corto` y el detalle de `titular_zona` ("Generado el ... por reglas de SIMPAC con datos oficiales"), chips "N alertas oficiales" y del río con señales, "El Niño ahora" con el comunicado del ENFEN, pronóstico de 3 días de la localidad más cercana, botones "Llamar 105" y "Llamar 116", "Fuentes y hora" y el pie referencial; sin red, franja "Sin conexión" con la hora del último dato; sin titular, "Sin datos" | Sí | Sí (emulador Pixel_7a, 20-10 y 24-10) |
+| CP-46 | App Kotlin: Alertas y Acudir (HU-10, HU-21) | Pestañas Alertas (chips Mi zona / Todo el país) y Acudir | Alertas: "N alertas y avisos oficiales en Cajamarca. Revisado <hora>", tarjetas con color + etiqueta, referencia, detalle, hora y "Fuente: SENAMHI"; la lluvia medida aparte y marcada como no oficial. Acudir: 105 / 116 / 115 / 106 (con la salvedad del SAMU y "Fuente: gob.pe"), "Lo más cercano desde ...", salud 24 h o el más cercano, comisaría y bomberos con distancia, "Llamar" y "Cómo llegar"; en Cajamarca centro: Hospital II Cajamarca a 453 m, Comisaría Central a 169 m | Sí | Sí (emulador, 20-10 y 24-10) |
+| CP-47 | App Kotlin: notificaciones (HU-20, HU-22) | Cuenta > prender "Avisarme si <Depto> entra en alerta o emergencia" > aceptar el permiso; en el servidor `docker compose exec worker python -m backend.ingesta.push --prueba --zona <Depto>`; tocar la notificación | El interruptor queda encendido y dice "Recibirás avisos de alerta o emergencia de <Depto> y del país"; llega "SIMPAC: prueba en <Depto>" en el canal `alertas` (la primera vez puede tardar unos minutos); al tocarla la app abre la pestaña Alertas. Con una alerta real: "SIMPAC: ALERTA en <Depto>" con el titular corto; nunca por aviso amarillo ni lluvia medida; sin `google-services.json` el interruptor dice "no configuradas en esta instalación" | Sí | Sí (emulador, 24-10) |
+| CP-48 | App Kotlin: Mapa (HU-07, HU-21) | Pestaña Mapa; Recargar; "Abrir en el navegador"; Cuenta > "Abrir mi cuenta en la web" | La web de SIMPAC se ve dentro de la app (hoja "Tu zona ahora", capas, popups) con la geolocalización del teléfono; los enlaces a fuentes oficiales salen al navegador; `/cuenta` muestra Entrar / Crear cuenta. **Ejecutar en un teléfono real**: en el emulador sin GPU la web carga (árbol de accesibilidad completo) pero no se pinta | Sí | Parcial (emulador: carga, no pinta) |
+| CP-49 | Zonas estimadas y franja de los ríos del país | Capa "Zonas que un río podría afectar" prendida; ciudad Lima, "Ver el río Rímac en el mapa" (zoom 16); tocar un polígono rayado. Franja: en desarrollo, `http://localhost:5173/?simular=rio:tumbes:alerta` con la ciudad en Tumbes | Junto al Rímac, polígonos rayados (bajo ~2 m) y lisos tenues (bajo ~3 m) con borde blanco, azules sin señales; popup con el método (HAND sobre Copernicus GLO-30), fuente, licencia y "Estimación de SIMPAC con el relieve; no es un mapa oficial", sin metros; la tarjeta dice "A 820 m del río Rímac (trazo de ANA)" y "Fuera de la zona que podría inundarse, a 680 m (estimación SIMPAC con el relieve)"; en Iquitos, "Este río no tiene mapa de zonas; la franja junto al cauce es solo referencial". Con la simulación: franja punteada naranja de 120 m a cada lado del Tumbes, leyenda "Franja de atención junto al río (referencial, no es un mapa de inundación)"; en producción el parámetro no hace nada | Sí | Sí (24-10; el popup de la zona y de la franja solo por código: el clic abrió el aviso) |
 
-Conteo: 44 casos. Los 37 marcados "Sí" en la columna IFU son las funciones visibles para la
-persona (F de la sección 1.3). De los 44, **38 ya se ejecutaron en la verificación del 19/20-10**
-(35 pasaron completos y 3 parcialmente: CP-28, CP-29 y CP-30, cuyas validaciones de formulario
-pasaron pero no se creó ninguna cuenta real); **6 quedan por ejecutar** con cuenta de prueba, GPS o
-red cortada (CP-31, CP-32, CP-34, CP-35, CP-37 y CP-44), más las partes con correo de CP-28 y CP-30.
-No se declara IPR hasta correrlos: la ficha se llena con C y D reales del día de la medición.
+Conteo: 49 casos. Los 42 marcados "Sí" en la columna IFU son las funciones visibles para la
+persona (F de la sección 1.3). De los 49, **43 ya se ejecutaron** (38 en la verificación del 19/20-10
+y 5 de la app y las zonas el 24-10): 39 pasaron completos y 4 parcialmente (CP-28, CP-29 y CP-30,
+cuyas validaciones de formulario pasaron pero no se creó ninguna cuenta real; CP-48, el mapa de la app
+carga pero no se pintó en el emulador); **6 quedan por ejecutar** con cuenta de prueba, GPS o red
+cortada (CP-31, CP-32, CP-34, CP-35, CP-37 y CP-44), más las partes con correo de CP-28 y CP-30 y
+CP-48 en un teléfono real. No se declara IPR hasta correrlos: la ficha se llena con C y D reales del
+día de la medición.
 
 Cómo anotar una falla: ID del caso, paso en que falló, lo que se vio (captura), navegador, hora, y
 si volvió a fallar al repetirlo. Una falla reproducible cuenta una vez aunque la vean 3 evaluadores.
 
 ### 1.3. IFU: funciones usadas de verdad
 
-- **F (funciones disponibles) = 37**: las filas con "Sí" en la columna IFU de la tabla anterior.
+- **F (funciones disponibles) = 42**: las filas con "Sí" en la columna IFU de la tabla anterior (las
+  37 del 20-10 más las 5 nuevas del 24-10: 4 de la app Kotlin y 1 de las zonas de los ríos del país;
+  si la medición se hace solo en la web, F = 38 sin CP-45 a CP-48).
 - **E (usadas regularmente)**: se observa, no se pregunta. Durante las sesiones de usabilidad
-  (sección 3) el observador marca, por participante, qué funciones de las 37 usó por su cuenta
+  (sección 3) el observador marca, por participante, qué funciones de las 42 usó por su cuenta
   (fuera de las 5 tareas guiadas, dar 5 minutos de uso libre al final). E = funciones que usó al
   menos la mitad de los participantes. Alternativa si solo hay cuestionario: preguntar al final
-  "¿cuáles de estas usaría cada semana en temporada de lluvias?" con la lista de 37 y el mismo
+  "¿cuáles de estas usaría cada semana en temporada de lluvias?" con la lista de 42 y el mismo
   corte de la mitad.
 - Las funciones que piden cuenta (CP-28 a CP-32, CP-34, CP-35, CP-37) bajan el IFU a propósito: la
   web está diseñada para consultar sin cuenta ("Para consultar no hace falta cuenta. Solo se pide
@@ -169,8 +184,9 @@ si volvió a fallar al repetirlo. Una falla reproducible cuenta una vez aunque l
 1. Stack arriba y fresco: `docker compose up -d --build` desde la raíz; `docker compose ps` debe
    listar `vigiafen-frontend-1` (0.0.0.0:8080->80), `vigiafen-backend-1` (0.0.0.0:8000->8000),
    `vigiafen-worker-1` y `vigiafen-redis-1`, todos `Up`.
-2. Esperar 5 minutos después del arranque (el worker encola 8 tareas al arrancar y `refresh_cache`
-   corre a los 5 min: antes de eso `/api/snapshot` puede dar 503 si Redis está vacío).
+2. Esperar 5 minutos después del arranque (el worker encola 9 tareas al arrancar, `titular` a los
+   5 min y `push` a los 7, y `refresh_cache` corre a los 5 min: antes de eso `/api/snapshot` puede dar
+   503 si Redis está vacío).
 3. Cerrar lo demás (Android Studio, el emulador, otros navegadores): consumen CPU y RAM y ensucian
    el PUR.
 4. Anotar la máquina. La de referencia: Intel Core i5-9300H (4 núcleos, 8 hilos), Windows 10,
@@ -458,15 +474,16 @@ objetivo y hay que decirlo.
 
 Fuente: `Documentación de requerimientos de software` v1.0 (RE01-RE07, RNF01-RNF11). El documento
 cubre el módulo A (v1); los módulos B (Cuentas), C (Comunidad) y D (Chat) también quedaron hechos
-(ver HU-17 a HU-19 y HU-23); E (Notificaciones) y F (Administración) no, y F se descartó por
-decisión del equipo del 15-09 (sin administración ni moderación humana).
+(ver HU-17 a HU-19 y HU-23); E (Notificaciones) quedó hecho el 24-10 (HU-20, push por FCM a la app
+Kotlin); F (Administración) no, y se descartó por decisión del equipo del 15-09 (sin administración
+ni moderación humana).
 
 ### 4.1. Requerimientos funcionales
 
 | RE | Requisito | Pantalla / dónde se ve | Código y datos | Estado y evidencia del 20-10 |
 |---|---|---|---|---|
 | RE01 | Ver la información más reciente sobre eventos FEN al entrar | Página `/`: hoja "Tu zona ahora" (semáforo, titular, hora de las fuentes), barra lateral (estado ENFEN, ICEN/RONI), chip de nivel | `pages/Mapa.jsx`, `components/StatusPanel.jsx`, `TuZona.jsx`, `Sidebar.jsx`; `hooks/usePanorama.js` (refresco cada 10 min), `useZonaAhora.js`; vistas `alerta_actual`, `caudal_actual`, `comunicado_enfen`, `indice`, `latido` | HECHO. Titular a los 468 ms; "sin actualizar desde" en naranja si la ingesta pasa de 3 h (ríos) o 1,5 h (lluvia); nunca "Normal" sin datos ("Sin datos") |
-| RE02 | Recolección automática de ANA, IGP, NOAA, SENAMHI y ENFEN | No se ve; se audita en `latido` y en los logs del worker | `backend/connectors/` (12 conectores: senamhi, ana, igp, noaa, enfen, senamhi_avisos, senamhi_umbrales, senamhi_pronostico, senamhi_nowcast, senamhi_avisos_hidro, ana_rios, idesep, más el ayudante `_http.py`), `backend/ingesta/`, `backend/celery_app.py` (9 tareas con Celery beat; el documento decía apscheduler) | HECHO. Arranque del 20-10 sin Traceback: ingesta 11,2 s (973 estaciones, 720 lluvia, 127 caudales), avisos 7,1 s, enfen 5,7 s, lluvia_nacional 4,9 s, rios 4,3 s, pronostico 2,9 s, nowcast 2,7 s, titular a los 5 min. Fuente caída: se conserva el último dato y queda en `fallas` del latido; TLS siempre verificado |
+| RE02 | Recolección automática de ANA, IGP, NOAA, SENAMHI y ENFEN | No se ve; se audita en `latido` y en los logs del worker | `backend/connectors/` (12 conectores: senamhi, ana, igp, noaa, enfen, senamhi_avisos, senamhi_umbrales, senamhi_pronostico, senamhi_nowcast, senamhi_avisos_hidro, ana_rios, idesep, más el ayudante `_http.py`), `backend/ingesta/`, `backend/celery_app.py` (10 tareas con Celery beat desde el 24-10, 9 el 20-10; el documento decía apscheduler) | HECHO. Arranque del 20-10 sin Traceback: ingesta 11,2 s (973 estaciones, 720 lluvia, 127 caudales), avisos 7,1 s, enfen 5,7 s, lluvia_nacional 4,9 s, rios 4,3 s, pronostico 2,9 s, nowcast 2,7 s, titular a los 5 min. Fuente caída: se conserva el último dato y queda en `fallas` del latido; TLS siempre verificado |
 | RE03 | Información climatológica resaltante | Panel "El Niño en gráficos"; franja de 3 días; barras de lluvia de 24 h; medidor de caudal | `components/ElNinoPanel.jsx`, `FranjaPronostico.jsx`, `BarrasLluvia.jsx`, `MedidorCaudal.jsx`; `icen_serie`, `pronostico_vigente` (236 localidades con punto), `lectura_lluvia`, `caudal_actual` | HECHO |
 | RE04 | Buscar y mostrar el mapa correspondiente (por defecto si no hay específico) | Panel de capas (15 capas, 7 grupos); selector de ciudad y GPS deciden la zona; capas sin dato muestran nota en vez de vaciarse | `map/layers/index.js` (`LAYERS`, `GRUPOS`), `components/LayersPanel.jsx`, `MapView.jsx`; `data/cities.js` (25) | HECHO. Un servidor externo caído (NASA, IDESEP) deja la nota "no respondió" y la capa se reintenta |
 | RE05 | Mapa de eventos FEN pasados | Capa "Eventos El Niño pasados" con selector de evento; botones del panel El Niño | `map/layers/fenHistorico.js`; tabla `mapa` (5 eventos IDESEP, trimestre inicial de cada uno) | HECHO (pendiente cargar los demás trimestres: `ESTADO.md`) |
@@ -481,10 +498,10 @@ decisión del equipo del 15-09 (sin administración ni moderación humana).
 | RNF02 | Disponible 99 % del tiempo, sobre todo en eventos FEN | Docker con `restart: unless-stopped`; snapshot en Redis si Supabase cae (la API sirve la última copia buena); SW con la cáscara de la app | Anotar caídas. **Hallazgo real**: la BD de Supabase (plan gratuito) se pausó sola del 15 al 19 de octubre por falta de uso; en ese lapso la web no tenía datos. Para 99 % hace falta plan de pago o un "latido" que la mantenga activa, y un despliegue público (hoy solo local) | **NO CUMPLIDO** en octubre; medir con `uptime` cuando haya despliegue |
 | RNF03 | Consultas y mapas en menos de 3 s | gzip precomprimido, chunks separados, preconnect a Supabase, 19 consultas en paralelo sin cascada, caché por vista (`lib/consultaCache.js`), geometrías por zoom (`cauce_lejos` / `cauce`), Redis para la API | Sección 2.2: titular 0,47 s; API 0,013 a 0,017 s; última consulta de la primera carga 3,2 s con caché fría (mapa completo) | HECHO para el titular y la API; el mapa completo en frío queda en el borde |
 | RNF04 | Soportar aumento de usuarios y datos | nginx estático + caché inmutable de 1 año; API sin BD (Redis); Supabase administrado con pooler; páginas perezosas | Sección 2.4: web 100 conexiones con p99 36 ms; API 50 conexiones con p99 0,94 s con 1 proceso | HECHO en el stack propio; Supabase es el límite no medido |
-| RNF05 | Android 14 (API 34) y navegadores modernos | APK Capacitor: minSdk 24 (Android 7), targetSdk 36 (`frontend/android/variables.gradle`); web probada en Chrome | CP-43 (emulador Pixel_7a); **no probado en Safari ni Firefox** | HECHO para Android y Chrome; pendiente Safari/Firefox/Edge |
+| RNF05 | Android 14 (API 34) y navegadores modernos | App Kotlin: minSdk 26 (Android 8.0), targetSdk 36 (`appmobile/android/app/build.gradle.kts`); la anterior de Capacitor, retirada el 24-10, tenía minSdk 24; web probada en Chrome | CP-45 a CP-48 (emulador Pixel_7a con Android 17, 24-10); **no probado en Safari ni Firefox**; el WebView del Mapa de la app, pendiente en teléfono real | HECHO para Android y Chrome; pendiente Safari/Firefox/Edge |
 | RNF06 | Confidencialidad e integridad de datos y credenciales | RLS en todas las tablas de datos (27 de 28; `spatial_ref_sys` con trigger); escritura solo con JWT de Supabase Auth; la BD pone `estado`, `confianza`, vencimientos y límites por hora; CHECK de `report.foto_url` solo al bucket del proyecto; ids uuid; `autor` no legible; API solo GET con CORS por lista; CSP, `X-Frame-Options`, `nosniff`, `Referrer-Policy` en nginx; secretos solo en `.env` (no versionado); popups escapados (sin XSS) | `select count(*) filter (where rowsecurity), count(*) from pg_tables where schemaname='public'` -> 27 / 28; `curl -sI -H "Origin: https://ejemplo.com" http://localhost:8000/health` sin `Access-Control-Allow-Origin`; advisor de Supabase; verificación de seguridad del 19/20-10 (hallazgo del bucket corregido con la migración `20261020035127`) | HECHO |
 | RNF07 | Información de fuentes oficiales verificadas y actualizada | Cada dato lleva fuente, hora y enlace (popups, tarjetas de Alertas, capas); `latido` por tarea; "sin actualizar desde" cuando una fuente se atrasa; lo que es criterio de SIMPAC se rotula "referencial" o "estimación"; `24 h` solo si la fuente lo dice | Verificación del 19/20-10 contra las fuentes en vivo: aviso 421 de SENAMHI, caudales de ANA (Mashcón 0,42 m³/s, Balsas 93,92, Nanay 122,42 m.s.n.m.), CO 18-2026 del ENFEN = pantalla = BD | HECHO |
-| RNF08 | Código modular (frontend, backend, conectores) | Un archivo por conector (`backend/connectors/`), por tarea (`backend/ingesta/`), por capa (`frontend/src/map/layers/`) y por página (`frontend/src/pages/`); lógica pura con pruebas en `frontend/src/lib/*.test.js`; 805 pruebas | `README-tecnico.md` §2 y §3; `frontend/README.md` "Estructura" | HECHO |
+| RNF08 | Código modular (frontend, backend, conectores) | Un archivo por conector (`backend/connectors/`), por tarea (`backend/ingesta/`), por capa (`frontend/src/map/layers/`) y por página (`frontend/src/pages/`); lógica pura con pruebas en `frontend/src/lib/*.test.js`; en la app, `dominio/` puro probado en JVM; 899 pruebas (720 + 157 + 22) | `README-tecnico.md` §2 y §3; `frontend/README.md` "Estructura"; `appmobile/README.md` "Estructura" | HECHO |
 | RNF09 | Interfaz legible en pantallas pequeñas | Barra inferior de 5 pestañas (56 px, objetivos de 44 px o más), hoja plegable de 4 alturas, atribución de una línea con "más", popups que miden el espacio libre (`map/popups.js`), `inert` del mapa bajo una página | CP-39: 375x812 y 360x740 sin desplazamiento horizontal; tablet 768x1024 | HECHO |
 | RNF10 | Android, Windows, macOS, iOS y los navegadores indicados | Web estándar (React, Leaflet) + APK; PWA instalable (`manifest.webmanifest`, `sw.js`) | Probado: Windows + Chrome, Android (emulador). **No probado**: macOS, iOS/Safari, Firefox, Edge; no hay app iOS (no estaba en las HU) | PARCIAL: falta probar en esos navegadores |
 | RNF11 | Interfaz y contenido en español para Cajamarca | Todo el texto en español del Perú; ciudad por defecto Cajamarca; río Mashcón vigilado; 1126 puntos de "A dónde acudir" en Cajamarca; horas de Perú (`lib/tiempo.js`) | Recorrido del 19/20-10 | HECHO |
@@ -519,4 +536,7 @@ decisión del equipo del 15-09 (sin administración ni moderación humana).
 - [ ] Despliegue público (hoy todo es `localhost`): sin él no hay medición de disponibilidad (RNF02)
       ni sesiones de usabilidad con el celular del participante. Y mantener la BD activa: el plan
       gratuito de Supabase la pausó del 15 al 19 de octubre.
-- [ ] HU-20 (push con FCM) y la mitad de HU-22 (preferencias de notificación) para llegar a ICF 100 %.
+- [x] HU-20 (push con FCM) y la preferencia de notificación de HU-22: hechos el 20-10 y verificados el
+      24-10 en el emulador (ICF 100 % estricto).
+- [ ] Ejecutar CP-48 (mapa de la app Kotlin) en un teléfono real y, si se mide la app, CP-45 a CP-47
+      también en ese teléfono (hasta ahora solo en el emulador Pixel_7a).

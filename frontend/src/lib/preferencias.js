@@ -6,6 +6,8 @@
 //   { v: 1,
 //     capas:    { [id]: boolean }   solo las que la persona dejó distinto de su defaultVisible
 //     opciones: { [id]: valor }     solo las distintas del defecto (evento FEN, "7 días", horizonte del nowcasting)
+//                                   (si la capa define opciones.migrar(valor), un valor guardado con el
+//                                   formato viejo pasa por ahí antes de validarse: "1997-1998" -> "1997-1998|DEF")
 //     dia:      { valor, fecha }    el día de avisos y pronóstico; vale solo esa fecha de Perú
 //     conocidas: [id]               capas que existían la última vez (para marcar "Nueva")
 //     guardado: ISO | null }        cuándo la persona cambió algo por última vez (null: nunca). Sirve
@@ -55,10 +57,12 @@ export function normalizar(layers, crudo, { hoy } = {}) {
     capas[id] = on;
   }
   const opciones = {};
-  for (const [id0, valor] of Object.entries(esObjeto(datos.opciones) ? datos.opciones : {})) {
+  for (const [id0, valor0] of Object.entries(esObjeto(datos.opciones) ? datos.opciones : {})) {
     const id = RENOMBRADAS[id0] ?? id0;
     const l = porId.get(id);
-    if (!l?.opciones || l.opciones.vinculo === "dia" || !valido(l, valor) || valor === l.opciones.defecto) continue;
+    if (!l?.opciones || l.opciones.vinculo === "dia") continue;
+    const valor = typeof l.opciones.migrar === "function" ? l.opciones.migrar(valor0) : valor0;
+    if (!valido(l, valor) || valor === l.opciones.defecto) continue;
     opciones[id] = valor;
   }
   // el día solo vale la misma fecha (en Perú): mañana, "Mañana" ya no quiere decir lo mismo

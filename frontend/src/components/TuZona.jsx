@@ -3,11 +3,12 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { useContador } from "@/hooks/useContador";
 import { ETIQUETA_NIVEL, PIE_OFICIAL, TELEFONOS, textoMetros } from "@/lib/zonaAhora";
+import { FRASES_RIO_PAIS } from "@/lib/lenguaje";
 
 // "Tu zona ahora": lo que se lee en 5 segundos al abrir la app. De arriba abajo: 1 el semáforo
 // (color + ícono + etiqueta, nunca solo color), 2 el titular corto (lib/zonaAhora.js titularCorto),
-// 3 los chips de distancia al río vigilado y a la zona que podría inundarse, 4 el botón según el
-// nivel. En alerta o emergencia se suma UNA instrucción grande y los botones de llamada (105/116).
+// 3 los chips de distancia al río más cercano (el vigilado o uno del país con trazo de ANA) y a la
+// zona que podría inundarse (o que no tiene mapa de zonas), 4 el botón según el nivel. En alerta o emergencia se suma UNA instrucción grande y los botones de llamada (105/116).
 // Todo texto trae fuente y hora (línea de 0,7 rem); sin GPS se mide desde el centro de la ciudad.
 //   zona      lo que devuelve hooks/useZonaAhora.js
 //   depto     nombre del departamento (para los textos de degradación)
@@ -15,7 +16,8 @@ import { ETIQUETA_NIVEL, PIE_OFICIAL, TELEFONOS, textoMetros } from "@/lib/zonaA
 //   plegado   la hoja está en su altura mínima (celular): solo semáforo, titular, instrucción,
 //             fuente y hora y el botón; los chips, el texto del GPS y el pie salen al abrirla
 //   onAccion  (accion: "zona"|"pasar"|"acudir"|"avisos") -> Mapa decide qué hace el mapa
-//   onVerRio  (rio) -> "Ver en el mapa" del río principal
+//   onVerRio  (rio) -> "Ver en el mapa" del río más cercano (zona.verRio: para un río del país,
+//             encuadra a la persona y el tramo más cercano del cauce)
 const ICONO = { normal: Circle, aviso: TriangleAlert, alerta: TriangleAlert, emergencia: OctagonAlert, sin_dato: Minus };
 
 function Semaforo({ nivel, etiqueta }) {
@@ -40,6 +42,14 @@ function Metros({ metros }) {
 
 function Chip({ chip, i }) {
   const conNivel = chip.nivel ? `tz-${chip.nivel}` : null;
+  // punteado: "este río no tiene mapa de zonas" (no afirma nada del nivel)
+  if (chip.punteado)
+    return (
+      <li className="tz-chip inline-flex max-w-full items-center gap-1.5 rounded-full border border-dashed border-border px-2.5 py-1 text-[0.8rem] leading-tight text-muted-foreground" style={{ "--i": i }}>
+        <MapPin className="h-3.5 w-3.5 shrink-0" />
+        <span className="min-w-0">{chip.texto}</span>
+      </li>
+    );
   return (
     <li
       className={cn(
@@ -66,7 +76,7 @@ function Chip({ chip, i }) {
 }
 
 export default function TuZona({ zona, depto, gps, plegado = false, onAccion, onVerRio, className }) {
-  const { nivel, titular, instruccion, chips, boton, fuentes, principal, porGps, hayRios, fuerte, zonasCargadas, origen } = zona;
+  const { nivel, titular, instruccion, chips, boton, fuentes, cercano, verRio, porGps, hayRios, hayTrazadosDepto, fuerte, origen } = zona;
   const sinGps = !porGps;
   const gpsPidiendo = gps?.status === "pending";
   const gpsNoDisponible = gps?.status === "denied" || gps?.status === "unavailable";
@@ -89,23 +99,19 @@ export default function TuZona({ zona, depto, gps, plegado = false, onAccion, on
         </div>
       </div>
 
-      {/* chips: dónde estás respecto del río y de la zona; sin GPS, cómo activarlo; sin ríos, que se
-          diga (plegada, la hoja los guarda para cuando se abra: el mapa tiene que verse) */}
+      {/* chips: dónde estás respecto del río más cercano (vigilado o con trazo de ANA) y de su zona, o
+          que no tiene mapa de zonas (lib/zonaAhora.js chipsDistancia y chipSinZonas); sin GPS, cómo
+          activarlo. "No vigila ríos" solo si el departamento no tiene ningún río con trazo ni vigilado
+          (plegada, la hoja los guarda para cuando se abra: el mapa tiene que verse) */}
       {!plegado && (
         <ul className="mt-2.5 flex flex-wrap gap-1.5" aria-label="Dónde estás">
           {chips.map((c, i) => (
             <Chip key={c.clave} chip={c} i={i} />
           ))}
-          {!hayRios && zona.nivel !== "sin_dato" && (
+          {!hayRios && !hayTrazadosDepto && !cercano && zona.nivel !== "sin_dato" && (
             <li className="tz-chip inline-flex items-center gap-1.5 rounded-full border border-dashed border-border px-2.5 py-1 text-[0.8rem] leading-tight text-muted-foreground">
               <Waves className="h-3.5 w-3.5 shrink-0" />
-              Aquí SIMPAC no vigila ríos con mapa de zonas todavía
-            </li>
-          )}
-          {hayRios && principal && chips.length > 0 && !chips.some((c) => c.clave === "zona") && zonasCargadas && (
-            <li className="tz-chip inline-flex items-center gap-1.5 rounded-full border border-dashed border-border px-2.5 py-1 text-[0.8rem] leading-tight text-muted-foreground" style={{ "--i": 1 }}>
-              <MapPin className="h-3.5 w-3.5 shrink-0" />
-              Este río aún no tiene mapa de la zona que podría inundarse
+              {FRASES_RIO_PAIS.sinRiosDepto}
             </li>
           )}
         </ul>
@@ -134,11 +140,11 @@ export default function TuZona({ zona, depto, gps, plegado = false, onAccion, on
             <span className={cn(f.mal && "font-medium text-nivel-alerta")}>{f.texto}</span>
           </span>
         ))}
-        {principal && onVerRio && (
+        {cercano && verRio && onVerRio && (
           <>
             {" · "}
-            <button type="button" onClick={() => onVerRio(principal.rio)} className="underline hover:text-foreground">
-              Ver el {principal.rio.nombre.replace(/^R[ií]o /, "río ")} en el mapa
+            <button type="button" onClick={() => onVerRio(verRio)} className="underline hover:text-foreground">
+              Ver el {cercano.rio.nombre.replace(/^R[ií]o /, "río ")} en el mapa
             </button>
           </>
         )}

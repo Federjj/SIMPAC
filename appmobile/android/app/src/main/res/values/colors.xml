@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Fondo del icono adaptable (mismo azul oscuro que la pantalla de inicio de la web) -->
+    <color name="ic_launcher_background">#0F172A</color>
+    <!-- Azul de SIMPAC: color de acento de las notificaciones -->
+    <color name="simpac_azul">#1D4ED8</color>
+</resources>

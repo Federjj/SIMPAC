@@ -67,3 +67,36 @@ def origenes_cors(texto: str | None) -> tuple[str, ...]:
         if o and o != "*" and o not in vistos:
             vistos.append(o)
     return tuple(vistos) or CORS_ORIGENES_DEFECTO
+
+
+# ---------------------------------------------------------------------------------------
+# Avisador push (HU-20, backend/ingesta/push.py). Solo el worker recibe estas variables.
+# ---------------------------------------------------------------------------------------
+@dataclass(frozen=True)
+class AjustesPush:
+    # FIREBASE_CREDENCIALES: la cuenta de servicio del proyecto Firebase, como RUTA a su archivo JSON
+    # (montado en el contenedor) o como ese JSON en base64 (lo más simple con docker compose: cabe en
+    # una línea del .env). Vacío = la tarea 'push' no envía nada y lo dice en su latido.
+    credenciales: str
+    # FIREBASE_PROYECTO: id del proyecto (p. ej. appsimpac). Opcional: si falta se lee project_id del JSON.
+    proyecto: str
+
+
+@lru_cache
+def ajustes_push() -> AjustesPush:
+    # En Docker el JSON no se pega en el .env: docker-compose.yml lo monta de solo lectura en
+    # /run/secrets/firebase.json desde la ruta del host FIREBASE_CREDENCIALES_ARCHIVO y pasa esa ruta
+    # del contenedor en FIREBASE_CREDENCIALES_MONTADA (vacía si no se configuró). Si el archivo montado
+    # existe y tiene contenido, manda sobre FIREBASE_CREDENCIALES (que en Windows suele ser una ruta
+    # del host, ilegible adentro del contenedor).
+    montada = (os.environ.get("FIREBASE_CREDENCIALES_MONTADA") or "").strip()
+    credenciales = (os.environ.get("FIREBASE_CREDENCIALES") or "").strip()
+    try:
+        if montada and os.path.isfile(montada) and os.path.getsize(montada) > 2:
+            credenciales = montada
+    except OSError:
+        pass
+    return AjustesPush(
+        credenciales=credenciales,
+        proyecto=(os.environ.get("FIREBASE_PROYECTO") or "").strip(),
+    )

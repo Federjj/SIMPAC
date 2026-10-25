@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Seguridad de red del debug: permite http para poder apuntar la API y la web a la IP de la PC
+     en la misma red (Ajustes). Supabase va siempre por https. -->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true" />
+</network-security-config>

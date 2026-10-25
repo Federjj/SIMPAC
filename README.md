@@ -3,10 +3,12 @@
 **Sistema de Información Meteorológica y Prevención de Anomalías de Cajamarca.** Plataforma web (y
 app Android) que centraliza datos hidrometeorológicos oficiales del Perú, con foco en Cajamarca, para
 seguir el fenómeno El Niño y sus efectos: avisos de SENAMHI, estado del sistema de alerta del ENFEN,
-ríos de la ANA (el Mashcón vigilado y los 100 ríos del país con estación), lluvia medida y
-pronosticada, alertas por zona y a dónde acudir en una emergencia, explicados en lenguaje claro sobre
-un mapa. Además del mapa tiene las páginas Alertas, Comunidad (reportes ciudadanos con cuenta), Chat
-por departamento, Cuenta e Histórico por estación.
+ríos de la ANA (el Mashcón vigilado y los 100 ríos del país con estación, 20 de ellos con la zona que
+podría inundarse estimada con el relieve), lluvia medida y pronosticada, alertas por zona y a dónde
+acudir en una emergencia, explicados en lenguaje claro sobre un mapa. Además del mapa tiene las páginas
+Alertas, Comunidad (reportes ciudadanos con cuenta), Chat por departamento, Cuenta e Histórico por
+estación. La app Android (nativa, Kotlin) recibe una notificación cuando su departamento entra en
+alerta o emergencia oficial.
 
 ## Cómo está armado
 
@@ -14,10 +16,10 @@ por departamento, Cuenta e Histórico por estación.
 |---|---|---|
 | `frontend` | Web en React + Vite + Leaflet + react-router, servida por nginx (comprimida con gzip y con caché de un año para los archivos con hash) | http://localhost:8080 |
 | `backend` | API de solo lectura en FastAPI (CORS solo para los orígenes de la web y la app) | http://localhost:8000/health |
-| `worker` | Celery + beat: cada cierto tiempo baja los datos de las fuentes oficiales, los guarda en la base y redacta el titular por departamento | (sin puerto; ver sus logs) |
+| `worker` | Celery + beat: cada cierto tiempo baja los datos de las fuentes oficiales, los guarda en la base, redacta el titular por departamento y avisa por notificación push a la app cuando un departamento entra en alerta o emergencia | (sin puerto; ver sus logs) |
 | `redis` | Caché de la API y cola de tareas del worker | solo dentro de la máquina |
 | Base de datos | PostgreSQL + PostGIS en Supabase (en la nube, no corre en tu computadora); también las cuentas (Supabase Auth), las fotos de los reportes (bucket `reportes`) y el chat en vivo (Realtime) | — |
-| App Android | La misma web empaquetada con Capacitor (`frontend/android/`); se compila aparte, sin Docker | ver [App Android](#app-android) y [`appmobile/README.md`](appmobile/README.md) |
+| App Android | App nativa en Kotlin + Jetpack Compose (`appmobile/android/`): semáforo, alertas, a dónde acudir, el mapa de la web en un WebView y notificaciones push; se compila aparte, sin Docker. La app anterior (la web empaquetada con Capacitor) se retiró del repo el 2026-10-24 | ver [App Android](#app-android) y [`appmobile/README.md`](appmobile/README.md) |
 
 La web lee la base directamente con una llave **pública**: los datos los protegen las reglas de
 seguridad por fila de la base, no el secreto de la llave. Solo el worker escribe los datos oficiales,
@@ -188,6 +190,7 @@ Las imágenes no traen las pruebas, por eso el último comando monta la carpeta 
 | `nowcast` (cada 10 min) | lluvia de las próximas 1 a 2 horas (producto experimental de SENAMHI) | `docker compose run --rm worker python -m backend.ingesta.nowcast` |
 | `rios` (cada hora) | avisos hidrológicos de SENAMHI de todo el país, con su detalle (hora, caudal, umbral rojo y si es de crecida o de vaciante): colorean la zona que el río Mashcón podría afectar y el cauce de los ríos del país | `docker compose run --rm worker python -m backend.ingesta.rios` |
 | `titular` (cada 30 min) | titular en lenguaje claro por departamento (24 + Callao) a partir de las alertas, los avisos, los ríos, la lluvia y el ENFEN ya guardados; sin `SIMPAC_LLM_KEY` lo arman reglas fijas (nunca crea alertas) | `docker compose run --rm worker python -m backend.ingesta.titular` |
+| `push` (cada 5 min) | avisa por Firebase Cloud Messaging a la app Android cuando un departamento sube a alerta o emergencia oficial (y cuando vuelve la calma); nunca por avisos amarillos ni lluvia medida; sin `FIREBASE_CREDENCIALES_ARCHIVO` solo deja su latido. Prueba a un tema: `docker compose exec worker python -m backend.ingesta.push --prueba --zona Cajamarca` | `docker compose run --rm worker python -m backend.ingesta.push` |
 
 Además, cada 5 minutos la tarea interna `refresh_cache` rearma el resumen que sirve la API
 (`/api/snapshot`). Al arrancar, el worker encola todas las tareas de datos y el titular corre 5
@@ -205,6 +208,9 @@ minutos después, cuando las demás ya escribieron.
 | `SIMPAC_LLM_KEY` | Opcional. Clave de la API de Anthropic para que la tarea `titular` redacte el titular de cada departamento con un modelo de lenguaje (también vale `ANTHROPIC_API_KEY`). Vacía = el titular lo arman reglas fijas en Python, sin ningún pedido externo. Con clave, se pide una sola redacción por departamento y solo cuando cambian sus datos; el texto se valida contra las cifras antes de guardarse | **Sí** |
 | `SIMPAC_LLM_MODELO` | Opcional. Modelo que usa `titular` cuando hay clave (por defecto `claude-haiku-4-5-20251001`) | No |
 | `SIMPAC_CORS_ORIGENES` | Opcional. Orígenes (`esquema://host:puerto`, separados por coma) a los que responde la API. Vacío = `http://localhost:8080`, `http://localhost:5173`, `https://localhost` y `capacitor://localhost` (la web de Docker, Vite y la app Android). Publicada en un dominio, poner el de la web | No |
+| `FIREBASE_CREDENCIALES_ARCHIVO` | Opcional. Ruta **en tu máquina** al JSON de la cuenta de servicio del proyecto Firebase (`appsimpac`), para que la tarea `push` del worker mande notificaciones a la app Android. `docker compose` lo monta de solo lectura en `/run/secrets/firebase.json` dentro del worker; el archivo se guarda fuera del repo. Vacía = la tarea no envía nada y lo dice en su latido | **Sí** (el archivo) |
+| `FIREBASE_CREDENCIALES` | Opcional, para correr el worker fuera de Docker: ruta a ese JSON o el JSON en base64. Si `FIREBASE_CREDENCIALES_ARCHIVO` está montado, manda el archivo montado | **Sí** |
+| `FIREBASE_PROYECTO` | Opcional. Id del proyecto Firebase; vacío = se lee `project_id` del JSON | No |
 
 El archivo `.env` nunca se sube a git (ya está en `.gitignore`). Todas las variables están
 comentadas en `.env.docker.example`. El mapa base (Stadia Maps) no necesita variable: sirve sin llave
@@ -301,7 +307,23 @@ Para no depender de la base del proyecto:
    los ríos que aún no tienen fila. Otras opciones: `--rio <nombre>` (uno solo), `--forzar`,
    `--recorte KM`, `--podar` (con `--aplicar`, borra los ríos que ya no se buscan).
 
-8. Los lugares de "A dónde acudir" (hospitales y postas, comisarías, bomberos y Defensa Civil) se
+8. Las zonas que podrían inundarse junto a 20 ríos del país (Rímac, Chillón, Piura, Chira, Tumbes,
+   Cajamarca, Jequetepeque, Santa, Ica, Chili, Mayo, Utcubamba, Huallaga, Cumbaza, Chancay-Lambayeque,
+   La Leche, Zaña, Chicama, Tambo y Vilcanota), estimadas con el relieve, también se cargan una sola
+   vez desde los archivos que ya vienen en el repo (`backend/data/cauces_zonas/`, 20 GeoJSON, 3,1 MB).
+   Sin `--aplicar` solo revisa los archivos y muestra una línea por río; con `--aplicar` los escribe
+   (se puede repetir sin duplicar nada; sin `--podar` nunca borra):
+
+   ```
+   docker compose run --rm worker python -m backend.mapas.cargar_cauces_zonas
+   docker compose run --rm worker python -m backend.mapas.cargar_cauces_zonas --aplicar
+   ```
+
+   Son una estimación de SIMPAC con el modelo de elevación Copernicus GLO-30, no un mapa oficial, y
+   la web lo dice en cada zona. Calcularlas para otro río no se hace en Docker (necesita un entorno
+   aparte con `backend/requirements-relieve.txt`): ver `docs/README-tecnico.md`, sección 5.6.11.
+
+9. Los lugares de "A dónde acudir" (hospitales y postas, comisarías, bomberos y Defensa Civil) se
    cargan desde los archivos de `backend/data/acudir/` (ya vienen en el repo: salud de Cajamarca,
    comisarías y bomberos de todo el país y 3 puntos de Defensa Civil). Sin `--aplicar` solo valida
    los archivos y muestra el resumen ("2540 puntos: salud 1001 (24 h: 42) ..."); con `--aplicar` los
@@ -320,7 +342,7 @@ Para no depender de la base del proyecto:
    No hay albergues ni zonas seguras porque ninguna fuente oficial los publica georreferenciados;
    cuando la municipalidad publique su lista se cargarán con su fuente.
 
-9. Para que funcionen las cuentas, los reportes con foto y el chat: la migración
+10. Para que funcionen las cuentas, los reportes con foto y el chat: la migración
    `20261014105232_comunidad_fotos_y_chat_realtime` crea el bucket público `reportes` (3 MB por
    foto, solo JPEG/PNG/WebP) y publica la tabla del chat por Realtime; en el panel de Supabase hay que
    dejar activo el proveedor *Email* de Authentication y agregar en *Authentication → URL
@@ -331,39 +353,52 @@ La capa "Lluvia del mes frente a lo normal" no tiene cargador automático y qued
 
 ## App Android
 
-La app es la misma web empaquetada con [Capacitor](https://capacitorjs.com/): un proyecto Android
-normal en `frontend/android/` que abre la web compilada en un WebView y usa el GPS del teléfono. No
-se compila con Docker. Los detalles (decisiones, firma, Play Console, emulador, notificaciones
-pendientes) están en [`appmobile/README.md`](appmobile/README.md).
+Desde el 20 de octubre de 2026 la app es **nativa, en Kotlin + Jetpack Compose**, y vive en
+`appmobile/android/` (identificador `pe.simpac.app`, Android 8.0 o superior). Tiene cinco pestañas:
+Inicio (el semáforo de tu departamento con el titular, El Niño, el pronóstico de 3 días y los
+teléfonos 105 y 116), Alertas, Mapa (la web de SIMPAC dentro de la app), Acudir (los lugares más
+cercanos) y Cuenta (ajustes y el interruptor de **notificaciones**: te avisa cuando tu departamento
+entra en alerta o emergencia oficial y cuando vuelve la calma; nunca por avisos amarillos ni lluvia
+medida). No se compila con Docker. La guía completa (requisitos, compilar, emulador, Firebase, firma y
+Play Console) está en [`appmobile/README.md`](appmobile/README.md).
 
-**Requisitos**: Node.js 22 o superior con las dependencias del front instaladas (`cd frontend && npm
-install`), `frontend/.env` (paso "Desarrollo sin Docker"), **JDK 21** y el **Android SDK** con
-`platforms;android-36`, `build-tools;36.0.0` y `platform-tools` (los instala Android Studio desde
-*SDK Manager*), con `JAVA_HOME` y `ANDROID_HOME` definidos. La primera compilación baja Gradle y las
-dependencias (unos 500 MB).
+**Requisitos**: **JDK 21** y el **Android SDK** con `platforms;android-36`, `build-tools;36.0.0` y
+`platform-tools` (los instala Android Studio desde *SDK Manager*), con `JAVA_HOME` y `ANDROID_HOME`
+definidos; `frontend/.env` o `frontend/.env.example` (de ahí toma la dirección y la llave pública de
+Supabase al compilar). La primera compilación baja Gradle 9.1.0 y las dependencias (unos 600 MB).
 
-**Comandos** (desde `frontend/`; en macOS y Linux reemplazar `gradlew` por `./gradlew` dentro de
-`android/`):
+**Comandos** (desde `appmobile/android/`, en PowerShell en Windows; en macOS y Linux `./gradlew`):
 
 | Comando | Qué hace | Resultado |
 |---|---|---|
-| `npm run android:sync` | compila la web y la copia al proyecto Android (`npx cap sync android`); hay que correrlo cada vez que cambia la web | `android/app/src/main/assets/public/` |
-| `npm run android:apk` | sync + APK de prueba firmado con la llave de depuración, para instalar directo con `adb install -r` | `android/app/build/outputs/apk/debug/app-debug.apk` (5,3 MB el 2026-10-20) |
-| `npm run android:aab` | sync + paquete para Play Console (firmado si hay `key.properties`) | `android/app/build/outputs/bundle/release/app-release.aab` |
-| `npm run android:apk:release` | sync + APK firmado para repartir fuera de la tienda | `android/app/build/outputs/apk/release/app-release.apk` |
-| `npm run android:open` / `npm run android:run` | abrir en Android Studio / instalar y abrir en el emulador o teléfono conectado | — |
+| `.\gradlew.bat assembleDebug` | APK de prueba firmado con la llave de depuración, para instalar con `adb install -r` | `app/build/outputs/apk/debug/app-debug.apk` (15 846 448 bytes el 2026-10-24) |
+| `.\gradlew.bat testDebugUnitTest` | las 22 pruebas de la lógica de la app (sin emulador) | informe en `app/build/reports/tests/` |
+| `.\gradlew.bat bundleRelease` | paquete para Play Console (firmado si hay `key.properties`) | `app/build/outputs/bundle/release/app-release.aab` |
+| `.\gradlew.bat assembleRelease` | APK firmado para repartir fuera de la tienda | `app/build/outputs/apk/release/app-release.apk` |
 
-En Windows los scripts se corren desde PowerShell (desde Git Bash `gradlew.bat` no se encuentra por
-la conversión de rutas de MSYS). La compilación de prueba del 2026-10-20 tardó 9 s de Gradle con el
-daemon caliente, más 9 s del build de la web y 2 s del sync.
+Para que la app **reciba notificaciones** hace falta `appmobile/android/app/google-services.json`,
+que se descarga de la consola de Firebase del proyecto `appsimpac` (no va al repo; sin él la app
+compila igual y el interruptor dice que las notificaciones no están configuradas). Para que el
+**worker las envíe** hace falta la cuenta de servicio de Firebase en `FIREBASE_CREDENCIALES_ARCHIVO`
+del `.env` (ver "Configuración"). En la app, Cuenta > Ajustes permite cambiar las direcciones de la API
+y de la web (por defecto `http://10.0.2.2:8000` y `http://10.0.2.2:8080`, que desde el emulador son el
+Docker de tu PC; en un teléfono real, la IP de la PC o el dominio).
+
+**App anterior (Capacitor), retirada el 2026-10-24**: entre el 14-10 y el 24-10-2026 la app fue la misma
+web empaquetada con [Capacitor](https://capacitorjs.com/) en `frontend/android/`. La app Kotlin la
+reemplazó al instalarse (mismo identificador) y, una vez arreglado su mapa (el WebView dentro de Compose
+necesitaba alto `MATCH_PARENT`; con el `WRAP_CONTENT` por defecto la web quedaba con alto 0 y se veía
+en blanco), se borraron `frontend/android/`, `frontend/capacitor.config.json`, los scripts `android:*`
+de `frontend/package.json` y las dependencias `@capacitor/*`. Hoy solo existe la app de
+`appmobile/android/`.
 
 **Firma para publicar**: Google Play exige un paquete firmado con una llave propia que se crea una
 sola vez con `keytool` y no se sube al repo (`key.properties`, `*.jks` y `*.keystore` están en
-`.gitignore`). `frontend/android/app/build.gradle` lee la llave de `frontend/android/key.properties`
+`.gitignore`). `appmobile/android/app/build.gradle.kts` lee la llave de `appmobile/android/key.properties`
 o, si no existe, de las variables de entorno `SIMPAC_KEYSTORE_FILE`, `SIMPAC_KEYSTORE_PASSWORD`,
 `SIMPAC_KEY_ALIAS` y `SIMPAC_KEY_PASSWORD`; sin ninguna de las dos el release se compila sin firmar.
 Antes de cada publicación subir `versionCode` y `versionName` en ese mismo archivo. Identificador de la
-app: `pe.simpac.app`; Android mínimo 7.0 (API 24), `targetSdk` 36.
+app: `pe.simpac.app`; `versionCode 2`; Android mínimo 8.0 (API 26), `targetSdk` 36.
 
 ## Problemas comunes
 
@@ -381,24 +416,25 @@ app: `pe.simpac.app`; Android mínimo 7.0 (API 24), `targetSdk` 36.
 | La web carga pero el mapa sale gris | Falta internet o el proveedor del mapa base no respondió. El mapa base (Stadia Maps) es gratuito en `localhost`; publicado en un dominio propio, o abierto desde otra computadora por la IP de la red, pide una llave gratuita de Stadia |
 | El panel dice "sin actualizar desde…" | Ningún worker está actualizando la base en ese momento (modo solo lectura) o una fuente oficial no respondió; el panel avisa cuál |
 | No aparece la capa de lluvia de las próximas horas | Es un producto experimental de SENAMHI que a veces deja de publicarse; la capa lo explica en su nota y vuelve sola |
-| Al construir la web en Docker sale `npm warn EBADENGINE` por `@supabase/supabase-js` | La imagen usa `node:20-alpine` y la librería pide Node 22 o superior; compila y corre igual. Pendiente subir `frontend/Dockerfile` a `node:22-alpine` |
+| Al construir la web en Docker sale `npm warn EBADENGINE` por `@supabase/supabase-js` | Ya no debería salir: `frontend/Dockerfile` usa `node:22-alpine` desde el 20-10-2026. Si sale, el Dockerfile es viejo: `git pull` y `docker compose up -d --build frontend` |
+| La app Android no recibe notificaciones | En la app, Cuenta > el interruptor tiene que estar encendido (pide el permiso de Android 13+). Si dice "no configuradas en esta instalación", falta `appmobile/android/app/google-services.json` al compilar. Del lado del servidor, `docker compose logs worker` debe mostrar `Push: {... 'credenciales': True}`; si dice `push sin credenciales de Firebase`, falta `FIREBASE_CREDENCIALES_ARCHIVO` en el `.env` (y `docker compose up -d worker`). Prueba: `docker compose exec worker python -m backend.ingesta.push --prueba --zona Cajamarca` (la primera vez puede tardar unos minutos en llegar). Solo se avisa cuando el departamento cambia a alerta o emergencia o vuelve la calma, nunca por un aviso amarillo |
+| `.\gradlew.bat` de `appmobile/android/` falla con "Unsupported class file major version" o no encuentra el SDK | Hace falta JDK 21 en `JAVA_HOME` y `ANDROID_HOME` con `platforms;android-36`; correrlo desde PowerShell o CMD, no desde Git Bash |
 | El titular de la hoja dice lo mismo que la barra lateral y no cambia aunque haya clave del LLM | Sin `SIMPAC_LLM_KEY` el titular lo arman reglas (`origen = reglas`); con clave, el worker hay que recrearlo (`docker compose up -d worker`) y el modelo solo se consulta cuando cambian los datos del departamento. `docker compose logs worker` muestra el resumen de cada corrida de `titular` |
-| Al compilar la app Android: `Duplicate resources` en `mergeDebugAssets` | El build de la web deja un `.gz` junto a cada `.js`/`.css` y Capacitor los copia al proyecto; `frontend/android/app/build.gradle` ya los excluye con `!*.gz` en `ignoreAssetsPattern`. Si vuelve a pasar, revisar que esa línea siga ahí |
-| `gradlew: command not found` o `cmd //c gradlew.bat` no encuentra el script | Correr los comandos `npm run android:*` desde PowerShell (Windows) o usar `./gradlew` dentro de `frontend/android` (macOS, Linux) |
+| `gradlew: command not found` o `cmd //c gradlew.bat` no encuentra el script | Correr `.\gradlew.bat` desde PowerShell (Windows) o `./gradlew` (macOS, Linux) dentro de `appmobile/android` |
 
 ## Estructura del repositorio
 
 ```
 backend/        API (app.py), worker (celery_app.py), conectores a las fuentes (connectors/),
-                tareas de ingesta y el titular (ingesta/), cargadores de mapas, ríos y lugares a
-                dónde acudir (mapas/), datos revisados a mano y copias de las fuentes (data/:
-                rios/, cauces/, acudir/), prototipo sin dependencias (prototipo/) y pruebas
-                (tests/, 657 pruebas)
+                tareas de ingesta, el titular y el avisador push (ingesta/), cargadores de mapas,
+                ríos, zonas de relieve y lugares a dónde acudir (mapas/), datos revisados a mano y
+                copias de las fuentes (data/: rios/, cauces/, cauces_zonas/, acudir/), prototipo sin
+                dependencias (prototipo/) y pruebas (tests/, 726 pruebas)
 frontend/       web en React + Vite + Tailwind + Leaflet + react-router (ver frontend/README.md);
-                148 pruebas con node --test
-frontend/android/  proyecto Android de la app (Capacitor); lo generado por Gradle no se versiona
-appmobile/      documentación de la app Android
-supabase/       migraciones de la base (migrations/, 32 archivos) y esquema consolidado (schema.sql)
+                157 pruebas con node --test
+appmobile/      documentación de la app Android (README.md) y la app nativa en Kotlin + Compose
+                (android/: 36 archivos Kotlin, 22 pruebas; build/ y google-services.json no se versionan)
+supabase/       migraciones de la base (migrations/, 35 archivos) y esquema consolidado (schema.sql)
 docs/           documentación técnica y estado del proyecto
 docker-compose.yml, .env.docker.example
 ```
@@ -412,7 +448,8 @@ docker-compose.yml, .env.docker.example
   25010 del curso (casos de prueba, tiempos, carga, guion de usabilidad).
 - [`frontend/README.md`](frontend/README.md): capas del mapa, páginas, lenguaje claro y cómo lee los
   datos la web.
-- [`appmobile/README.md`](appmobile/README.md): la app Android (compilar, firmar, publicar).
+- [`appmobile/README.md`](appmobile/README.md): la app Android nativa (compilar, probar, Firebase,
+  firmar, publicar).
 - [`backend/data/acudir/README.md`](backend/data/acudir/README.md): los archivos de "A dónde
   acudir" y su fuente.
 
@@ -435,10 +472,13 @@ El uso que se le da a esta información es de mi (nuestra) entera responsabilida
 | Comisarías | MININTER, padrón de comisarías básicas a noviembre de 2019, servido por CENEPRED/COEN como puntos | ODC-By (ficha de MININTER); la web avisa que el padrón es de 2019 |
 | Compañías de bomberos | CGBVP (directorio del portal: dirección y teléfono) y CENEPRED/COEN (ubicación) | Información pública institucional sin licencia declarada |
 | Defensa Civil, números de emergencia y recomendación de zona segura | Fichas de gob.pe (INDECI, Municipalidad Provincial y Gobierno Regional de Cajamarca, DIRESA) y la campaña "Preparados ante lluvias intensas" de INDECI | Contenido público del Estado; verificados el 14-10-2026, con la fecha guardada por punto |
+| Zonas que podrían inundarse junto a 20 ríos del país | Estimación de SIMPAC con el relieve (Copernicus DEM GLO-30, teselas públicas de AWS) sobre el trazo de ANA - GeoSNIRH | Aviso literal de Copernicus (© DLR e.V. 2010-2014 y © Airbus Defence and Space GmbH 2014-2018, provisto bajo COPERNICUS por la Unión Europea y la ESA) y atribución a la ANA en cada zona; la web las rotula "Estimación de SIMPAC con el relieve; no es un mapa oficial" y nunca da metros |
 | Mapa base | Stadia Maps (estilo Alidade Smooth) sobre OpenMapTiles y OpenStreetMap | Gratuito en `localhost` y en la app; en un dominio propio pide su llave gratuita; la atribución va siempre en el mapa |
 | Tipografías | Geist e Inter, servidas por Google Fonts | Licencia SIL Open Font |
+| Notificaciones push | Firebase Cloud Messaging (Google), proyecto `appsimpac` | Gratuito (plan Spark); solo llega a quien enciende el interruptor en la app; el servidor envía como mucho un mensaje por cambio de nivel y departamento |
 
-Las zonas que el río Mashcón podría afectar son una estimación de SIMPAC a partir del relieve o
-vienen del estudio INDECI-PNUD 2005, y la web lo dice en cada una: ninguna es un mapa oficial. La app
-y la web no son un canal oficial de SENAMHI, la ANA ni INDECI: el aviso oficial llega por SISMATE,
-INDECI y Defensa Civil.
+Las zonas que el río Mashcón y los 20 ríos del país podrían afectar son una estimación de SIMPAC a
+partir del relieve (en el Mashcón, además, del estudio INDECI-PNUD 2005), y la web lo dice en cada una:
+ninguna es un mapa oficial. La franja punteada junto a un río en alerta es una banda de ancho fijo de
+referencia, no un mapa de inundación. La app y la web no son un canal oficial de SENAMHI, la ANA ni
+INDECI: el aviso oficial llega por SISMATE, INDECI y Defensa Civil.

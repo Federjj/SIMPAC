@@ -9,3 +9,7 @@ redis>=5.0
 httpx>=0.27
 psycopg[binary]>=3.2
 pypdf>=5.1                 # texto de los comunicados ENFEN (PDF), solo lo usa el worker
+# Avisador push (backend/ingesta/push.py, solo el worker): google-auth firma el JWT RS256 de la cuenta
+# de servicio para el token OAuth2 de FCM (es la librería oficial de Google, pura Python, sin compilar;
+# el POST del token y el de FCM van con urllib, por eso no hace falta requests ni firebase-admin).
+google-auth>=2.35

@@ -1,0 +1,12 @@
+# Solo para backend/mapas/zonas_relieve.py (zonas que podrían inundarse, estimadas con el relieve):
+# se corre a mano, una vez por río, en un entorno propio fuera del contenedor. Sin GDAL ni rasterio:
+# las teselas Copernicus GLO-30 (GeoTIFF COG) se leen con tifffile + imagecodecs y la georreferencia
+# sale de las etiquetas ModelTiepoint/ModelPixelScale.
+#   python -m venv /ruta/fuera/del/repo/venv-relieve
+#   /ruta/.../venv-relieve/bin/pip install -r backend/requirements-relieve.txt
+numpy>=1.26
+scipy>=1.11
+shapely>=2.0
+pyproj>=3.6
+tifffile>=2024.1
+imagecodecs>=2024.1

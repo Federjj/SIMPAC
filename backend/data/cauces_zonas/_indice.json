@@ -1,0 +1,560 @@
+{
+ "amazonas": {
+  "estado": "descartado",
+  "motivo": "selva baja muy plana: el HAND no distingue la llanura de inundación del resto",
+  "centro": {
+   "lat": 0.0,
+   "lon": 0.0,
+   "etiqueta": ""
+  },
+  "tramo_km": 0.0,
+  "corredor_km2": 0.0,
+  "km2": {},
+  "fraccion_2m": 0.0,
+  "segundos": 0.0,
+  "teselas": [],
+  "notas": [],
+  "fecha": "2026-10-20"
+ },
+ "cajamarca": {
+  "estado": "hecho",
+  "motivo": null,
+  "centro": {
+   "lat": -7.2294,
+   "lon": -78.4131,
+   "etiqueta": "la estación Jesús Túnel (Baños del Inca y Jesús)"
+  },
+  "tramo_km": 30.2,
+  "corredor_km2": 158.2,
+  "km2": {
+   "bajo_2m": 3.469,
+   "bajo_3m": 4.189
+  },
+  "fraccion_2m": 0.022,
+  "segundos": 11.0,
+  "teselas": [
+   "Copernicus_DSM_COG_10_S08_00_W079_00_DEM"
+  ],
+  "notas": [],
+  "fecha": "2026-10-24"
+ },
+ "chancay_lambayeque": {
+  "estado": "hecho",
+  "motivo": null,
+  "centro": {
+   "lat": -6.625398,
+   "lon": -79.305331,
+   "etiqueta": "la estación Racarumi"
+  },
+  "tramo_km": 60.0,
+  "corredor_km2": 304.2,
+  "km2": {
+   "bajo_2m": 5.315,
+   "bajo_3m": 6.516
+  },
+  "fraccion_2m": 0.017,
+  "segundos": 8.4,
+  "teselas": [
+   "Copernicus_DSM_COG_10_S07_00_W080_00_DEM",
+   "Copernicus_DSM_COG_10_S07_00_W079_00_DEM"
+  ],
+  "notas": [],
+  "fecha": "2026-10-24"
+ },
+ "chicama": {
+  "estado": "hecho",
+  "motivo": null,
+  "centro": {
+   "lat": -7.66069,
+   "lon": -78.96109,
+   "etiqueta": "la estación Salinar"
+  },
+  "tramo_km": 36.3,
+  "corredor_km2": 197.5,
+  "km2": {
+   "bajo_2m": 7.673,
+   "bajo_3m": 9.897
+  },
+  "fraccion_2m": 0.039,
+  "segundos": 6.2,
+  "teselas": [
+   "Copernicus_DSM_COG_10_S08_00_W080_00_DEM",
+   "Copernicus_DSM_COG_10_S08_00_W079_00_DEM"
+  ],
+  "notas": [],
+  "fecha": "2026-10-24"
+ },
+ "chili": {
+  "estado": "hecho",
+  "motivo": null,
+  "centro": {
+   "lat": -16.42679,
+   "lon": -71.67503,
+   "etiqueta": "la estación Puente del Diablo (Arequipa)"
+  },
+  "tramo_km": 60.0,
+  "corredor_km2": 294.1,
+  "km2": {
+   "bajo_2m": 5.151,
+   "bajo_3m": 5.991
+  },
+  "fraccion_2m": 0.018,
+  "segundos": 13.0,
+  "teselas": [
+   "Copernicus_DSM_COG_10_S17_00_W072_00_DEM"
+  ],
+  "notas": [],
+  "fecha": "2026-10-24"
+ },
+ "chillon": {
+  "estado": "hecho",
+  "motivo": null,
+  "centro": {
+   "lat": -11.83,
+   "lon": -77.02,
+   "etiqueta": "Lima Norte (de Puente Magdalena al mar)"
+  },
+  "tramo_km": 60.0,
+  "corredor_km2": 314.0,
+  "km2": {
+   "bajo_2m": 6.605,
+   "bajo_3m": 8.429
+  },
+  "fraccion_2m": 0.021,
+  "segundos": 40.4,
+  "teselas": [
+   "Copernicus_DSM_COG_10_S12_00_W078_00_DEM",
+   "Copernicus_DSM_COG_10_S12_00_W077_00_DEM"
+  ],
+  "notas": [],
+  "fecha": "2026-10-24"
+ },
+ "chira": {
+  "estado": "hecho",
+  "motivo": null,
+  "centro": {
+   "lat": -4.8801,
+   "lon": -81.0216,
+   "etiqueta": "la estación Pte. Simón Rodríguez (Sullana)"
+  },
+  "tramo_km": 60.0,
+  "corredor_km2": 266.9,
+  "km2": {
+   "bajo_2m": 22.401,
+   "bajo_3m": 32.504
+  },
+  "fraccion_2m": 0.084,
+  "segundos": 21.2,
+  "teselas": [
+   "Copernicus_DSM_COG_10_S05_00_W082_00_DEM",
+   "Copernicus_DSM_COG_10_S05_00_W081_00_DEM"
+  ],
+  "notas": [],
+  "fecha": "2026-10-24"
+ },
+ "cumbaza": {
+  "estado": "hecho",
+  "motivo": null,
+  "centro": {
+   "lat": -6.4667,
+   "lon": -76.3833,
+   "etiqueta": "la estación Cumbaza (Tarapoto)"
+  },
+  "tramo_km": 53.3,
+  "corredor_km2": 218.4,
+  "km2": {
+   "bajo_2m": 5.941,
+   "bajo_3m": 8.389
+  },
+  "fraccion_2m": 0.027,
+  "segundos": 6.3,
+  "teselas": [
+   "Copernicus_DSM_COG_10_S07_00_W077_00_DEM"
+  ],
+  "notas": [],
+  "fecha": "2026-10-24"
+ },
+ "huallaga": {
+  "estado": "hecho",
+  "motivo": null,
+  "centro": {
+   "lat": -9.29601,
+   "lon": -76.00207,
+   "etiqueta": "la estación Tingo María"
+  },
+  "tramo_km": 60.0,
+  "corredor_km2": 302.5,
+  "km2": {
+   "bajo_2m": 12.355,
+   "bajo_3m": 15.216
+  },
+  "fraccion_2m": 0.041,
+  "segundos": 14.5,
+  "teselas": [
+   "Copernicus_DSM_COG_10_S10_00_W077_00_DEM",
+   "Copernicus_DSM_COG_10_S10_00_W076_00_DEM"
+  ],
+  "notas": [],
+  "fecha": "2026-10-24"
+ },
+ "ica": {
+  "estado": "hecho",
+  "motivo": null,
+  "centro": {
+   "lat": -14.0,
+   "lon": -75.71,
+   "etiqueta": "la ciudad de Ica y la estación Los Molinos"
+  },
+  "tramo_km": 60.0,
+  "corredor_km2": 313.8,
+  "km2": {
+   "bajo_2m": 14.872,
+   "bajo_3m": 21.482
+  },
+  "fraccion_2m": 0.047,
+  "segundos": 22.7,
+  "teselas": [
+   "Copernicus_DSM_COG_10_S15_00_W076_00_DEM",
+   "Copernicus_DSM_COG_10_S14_00_W076_00_DEM"
+  ],
+  "notas": [],
+  "fecha": "2026-10-24"
+ },
+ "itaya": {
+  "estado": "descartado",
+  "motivo": "selva baja muy plana: el HAND no distingue la llanura de inundación del resto",
+  "centro": {
+   "lat": 0.0,
+   "lon": 0.0,
+   "etiqueta": ""
+  },
+  "tramo_km": 0.0,
+  "corredor_km2": 0.0,
+  "km2": {},
+  "fraccion_2m": 0.0,
+  "segundos": 0.0,
+  "teselas": [],
+  "notas": [],
+  "fecha": "2026-10-20"
+ },
+ "jequetepeque": {
+  "estado": "hecho",
+  "motivo": null,
+  "centro": {
+   "lat": -7.25592,
+   "lon": -79.09909,
+   "etiqueta": "la estación Yónan Gore"
+  },
+  "tramo_km": 60.0,
+  "corredor_km2": 298.2,
+  "km2": {
+   "bajo_2m": 19.187,
+   "bajo_3m": 20.643
+  },
+  "fraccion_2m": 0.064,
+  "segundos": 17.4,
+  "teselas": [
+   "Copernicus_DSM_COG_10_S08_00_W080_00_DEM",
+   "Copernicus_DSM_COG_10_S08_00_W079_00_DEM"
+  ],
+  "notas": [],
+  "fecha": "2026-10-24"
+ },
+ "la_leche": {
+  "estado": "hecho",
+  "motivo": null,
+  "centro": {
+   "lat": -6.37353,
+   "lon": -79.46673,
+   "etiqueta": "la estación Puchaca"
+  },
+  "tramo_km": 60.0,
+  "corredor_km2": 299.0,
+  "km2": {
+   "bajo_2m": 7.338,
+   "bajo_3m": 9.511
+  },
+  "fraccion_2m": 0.025,
+  "segundos": 11.8,
+  "teselas": [
+   "Copernicus_DSM_COG_10_S07_00_W080_00_DEM"
+  ],
+  "notas": [],
+  "fecha": "2026-10-24"
+ },
+ "maranon": {
+  "estado": "descartado",
+  "motivo": "la fila es un solo río de 1723 km y sus estaciones de Loreto (Nauta, San Regis, Borja) están en selva baja muy plana; el tramo alto (Balsas, Corral Quemado) queda pendiente como río aparte",
+  "centro": {
+   "lat": 0.0,
+   "lon": 0.0,
+   "etiqueta": ""
+  },
+  "tramo_km": 0.0,
+  "corredor_km2": 0.0,
+  "km2": {},
+  "fraccion_2m": 0.0,
+  "segundos": 0.0,
+  "teselas": [],
+  "notas": [],
+  "fecha": "2026-10-20"
+ },
+ "mayo": {
+  "estado": "hecho",
+  "motivo": null,
+  "centro": {
+   "lat": -6.04,
+   "lon": -76.96,
+   "etiqueta": "la ciudad de Moyobamba"
+  },
+  "tramo_km": 60.0,
+  "corredor_km2": 239.3,
+  "km2": {
+   "bajo_2m": 11.972,
+   "bajo_3m": 17.973
+  },
+  "fraccion_2m": 0.05,
+  "segundos": 10.6,
+  "teselas": [
+   "Copernicus_DSM_COG_10_S07_00_W078_00_DEM",
+   "Copernicus_DSM_COG_10_S07_00_W077_00_DEM",
+   "Copernicus_DSM_COG_10_S06_00_W078_00_DEM",
+   "Copernicus_DSM_COG_10_S06_00_W077_00_DEM"
+  ],
+  "notas": [],
+  "fecha": "2026-10-24"
+ },
+ "nanay": {
+  "estado": "descartado",
+  "motivo": "selva baja muy plana: el HAND no distingue la llanura de inundación del resto",
+  "centro": {
+   "lat": 0.0,
+   "lon": 0.0,
+   "etiqueta": ""
+  },
+  "tramo_km": 0.0,
+  "corredor_km2": 0.0,
+  "km2": {},
+  "fraccion_2m": 0.0,
+  "segundos": 0.0,
+  "teselas": [],
+  "notas": [],
+  "fecha": "2026-10-20"
+ },
+ "napo": {
+  "estado": "descartado",
+  "motivo": "selva baja muy plana: el HAND no distingue la llanura de inundación del resto",
+  "centro": {
+   "lat": 0.0,
+   "lon": 0.0,
+   "etiqueta": ""
+  },
+  "tramo_km": 0.0,
+  "corredor_km2": 0.0,
+  "km2": {},
+  "fraccion_2m": 0.0,
+  "segundos": 0.0,
+  "teselas": [],
+  "notas": [],
+  "fecha": "2026-10-20"
+ },
+ "piura": {
+  "estado": "hecho",
+  "motivo": null,
+  "centro": {
+   "lat": -5.19,
+   "lon": -80.63,
+   "etiqueta": "la ciudad de Piura"
+  },
+  "tramo_km": 60.0,
+  "corredor_km2": 294.9,
+  "km2": {
+   "bajo_2m": 16.263,
+   "bajo_3m": 25.965
+  },
+  "fraccion_2m": 0.055,
+  "segundos": 30.2,
+  "teselas": [
+   "Copernicus_DSM_COG_10_S06_00_W081_00_DEM",
+   "Copernicus_DSM_COG_10_S05_00_W081_00_DEM"
+  ],
+  "notas": [],
+  "fecha": "2026-10-24"
+ },
+ "rimac": {
+  "estado": "hecho",
+  "motivo": null,
+  "centro": {
+   "lat": -12.02,
+   "lon": -76.93,
+   "etiqueta": "la ciudad de Lima (de Chosica al mar)"
+  },
+  "tramo_km": 60.0,
+  "corredor_km2": 315.8,
+  "km2": {
+   "bajo_2m": 7.098,
+   "bajo_3m": 8.64
+  },
+  "fraccion_2m": 0.022,
+  "segundos": 23.1,
+  "teselas": [
+   "Copernicus_DSM_COG_10_S13_00_W078_00_DEM",
+   "Copernicus_DSM_COG_10_S13_00_W077_00_DEM",
+   "Copernicus_DSM_COG_10_S12_00_W078_00_DEM",
+   "Copernicus_DSM_COG_10_S12_00_W077_00_DEM"
+  ],
+  "notas": [],
+  "fecha": "2026-10-24"
+ },
+ "santa": {
+  "estado": "hecho",
+  "motivo": null,
+  "centro": {
+   "lat": -8.8,
+   "lon": -78.45,
+   "etiqueta": "el valle bajo del Santa (de Condorcerro al mar)"
+  },
+  "tramo_km": 60.0,
+  "corredor_km2": 310.7,
+  "km2": {
+   "bajo_2m": 8.023,
+   "bajo_3m": 10.267
+  },
+  "fraccion_2m": 0.026,
+  "segundos": 23.5,
+  "teselas": [
+   "Copernicus_DSM_COG_10_S09_00_W079_00_DEM"
+  ],
+  "notas": [],
+  "fecha": "2026-10-24"
+ },
+ "tambo": {
+  "estado": "hecho",
+  "motivo": null,
+  "centro": {
+   "lat": -16.990456,
+   "lon": -71.63873,
+   "etiqueta": "la estación La Pascana"
+  },
+  "tramo_km": 60.0,
+  "corredor_km2": 311.8,
+  "km2": {
+   "bajo_2m": 10.971,
+   "bajo_3m": 13.813
+  },
+  "fraccion_2m": 0.035,
+  "segundos": 11.0,
+  "teselas": [
+   "Copernicus_DSM_COG_10_S18_00_W072_00_DEM",
+   "Copernicus_DSM_COG_10_S17_00_W072_00_DEM"
+  ],
+  "notas": [],
+  "fecha": "2026-10-24"
+ },
+ "tumbes": {
+  "estado": "hecho",
+  "motivo": null,
+  "centro": {
+   "lat": -3.65,
+   "lon": -80.45,
+   "etiqueta": "la ciudad de Tumbes y la estación El Tigre"
+  },
+  "tramo_km": 60.0,
+  "corredor_km2": 257.2,
+  "km2": {
+   "bajo_2m": 16.672,
+   "bajo_3m": 21.946
+  },
+  "fraccion_2m": 0.065,
+  "segundos": 22.1,
+  "teselas": [
+   "Copernicus_DSM_COG_10_S04_00_W081_00_DEM"
+  ],
+  "notas": [],
+  "fecha": "2026-10-24"
+ },
+ "ucayali": {
+  "estado": "descartado",
+  "motivo": "selva baja muy plana: el HAND no distingue la llanura de inundación del resto",
+  "centro": {
+   "lat": 0.0,
+   "lon": 0.0,
+   "etiqueta": ""
+  },
+  "tramo_km": 0.0,
+  "corredor_km2": 0.0,
+  "km2": {},
+  "fraccion_2m": 0.0,
+  "segundos": 0.0,
+  "teselas": [],
+  "notas": [],
+  "fecha": "2026-10-20"
+ },
+ "utcubamba": {
+  "estado": "hecho",
+  "motivo": null,
+  "centro": {
+   "lat": -5.7557,
+   "lon": -78.4316,
+   "etiqueta": "la estación Los Naranjos (Bagua Grande)"
+  },
+  "tramo_km": 60.0,
+  "corredor_km2": 281.0,
+  "km2": {
+   "bajo_2m": 14.535,
+   "bajo_3m": 20.795
+  },
+  "fraccion_2m": 0.052,
+  "segundos": 12.3,
+  "teselas": [
+   "Copernicus_DSM_COG_10_S06_00_W079_00_DEM"
+  ],
+  "notas": [],
+  "fecha": "2026-10-24"
+ },
+ "vilcanota": {
+  "estado": "hecho",
+  "motivo": null,
+  "centro": {
+   "lat": -13.42264,
+   "lon": -71.85388,
+   "etiqueta": "la estación Pisac"
+  },
+  "tramo_km": 60.0,
+  "corredor_km2": 297.3,
+  "km2": {
+   "bajo_2m": 7.966,
+   "bajo_3m": 11.118
+  },
+  "fraccion_2m": 0.027,
+  "segundos": 13.9,
+  "teselas": [
+   "Copernicus_DSM_COG_10_S14_00_W073_00_DEM",
+   "Copernicus_DSM_COG_10_S14_00_W072_00_DEM"
+  ],
+  "notas": [],
+  "fecha": "2026-10-24"
+ },
+ "zana": {
+  "estado": "hecho",
+  "motivo": null,
+  "centro": {
+   "lat": -6.803592,
+   "lon": -79.289322,
+   "etiqueta": "la estación Batan"
+  },
+  "tramo_km": 60.0,
+  "corredor_km2": 290.9,
+  "km2": {
+   "bajo_2m": 9.533,
+   "bajo_3m": 12.552
+  },
+  "fraccion_2m": 0.033,
+  "segundos": 8.4,
+  "teselas": [
+   "Copernicus_DSM_COG_10_S07_00_W080_00_DEM"
+  ],
+  "notas": [],
+  "fecha": "2026-10-24"
+ }
+}

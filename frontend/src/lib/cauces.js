@@ -238,3 +238,51 @@ export function notaAuras(fuertes = []) {
   const n = fuertes.length;
   return `Aura en el cauce de ${n} ${n === 1 ? "río del país" : "ríos del país"} en alerta o emergencia: ${lista(fuertes, 3)}.`;
 }
+
+// ---------------------------------------------------------------------------
+// Zonas estimadas (vista rio_cauce_zona_mapa) y franja de atención (rio_cauce_mapa.franja) de los
+// ríos del país. Las dibuja layers/zonasRio.js y las lee "Tu zona ahora" (lib/zonaAhora.js).
+// ---------------------------------------------------------------------------
+
+// Desde qué zoom la capa `zona` pide y dibuja las zonas estimadas de los ríos a la vista (antes
+// miden pocos píxeles y pedirlas para todo el país no tiene sentido).
+export const ZONAS_DESDE = 12;
+
+// Ancho (m) de la franja de atención a cada lado del trazo: la misma regla que la vista
+// rio_cauce_mapa (migración rio_cauce_mapa_franja). Referencial, no es un mapa de inundación.
+export const anchoFranja = (km) => (km < 50 ? 60 : km < 200 ? 120 : 250);
+
+// La franja se dibuja solo con el río en alerta o emergencia (ANA o aviso hidrológico de SENAMHI).
+export const conFranja = (estado) => Boolean(estado) && esFuerte(estado);
+
+// Filas de rio_cauce_zona_mapa con la forma de las zonas del Mashcón (rio_zona_mapa): `rio` es el
+// rio_ana, `tipo` siempre "estimada" (bajo_2m rayada, bajo_3m lisa), así layers/zonasRio.js y
+// lib/zonaAhora.js distancias() las tratan igual.
+export function zonasDeCauce(filas = []) {
+  return (filas ?? [])
+    .filter((z) => z?.geojson && (z.subtipo === "bajo_2m" || z.subtipo === "bajo_3m"))
+    .map((z) => ({ ...z, rio: z.rio_ana, tipo: "estimada", orden: z.subtipo === "bajo_3m" ? 0 : 1 }))
+    .sort((a, b) => a.orden - b.orden);
+}
+
+// Qué ríos (rio_ana) piden sus zonas con la vista en `caja` y ese `zoom`: los que tocan la vista,
+// desde ZONAS_DESDE; con el mapa más lejos, ninguno (nunca el país entero de golpe).
+export function riosParaZonas(rios, caja, zoom) {
+  if (zoom < ZONAS_DESDE || !caja) return [];
+  return enVista(rios, caja).map((r) => r.fila.rio_ana);
+}
+
+// Nota de la capa `zona` por los ríos del país: cuántos tienen zonas estimadas (y cuáles, hasta 3)
+// y cuántos llevan franja de atención (en alerta o emergencia). "" si no hay nada que decir.
+export function notaZonasPais({ conZonas = [], franjas = [], sinVista = false } = {}) {
+  const partes = [];
+  if (conZonas.length) {
+    const n = conZonas.length;
+    partes.push(`${n} ${n === 1 ? "río del país con zonas estimadas" : "ríos del país con zonas estimadas"} con el relieve (${lista(conZonas, 3)}; desde zoom ${ZONAS_DESDE})`);
+  } else if (!sinVista) partes.push("Ningún río del país a la vista tiene zonas estimadas todavía");
+  if (franjas.length) {
+    const n = franjas.length;
+    partes.push(`franja de atención referencial en ${n} ${n === 1 ? "río" : "ríos"} en alerta o emergencia: ${lista(franjas, 3)}`);
+  }
+  return partes.length ? `${partes.join("; ")}.` : "";
+}

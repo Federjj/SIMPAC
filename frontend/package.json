@@ -7,22 +7,9 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "test": "node --test src/lib/*.test.js src/map/*.test.js",
-    "android:sync": "npm run build && npx cap sync android",
-    "android:apk": "npm run android:sync && cd android && gradlew assembleDebug",
-    "android:aab": "npm run android:sync && cd android && gradlew bundleRelease",
-    "android:apk:release": "npm run android:sync && cd android && gradlew assembleRelease",
-    "android:open": "npx cap open android",
-    "android:run": "npm run android:sync && npx cap run android"
+    "test": "node --test src/lib/*.test.js src/map/*.test.js"
   },
   "dependencies": {
-    "@capacitor/android": "^8.5.3",
-    "@capacitor/app": "^8.1.2",
-    "@capacitor/cli": "^8.5.3",
-    "@capacitor/core": "^8.5.3",
-    "@capacitor/geolocation": "^8.2.3",
-    "@capacitor/splash-screen": "^8.0.2",
-    "@capacitor/status-bar": "^8.0.4",
     "@radix-ui/react-select": "^2.1.4",
     "@radix-ui/react-separator": "^1.1.1",
     "@radix-ui/react-slot": "^1.1.1",

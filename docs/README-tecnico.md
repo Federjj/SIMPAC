@@ -1,9 +1,11 @@
 # SIMPAC — Documentación técnica (devs)
 
 > **SIMPAC** — Sistema de Información Meteorológica y Prevención de Anomalías de Cajamarca.
-> Plataforma web + app Android (la misma web empaquetada con Capacitor, `appmobile/README.md`) que
+> Plataforma web + app Android nativa en Kotlin + Jetpack Compose (`appmobile/android/`,
+> `appmobile/README.md`, §8.4; la anterior con Capacitor se retiró del repo el 24-10-2026, §8.3) que
 > **centraliza datos hidrometeorológicos del Perú, con foco en Cajamarca**, y emite **alertas
-> tempranas de lluvia/crecidas** geolocalizadas, en lenguaje claro para gente sin formación técnica.
+> tempranas de lluvia/crecidas** geolocalizadas, en lenguaje claro para gente sin formación técnica,
+> con notificaciones push por FCM a la app cuando un departamento entra en alerta o emergencia (§5.6.12).
 >
 > Este documento es la referencia técnica: arquitectura, conectores de datos, los endpoints
 > reales de cada organismo y las partes "peludas" de la ingesta. Para el panorama general
@@ -70,30 +72,38 @@ VigiaFEN/
 │  │  ├─ lectura_pronostico.py # puro: qué dice cada día del pronóstico (lluvia, tormenta, "tendencia a")
 │  │  ├─ nowcast.py      # tarea 'nowcast' (cada 10 min): manchas de lluvia de las próximas 2 horas
 │  │  ├─ rios.py         # tarea 'rios' (cada hora): avisos hidrológicos de SENAMHI (lista del país + detalle de los vigentes)
-│  │  └─ titular.py      # tarea 'titular' (cada 30 min): titular en lenguaje claro por departamento (titular_zona), §5.6.10
+│  │  ├─ titular.py      # tarea 'titular' (cada 30 min): titular en lenguaje claro por departamento (titular_zona), §5.6.10
+│  │  └─ push.py         # tarea 'push' (cada 5 min): avisos por Firebase Cloud Messaging a la app cuando una zona
+│  │                     # sube a alerta/emergencia o vuelve la calma (push_estado), §5.6.12
 │  ├─ data/
 │  │  ├─ localidades_senamhi.json # coordenadas de las localidades del pronóstico (revisado a mano)
 │  │  ├─ rios/mashcon/   # río vigilado (revisado a mano, §5.6.7): rio.json, cauce, cuenca, zonas,
 │  │  │                  # faja (.geojson) e incidentes.json
 │  │  ├─ rios/cauces_alias.json # alias de nombres, capa forzada y radios para los ríos del país que no coinciden solos (§5.6.8)
 │  │  ├─ cauces/         # copias simplificadas de los cauces del país (105 GeoJSON, 2,98 MB; excepción en .gitignore y .dockerignore)
+│  │  ├─ cauces_zonas/   # zonas que podrían inundarse junto a 20 ríos del país, estimadas con el relieve (20 GeoJSON +
+│  │  │                  # _indice.json, 3,1 MB; versionados; las escribe zonas_relieve.py y las carga cargar_cauces_zonas.py, §5.6.11)
 │  │  └─ acudir/         # "A dónde acudir": RENIPRESS de Cajamarca, comisarías y bomberos (CENEPRED, CGBVP), Defensa Civil, números (§5.6.9)
 │  ├─ mapas/
 │  │  ├─ cargar_fen.py   # carga los mapas históricos de eventos El Niño a la tabla mapa
 │  │  ├─ cargar_rios.py  # carga un río vigilado (data/rios/<id>/) a rio_vigilado, rio_zona y rio_incidente
 │  │  ├─ cargar_cauces.py # carga el trazo de los ríos con estación de ANA o aviso de SENAMHI (GeoSNIRH) a rio_cauce
+│  │  ├─ zonas_relieve.py # calcula las zonas de relieve (HAND sobre Copernicus GLO-30) de un río de rio_cauce -> data/cauces_zonas/ (§5.6.11)
+│  │  ├─ cargar_cauces_zonas.py # carga data/cauces_zonas/*.geojson a rio_cauce_zona (§5.6.11)
 │  │  ├─ cargar_acudir.py # carga salud, comisarías, bomberos y Defensa Civil a punto_acudir
 │  │  └─ semilla_localidades.py # arma localidades_senamhi.json (se corre una vez, §5.6.4)
 │  ├─ prototipo/         # versión sin dependencias (SQLite + http.server), congelada
-│  ├─ tests/             # 657 pruebas sin red (unittest; test_titular, test_cargar_cauces, test_cargar_acudir,
-│  │                     # test_app para el CORS...); muestras reales chicas en tests/muestras/
+│  ├─ tests/             # 726 pruebas sin red (unittest; test_titular, test_cargar_cauces, test_cargar_acudir,
+│  │                     # test_app para el CORS, test_push 44, test_zonas_relieve 19...; 10 se omiten si falta
+│  │                     # numpy/shapely); muestras reales chicas en tests/muestras/
 │  ├─ app.py             # API FastAPI async (Docker); CORS solo para los orígenes de SIMPAC_CORS_ORIGENES
 │  ├─ celery_app.py      # worker + beat (tareas programadas, §7.1)
-│  ├─ config.py          # variables de entorno, en un solo lugar
+│  ├─ config.py          # variables de entorno, en un solo lugar (ajustes_push lee las FIREBASE_*)
 │  ├─ db.py              # conexión a Supabase para quien escribe (worker, cargadores)
 │  ├─ snapshot.py        # panorama cacheado en Redis que sirve la API
 │  ├─ alerts.py          # motor de umbrales (caudal ANA + referencia de lluvia SENAMHI)
-│  └─ requirements.txt   # + requirements-mapas.txt (geopandas, solo worker)
+│  ├─ requirements.txt   # + requirements-mapas.txt (geopandas, solo worker); google-auth para el push
+│  └─ requirements-relieve.txt # numpy, scipy, shapely, pyproj, tifffile, imagecodecs: solo para zonas_relieve.py, en un venv fuera del repo
 ├─ frontend/             # React + Vite + Tailwind + shadcn + Leaflet + react-router (detalle en frontend/README.md)
 │  ├─ src/App.jsx        # marco: SesionProvider + ContextoApp + Sidebar + BarraInferior (< md) + <Routes> perezosas
 │  ├─ src/pages/         # Mapa (el mapa de siempre, nunca se desmonta), Alertas, Comunidad, ReporteNuevo,
@@ -101,7 +111,7 @@ VigiaFEN/
 │  ├─ src/components/    # MapView, LayersPanel, StatusPanel (hoja de 4 alturas), TuZona, MedidorCaudal, BarrasLluvia,
 │  │                     # AcudirCercanos, OnboardingGps, PanelPagina, BarraInferior, EstadoCarga, TarjetaAlerta,
 │  │                     # TarjetaReporte, Votos, GraficoSerie, ElNinoPanel, CitySelector, DiaSelector, ui/ (shadcn)
-│  ├─ src/hooks/         # usePanorama, useRiosVigilados, useZonaAhora, useSesion, useGeolocation (Capacitor en la app),
+│  ├─ src/hooks/         # usePanorama, useRiosVigilados, useZonaAhora, useSesion, useGeolocation (navigator.geolocation),
 │  │                     # useLayerVisibility, usePronosticoLocal, useAltoHoja, useContador
 │  ├─ src/lib/           # queries (todas las consultas a Supabase), consultaCache, nivel, zonaRio, zonaAhora, cauces,
 │  │                     # acudir, alertas, comunidad, historico, sesion, lenguaje, medidor, serie24h... (*.test.js al lado)
@@ -109,13 +119,17 @@ VigiaFEN/
 │  │                     # popups, marcadores, iconos, rotuloLinea, rotuloBusqueda, atribucion
 │  ├─ src/data/          # cities.js, emergencias.js (copia de backend/data/acudir/numeros.json)
 │  ├─ public/            # manifest.webmanifest, sw.js (solo cáscara), iconos/ (PWA)
-│  ├─ nginx.conf         # gzip + gzip_static, caché inmutable de /assets/, CSP y cabeceras (§8.2)
-│  ├─ capacitor.config.json # app Android: appId pe.simpac.app, esquema https (§8.3)
-│  └─ android/           # proyecto Android nativo generado por Capacitor (se versiona; build/ y assets/public/ no)
-├─ appmobile/README.md   # cómo se compila, firma y publica la app Android
+│  └─ nginx.conf         # gzip + gzip_static, caché inmutable de /assets/, CSP y cabeceras (§8.2)
+├─ appmobile/
+│  ├─ README.md          # la app Android nativa: compilar, probar, FCM, firmar y publicar
+│  └─ android/           # app nativa en Kotlin + Jetpack Compose (§8.4): settings/build.gradle.kts, gradle/ (libs.versions.toml,
+│                        # wrapper 9.1.0), app/ (build.gradle.kts, AndroidManifest.xml, res/, src/main/java/pe/simpac/app/:
+│                        # SimpacApp, MainActivity, dominio/, data/, push/, ubicacion/, ui/{inicio,alertas,mapa,acudir,cuenta};
+│                        # src/test (22 pruebas JVM), src/androidTest (4 de Compose UI)); google-services.json y build/ no se versionan
 ├─ supabase/
-│  ├─ migrations/        # historia de la BD: un archivo por cambio, en orden (32 al 20-10-2026)
-│  └─ schema.sql         # foto consolidada del estado final (secciones D a F: storage y realtime, rio_cauce, titular_zona)
+│  ├─ migrations/        # historia de la BD: un archivo por cambio, en orden (35 al 24-10-2026)
+│  └─ schema.sql         # foto consolidada del estado final (secciones D a I: storage y realtime, rio_cauce, titular_zona,
+│                        # push_estado, franja de rio_cauce_mapa, rio_cauce_zona)
 └─ docs/
    ├─ README-tecnico.md          (este archivo)
    ├─ ESTADO.md                  (dónde estamos)
@@ -140,8 +154,12 @@ por correo y contraseña, con confirmación por correo; las páginas Comunidad, 
 (bucket público `reportes` para la foto de un reporte) y **Realtime** (la tabla `message` del chat,
 publicación `supabase_realtime`). El worker suma una tarea que no baja datos sino que los resume: el
 titular en lenguaje claro por departamento (`titular_zona`, §5.6.10), con un modelo de lenguaje solo si
-hay clave de API y siempre validado por reglas. La app Android es la misma web dentro de un WebView
-(Capacitor, §8.3): lee Supabase igual que el navegador.
+hay clave de API y siempre validado por reglas. Desde el 20-10-2026 (integrado el 24-10) hay dos
+piezas más: la **app Android nativa** en Kotlin (§8.4) lee Supabase con la publishable key (RLS) y el
+`/api/snapshot` de la API, y abre la web en un WebView solo para el mapa; y la tarea **`push`** del
+worker (§5.6.12) manda por Firebase Cloud Messaging a los temas `pais` y `zona_<slug>` cuando el nivel
+de `titular_zona` de un departamento sube a alerta o emergencia (o vuelve la calma), nunca por avisos
+amarillos ni lluvia medida. La app anterior (Capacitor, retirada el 24-10-2026, §8.3) era la misma web dentro de un WebView.
 
 ```mermaid
 flowchart LR
@@ -160,13 +178,18 @@ flowchart LR
   M[Motor de umbrales\npor estación]
   API[API FastAPI]
   W[Web React+Leaflet]
-  F[Firebase\npush geolocalizada\n(pendiente, §10)]
+  T[Tarea titular\ntitular_zona]
+  P[Tarea push\n§5.6.12]
+  F[Firebase Cloud Messaging\ntemas pais y zona_slug]
+  APP[App Android Kotlin\n§8.4]
 
   S & A & I & N & C --> K --> J --> DB
   J --> M --> DB
+  DB --> T --> DB
+  DB --> P --> F --> APP
   DB --> W
-  DB --> API
-  M --> F
+  DB --> API --> APP
+  DB --> APP
 ```
 
 ### 3.1. Convención de un conector
@@ -1424,11 +1447,13 @@ cambio, 0 fallas, aviso "sin clave de API (SIMPAC_LLM_KEY): titulares por reglas
 el titular de la BD es **opcional**: el semáforo y la instrucción nunca dependen de él. La tarjeta "Tu
 zona ahora" lo usaría en lugar de su frase determinista (`lib/zonaAhora.js titularCorto`) solo si está
 fresco (menos de 90 min desde `revisado_en`), coincide en nivel con el calculado en el navegador, no es
-alerta ni emergencia y mide 110 caracteres o menos. **Pendiente:** `getTitular` todavía pide
-`titular` (no `titular_corto`), así que hoy esa condición nunca se cumple y la tarjeta usa siempre su
-frase determinista; el texto de la BD se ve en la altura completa de la hoja ("Qué dicen las fuentes
-hoy", con la marca "resumen del servidor de SIMPAC" o "redactado automáticamente con las cifras
-oficiales" según `origen`).
+alerta ni emergencia y mide 110 caracteres o menos. Desde el 20-10-2026 (integrado el 24-10)
+`getTitular` pide también `titular_corto` y la tarjeta usa esa columna con la misma regla (por eso hoy
+en Cajamarca se lee "Cajamarca: 3 avisos de SENAMHI por lluvias (el más alto, amarillo)." tal como lo
+escribió el worker); el `titular` largo (240) y el `detalle` van en la altura completa de la hoja ("Qué
+dicen las fuentes hoy", con la marca "resumen del servidor de SIMPAC" o "redactado automáticamente con
+las cifras oficiales" según `origen`). La app Kotlin muestra las dos columnas en Inicio (§8.4) y la
+tarea `push` usa `titular_corto` como cuerpo de la notificación (§5.6.12).
 
 Corrida suelta: `docker compose run --rm worker python -m backend.ingesta.titular`. Control:
 ```sql
@@ -1436,6 +1461,254 @@ select departamento, nivel, origen, modelo, generado_en, revisado_en, titular_co
 select ts, resumen->'llm', resumen->'reglas', resumen->'sin_cambio', resumen->'conservados', resumen->'descartados',
        resumen->'modelo', resumen->'fallas', resumen->'avisos' from latido where servicio = 'titular';
 ```
+
+### 5.6.11. Zonas que podrían inundarse junto a los ríos del país, estimadas con el relieve, y franja de atención
+
+Desde el 20-10-2026 (cargado en la BD el 24-10) la capa "Zonas que un río podría afectar" dibuja,
+además de las del Mashcón, una zona estimada junto a **20 ríos del país** con trazo de ANA
+(`rio_cauce`), calculada con el mismo método que la zona "estimada" del Mashcón (§5.6.7) pero ahora
+como **pipeline reproducible**: `backend/mapas/zonas_relieve.py` (19 pruebas en
+`test_zonas_relieve.py`; sin GDAL ni rasterio), salida en `backend/data/cauces_zonas/<rio>.geojson`
+y cargador `backend/mapas/cargar_cauces_zonas.py` a la tabla `rio_cauce_zona`. Es una **estimación con
+el relieve, no un mapa oficial**: cada zona lo dice y nunca se muestran metros.
+
+**Método** (por río; docstring del módulo):
+1. **Tramo útil:** se toma el trazo de ANA (`backend/data/cauces/<rio>.geojson`, el mismo que
+   `rio_cauce.geom`), se unen sus piezas (`linemerge` + encadenado de extremos a menos de 200 m) y se
+   recorta a un tramo de hasta **60 km** (`TRAMO_KM`) centrado en la estación de ANA o en la ciudad
+   principal (diccionario `TRAMOS`: el Rímac en Lima, de Chosica al mar; el Chillón en Lima Norte; el
+   Piura en la ciudad; el Tumbes entre El Tigre y la ciudad; el Santa en el valle bajo, de Condorcerro
+   al mar; el Ica entre Los Molinos y la ciudad; el Mayo en Moyobamba; el resto en su estación).
+   Corredor de **2,5 km** a cada lado (`CORREDOR_M`); malla UTM de **30 m** (`CELDA_M`). Los ríos cuyo
+   trazo tiene piezas separadas por más de 200 m dan tramos más cortos (Cajamarca 30 km, Chicama 36,
+   Cumbaza 53).
+2. **Relieve:** teselas **Copernicus DEM GLO-30** (1 arcosegundo, EPSG:4326, `PixelIsPoint`) del
+   bucket público de AWS (`copernicus-dem-30m`, sin autenticación, ~43 MB cada una; nombre por
+   `floor(lat)`/`floor(lon)`: Cajamarca, -7.15, cae en `S08_W079`), leídas con `tifffile` +
+   `imagecodecs` y georreferenciadas con `ModelTiepoint`/`ModelPixelScale`; remuestreo bilineal a la
+   malla. Verificado el 20-10-2026: HTTP 200, 42,5 MB en 5,8 s por tesela; 3600x3600 float32.
+3. **Cauce grabado:** las celdas que cruza el trazo toman la cota del río (mínimo 3x3, mediana móvil
+   de 21 celdas a lo largo del tramo con `median_filter` de borde `nearest` y mínimo acumulado aguas
+   abajo, para quitar puentes y árboles del modelo de superficie) menos 20 m (`QUEMA_M`).
+4. **Relleno de depresiones** por inundación con prioridad (Barnes 2014) con epsilon, sembrado en el
+   cauce y en el borde del corredor; dirección de flujo **D8** sobre el relleno; cada celda se sigue
+   hasta el río por salto de punteros. **HAND** = cota original de la celda menos la cota del río
+   donde drena.
+5. **Zonas:** HAND <= ~2 m (`bajo_2m`, la web la dibuja rayada) y HAND <= ~3 m (`bajo_3m`, lisa y
+   tenue), solo celdas que drenan al río, a menos de 1,5 km (`DIST_MAX_M`) y conectadas en el mapa
+   con el cauce; filtro de mayoría 3x3; sin manchas ni huecos menores de 12 celdas (~1 ha);
+   polígonos con cierre y apertura de 12 m, simplificados a **8 m** (`SIMPLIFICAR_M`; con 6 m los 20
+   archivos pasaban de 3,4 MB y la vista los deja igual a ~6 m), 5 decimales.
+6. **Control de calidad:** área por umbral, que la zona toque el cauce y que la de 2 m no supere el
+   25 % del corredor (`MAX_FRACCION_2M`; si pasa, el relieve no distingue nada: el río queda con nota
+   y no se carga). Los ríos de **selva baja muy plana** (`DESCARTADOS`: Amazonas, Ucayali, Napo,
+   Nanay, Itaya y Marañón, cuyas estaciones de Loreto están en llanura; el tramo alto del Marañón,
+   Balsas y Corral Quemado, queda pendiente como río aparte con `--centro`) no se calculan.
+
+Cada zona lleva `metodo` ("HAND sobre Copernicus GLO-30, umbral ~2 m / ~3 m, tramo de N km alrededor
+de X"), `fuente`, `licencia`, `atribucion` (el aviso literal de Copernicus: DLR e.V. 2010-2014, Airbus
+Defence and Space GmbH 2014-2018, provisto bajo COPERNICUS por la Unión Europea y la ESA; más "trazo:
+ANA - GeoSNIRH"), `fecha_fuente` (cuándo se bajaron las teselas) y `nota` (la advertencia de
+estimación que ve el usuario). El resumen por río queda en `backend/data/cauces_zonas/_indice.json`
+(estado, centro, km del tramo, km² del corredor y por umbral, fracción de 2 m, segundos, teselas).
+
+**Corrida final del 24-10-2026** (20 ríos, teselas en caché local, 6 a 40 s por río):
+
+| Río (`rio_ana`) | Centro | Tramo km | km² bajo ~2 m | km² bajo ~3 m | % del corredor |
+|---|---|---|---|---|---|
+| rimac | la ciudad de Lima (de Chosica al mar) | 60 | 7,10 | 8,64 | 2,2 |
+| chillon | Lima Norte (de Puente Magdalena al mar) | 60 | 6,61 | 8,43 | 2,1 |
+| piura | la ciudad de Piura | 60 | 16,26 | 25,97 | 5,5 |
+| chira | la estación Pte. Simón Rodríguez (Sullana) | 60 | 22,40 | 32,50 | 8,4 |
+| tumbes | la ciudad de Tumbes y la estación El Tigre | 60 | 16,67 | 21,95 | 6,5 |
+| cajamarca | la estación Jesús Túnel (Baños del Inca y Jesús) | 30,2 | 3,47 | 4,19 | 2,2 |
+| jequetepeque | la estación Yónan Gore | 60 | 19,19 | 20,64 | 6,4 |
+| santa | el valle bajo del Santa (de Condorcerro al mar) | 60 | 8,02 | 10,27 | 2,6 |
+| ica | la ciudad de Ica y la estación Los Molinos | 60 | 14,87 | 21,48 | 4,7 |
+| chili | la estación Puente del Diablo (Arequipa) | 60 | 5,15 | 5,99 | 1,8 |
+| mayo | la ciudad de Moyobamba | 60 | 11,97 | 17,97 | 5,0 |
+| utcubamba | la estación Los Naranjos (Bagua Grande) | 60 | 14,54 | 20,80 | 5,2 |
+| huallaga | la estación Tingo María | 60 | 12,36 | 15,22 | 4,1 |
+| cumbaza | la estación Cumbaza (Tarapoto) | 53,3 | 5,94 | 8,39 | 2,7 |
+| chancay_lambayeque | la estación Racarumi | 60 | 5,32 | 6,52 | 1,7 |
+| la_leche | la estación Puchaca | 60 | 7,34 | 9,51 | 2,5 |
+| zana | la estación Batan | 60 | 9,53 | 12,55 | 3,3 |
+| chicama | la estación Salinar | 36,3 | 7,67 | 9,90 | 3,9 |
+| tambo | la estación La Pascana | 60 | 10,97 | 13,81 | 3,5 |
+| vilcanota | la estación Pisac | 60 | 7,97 | 11,12 | 2,7 |
+
+Total: 213 km² bajo ~2 m y 286 km² bajo ~3 m; 20 archivos + `_indice.json` = 3,1 MB (versionados:
+excepción `!/backend/data/cauces_zonas/*.geojson` en `.gitignore` y `.dockerignore`, así la imagen
+del worker puede recargarlos). Se revisaron en el navegador Cajamarca, Piura y Rímac (zonas pegadas al
+cauce; en Piura ciudad la zona queda angosta porque el DSM incluye edificios); los otros 17 no tuvieron
+captura.
+
+**Límites** (y lo que la web nunca dice): es una estimación, no un mapa oficial; el error vertical del
+DSM (2-3 m) es del orden de los umbrales, por eso nunca se muestran metros al usuario; en ciudades el
+modelo de superficie incluye edificios y la zona **queda corta** (Piura, Sullana, Lima); no considera
+muros, defensas ribereñas, puentes ni drenajes; en zonas muy planas el HAND no distingue nada y no se
+calcula; el trazo de ANA es la línea central de 2018 o la Carta Nacional, no la orilla de hoy; nunca
+se relacionan m³/s con la extensión de la zona.
+
+**BD** (migración `20261020165455_rio_cauce_zona`, sección I de `supabase/schema.sql`): tabla
+`rio_cauce_zona` (`clave` PK `'<rio_ana>:relieve:<n>'`, `rio_ana` sin FK a `rio_cauce` porque los
+cargadores son independientes, `subtipo` en `bajo_2m | bajo_3m`, `geom` MultiPolygon 4326,
+`area_km2`, `metodo`, `fuente`, `licencia`, `atribucion`, `fecha_fuente`, `nota`, `cargado_en`;
+único `(rio_ana, subtipo)`; GIST) y vista `security_invoker` **`rio_cauce_zona_mapa`** (las mismas
+columnas y `geojson` con la geometría simplificada a ~6 m, 5 decimales). RLS con lectura pública
+(política `lectura publica rio cauce zona`), `revoke all` + `grant select` a `anon` y
+`authenticated`; escribe solo el cargador (rol `postgres`). Al 24-10-2026: **40 filas de 20 ríos**,
+4,9 MB.
+
+**Franja de atención** (migración `20261020164715_rio_cauce_mapa_franja`, sección H del schema): la
+vista `rio_cauce_mapa` gana al final dos columnas, `ancho_m` (60 si `km < 50`, 120 si `km < 200`,
+250 si `km >= 200`) y `franja` (GeoJSON del `st_buffer` de `geom_lejos` en geografía con ese ancho,
+simplificado a ~6 m). Es una **banda referencial de ancho fijo junto al trazo**, no sale del relieve
+ni de un estudio y **no es un mapa de inundación**; el frontend la pide por río
+(`select=rio_ana,ancho_m,franja&rio_ana=eq.X`) solo cuando el río está en alerta o emergencia y la
+dibuja punteada con relleno muy suave. Se calcula al vuelo: PostgREST evalúa solo las columnas
+pedidas (4 ríos con el Marañón incluido, ~140 ms en la BD; Marañón 158 KB, Rímac 11 KB).
+
+**Qué pide el frontend** (`lib/queries.js`, detalle en `frontend/README.md`): `getCaucesZonas(rioAnas)`
+(`rio_cauce_zona_mapa` con `rio_ana=in.(...)`, caché por río 60 min, `null` si la vista no existe) para
+los ríos cuya caja toca la vista desde zoom 12 (`lib/cauces.js riosParaZonas`, `ZONAS_DESDE`), visibles
+desde zoom 13 con los estilos del Mashcón; `getFranjaRio(rioAna)` (caché 60 min) solo con el río fuerte;
+y la tarjeta "Tu zona ahora" pide las zonas del río más cercano para el chip "Dentro/Fuera de la zona
+que podría inundarse (estimación SIMPAC con el relieve)". Medido el 20-10-2026: zonas por río 320-850
+ms (vista vacía), trazo fino 240-580 ms.
+
+**Cómo repetirlo para otro río** (fuera del contenedor; el venv va fuera del repo):
+```bash
+python -m venv /ruta/fuera/del/repo/venv-relieve
+/ruta/.../venv-relieve/bin/pip install -r backend/requirements-relieve.txt     # numpy, scipy, shapely, pyproj, tifffile, imagecodecs
+# el trazo tiene que estar en backend/data/cauces/<rio>.geojson (lo guarda cargar_cauces.py)
+python -m backend.mapas.zonas_relieve --rio <rio> --centro LAT,LON --etiqueta "la estación X" --dem-dir /ruta/teselas [--visor]
+python -m backend.mapas.zonas_relieve --todos --dem-dir /ruta/teselas          # los 20 de TRAMOS (~6-8 min con las 12 teselas bajadas)
+# revisar la línea de resumen y <salida>/_visor_<rio>.html; luego cargar:
+docker compose run --rm worker python -m backend.mapas.cargar_cauces_zonas              # prueba en seco: valida los archivos
+docker compose run --rm worker python -m backend.mapas.cargar_cauces_zonas --aplicar    # escribe (upsert por clave)
+# opciones del cargador: --rio <rio_ana> · --datos DIR · --podar (con --aplicar: borra las zonas que ya no están en los archivos; nunca borra solo)
+```
+El cargador valida (rio_ana igual al nombre del archivo, claves sin repetir, cada subtipo una vez,
+geometría válida dentro del Perú, `area_km2` positivo, campos de fuente no vacíos, fecha AAAA-MM-DD; un
+archivo `descartado` no se carga) y escribe en una transacción; códigos de salida 0 bien, 1 datos
+inválidos, 2 sin `SUPABASE_DB_URL` o sin la tabla. La imagen del worker trae los archivos de cuando se
+construyó: tras cambiarlos, reconstruirla.
+
+Consultas de control (solo lectura):
+```sql
+select rio_ana, subtipo, area_km2 from rio_cauce_zona order by 1, 2;                 -- 40 filas, 20 ríos
+select count(*), count(distinct rio_ana), pg_size_pretty(pg_total_relation_size('rio_cauce_zona')) from rio_cauce_zona;   -- 40, 20, ~4,9 MB
+select rio_ana, subtipo, length(geojson::text) from rio_cauce_zona_mapa where rio_ana = 'rimac';
+select rio_ana, km, ancho_m, length(franja::text) from rio_cauce_mapa where rio_ana in ('rimac', 'maranon');   -- 60/250 m
+```
+
+### 5.6.12. Avisador push por Firebase Cloud Messaging (tarea `push`, HU-20)
+
+`backend/ingesta/push.py` (tarea Celery `push`, cada 300 s, `soft_time_limit` 60 s / `time_limit`
+90 s; al arrancar se encola con 420 s de espera, después de `titular`; 44 pruebas en `test_push.py`).
+Manda una notificación a la app Android cuando el nivel de un departamento **cambia de verdad**, y
+nada más. Verificado de extremo a extremo el 24-10-2026 (ver abajo).
+
+**Qué envía y cuándo** (`decidir()`; el nivel es el de `titular_zona`, que es el mismo semáforo del
+frontend, así que la lluvia medida y un río muy bajo nunca llegan a `alerta`):
+
+| Cambio de nivel | Mensaje | `android.priority` |
+|---|---|---|
+| sube a `alerta` o `emergencia` (o pasa de alerta a emergencia) | título "SIMPAC: ALERTA en Cajamarca" / "SIMPAC: EMERGENCIA en Cajamarca", cuerpo = `titular_corto` | `high` |
+| baja de alerta o emergencia a `normal` o `aviso` | "SIMPAC: vuelve la calma en Cajamarca" | `normal` |
+| actual `sin_dato` (fuente caída) | nada: no se toca la fila (no es calma ni alerta) | |
+| igual al previo (aunque cambie el texto) | nada | |
+| normal <-> aviso, emergencia -> alerta | se anota el nivel sin enviar | |
+
+Sin fila previa en `push_estado` la línea base es `normal`: una alerta vigente al activar el avisador
+se notifica **una vez** y nada por debajo de alerta se notifica nunca. `data` =
+`{nivel, zona, generado_en, ruta: "/alertas"}` (todo texto, como exige FCM); la app abre la pestaña
+Alertas con `ruta`.
+
+**Temas (el contrato con la app):** `pais` y `zona_<slug>`, donde el slug es el departamento en
+minúsculas, sin tildes y con los espacios como guion bajo (`zona_cajamarca`, `zona_la_libertad`,
+`zona_madre_de_dios`, `zona_callao`; `dominio/Departamentos.kt slugTema` en la app). Cada mensaje va
+**una sola vez** a quien esté en cualquiera de los dos (`condition`: `'pais' in topics ||
+'zona_cajamarca' in topics`), así quien se suscribió a los dos no lo recibe doble. Los temas no se
+crean en la consola: existen cuando un teléfono se suscribe.
+
+**Credenciales** (`backend/config.py ajustes_push`): la cuenta de servicio del proyecto Firebase
+(`appsimpac`), que es un **secreto** (`*firebase-adminsdk*.json` está en `.gitignore`):
+- En Docker, lo más simple: `FIREBASE_CREDENCIALES_ARCHIVO=<ruta en tu máquina al JSON>` en el `.env`.
+  `docker-compose.yml` lo monta de solo lectura en `/run/secrets/firebase.json` dentro del worker y le
+  pasa esa ruta en `FIREBASE_CREDENCIALES_MONTADA`; si la variable está vacía monta
+  `.firebase-vacio.json` (`{}`, versionado) para que Docker no cree una carpeta.
+- Fuera de Docker (o si no se quiere montar nada): `FIREBASE_CREDENCIALES` = ruta al JSON o el JSON en
+  base64 en una línea. El archivo montado manda sobre esta variable.
+- `FIREBASE_PROYECTO` es opcional (se lee `project_id` del JSON).
+- **Sin credenciales la tarea no falla**: escribe su latido con el aviso "push sin credenciales de
+  Firebase: no se envía nada" y la lista de `pendientes`, y **no toca `push_estado`**, así al ponerlas
+  las alertas vigentes se avisan una vez.
+
+**Cómo envía:** token OAuth2 con alcance `firebase.messaging` firmando un JWT RS256 con la clave de la
+cuenta (`google-auth` solo para firmar; `POST https://oauth2.googleapis.com/token` con
+`grant_type=urn:ietf:params:oauth:grant-type:jwt-bearer`), cacheado ~1 h en memoria del worker; luego
+`POST https://fcm.googleapis.com/v1/projects/<id>/messages:send` con `urllib` (como en `titular.py`).
+La clave nunca se registra: los avisos del latido llevan solo el código HTTP y el motivo. Todo va en
+una transacción con `pg_advisory_xact_lock(hashtext('push'))`: leer, enviar, anotar y el latido;
+`PLAZO_S` (40 s) corta los envíos antes del soft limit y lo que queda va a `pendientes` para la
+próxima corrida. Caso raro conocido: si la corrida se corta por el soft limit después de enviar y
+antes de confirmar la transacción, el estado se revierte y la próxima corrida repite ese mensaje.
+
+**Tabla `push_estado`** (migración `20261020164538_push_estado`, sección G del schema): `zona` PK
+(departamento canónico), `nivel` (último nivel conocido por el avisador), `titular` (cuerpo del último
+mensaje), `enviado_en`, `mensaje_id` (`projects/<proyecto>/messages/<id>` que devuelve FCM),
+`actualizado_en`. **No es un dato público**: RLS activo, sin políticas ni grants (la lee y escribe solo
+el worker, rol `postgres`).
+
+Claves del latido `push`:
+
+| Clave | Qué es |
+|---|---|
+| `zonas` | filas de `titular_zona` evaluadas (25) |
+| `enviados` | mensajes que FCM aceptó en esta corrida |
+| `mensajes` | `[{zona, nivel, tema, tipo: alerta \| calma, mensaje_id}]` |
+| `temas` | temas `zona_<slug>` a los que se envió |
+| `anotados` | cambios de nivel por debajo de alerta anotados sin enviar |
+| `pendientes` | `[{zona, nivel, tipo}]` lo que tocaba enviar y no se envió (sin credenciales, falla o plazo) |
+| `proyecto`, `credenciales` | id del proyecto Firebase y si las credenciales se pudieron leer |
+| `fallas` | `migracion` (falta `push_estado`), `credenciales` (ilegibles o FCM las rechazó: 401/403), `token` (no se obtuvo el token OAuth2), `envio` (FCM respondió error o no respondió) |
+| `avisos` | detalle de las fallas (nunca la clave ni el token) |
+
+**Verificado el 24-10-2026** (worker reconstruido con `google-auth`, secreto montado de 2367 bytes):
+beat registra 10 tareas y `push` corre al arrancar y cada 300 s. Primera corrida con credenciales
+(21:58:56 UTC): `{'zonas': 25, 'enviados': 6, 'proyecto': 'appsimpac', 'credenciales': True,
+'fallas': [], 'avisos': []}`, es decir el envío único de las 6 alertas vigentes (Tumbes emergencia;
+Piura, Huancavelica, Lima, Ayacucho y Arequipa alerta) a `zona_<slug>` y `pais`; las corridas
+siguientes `enviados 0` (`push_estado` recuerda; al 22:23 UTC tenía 23 filas). `docker compose exec
+worker python -m backend.ingesta.push --prueba --zona Cajamarca` (manda "SIMPAC: prueba en Cajamarca"
+al tema `zona_cajamarca`, sin tocar la BD; sin credenciales imprime el aviso y sale con código 2)
+llegó al emulador Pixel_7a suscrito a `zona_cajamarca` (canal `alertas`; la primera vez tardó unos
+minutos mientras FCM propagaba la suscripción) y al tocarla la app abrió la pestaña Alertas. Antes,
+el 20-10, se había verificado la corrida sin credenciales (latido con el aviso, 6 pendientes, 0
+envíos, `push_estado` sin tocar) y la firma del JWT contra una clave RSA de prueba.
+
+**Costo y volumen:** FCM es gratis sin límite de mensajes (plan Spark, sin tarjeta). SIMPAC manda
+como mucho un mensaje por cambio de nivel por departamento (25 zonas): decenas al día en temporada de
+lluvias. El push llega como mucho ~35 min después de que SENAMHI o ANA publiquen (`titular` cada 30
+min + `push` cada 5). La web no recibe push (no hay Web Push).
+
+**Activarlo en otro servidor:** 1) consola de Firebase > Configuración del proyecto > Cuentas de
+servicio > Generar nueva clave privada (JSON del Admin SDK); 2) guardarlo fuera del repo y poner la
+ruta en `FIREBASE_CREDENCIALES_ARCHIVO` del `.env`; 3) `docker compose up -d --build worker`; 4) si no
+se quiere el primer envío de las alertas vigentes, sembrar antes la memoria:
+```sql
+insert into push_estado (zona, nivel) select departamento, nivel from titular_zona where nivel <> 'sin_dato';
+```
+Control:
+```sql
+select ts, resumen->'enviados', resumen->'pendientes', resumen->'credenciales', resumen->'fallas', resumen->'avisos'
+from latido where servicio = 'push' order by ts desc limit 5;
+select zona, nivel, enviado_en, left(titular, 60) from push_estado order by enviado_en desc nulls last;
+```
+En la consola de Firebase, Cloud Messaging > Informes muestra los envíos. Corrida suelta:
+`docker compose run --rm worker python -m backend.ingesta.push`.
 
 ### 5.7. IDESEP (SENAMHI) — mapas históricos de eventos El Niño
 
@@ -1446,42 +1719,73 @@ GET https://idesep.senamhi.gob.pe/geonetwork/srv/eng/csw?service=CSW&request=Get
 GET https://idesep.senamhi.gob.pe/geonetwork/srv/api/0.1/records/<uuid>
     -> página HTML con el enlace al .zip del shapefile (dentro de /attachments/)
 ```
-El .zip se convierte a GeoJSON (EPSG:4326) con **geopandas**, que se importa solo dentro de
-`geojson_de_registro()`. `idesep` no se importa desde `connectors/__init__.py`, así los demás
-conectores siguen sin dependencias. Los 5 eventos cargados tienen su **uuid fijo** en
-`EVENTOS_FEN` (`cargar_fen.py`); para sumar uno nuevo basta su título, que se busca en el catálogo
-de forma normalizada (sin distinguir mayúsculas, tipo de guion ni espacios). Solo se descargan
-adjuntos del propio `idesep.senamhi.gob.pe` por HTTPS, con tope de 80 MB y reintentos ante fallas
-de red (los errores 4xx no se reintentan).
+Cada registro trae **varios .zip adjuntos, uno por trimestre** (`..._DEF.zip`, `..._EFM.zip`,
+`..._FMA.zip`; comprobado el 24-10-2026 dentro del worker: cada .zip tiene una sola capa, EPSG:4326, con
+el único atributo `RANGO`). `enlaces_shapefile(uuid)` devuelve todos esos enlaces (sin repetir, en el
+orden de la página), `trimestre_de_nombre()` saca el código del nombre del archivo o de la capa y
+`capas_de_registro(uuid)` devuelve `[(trimestre, enlace, GeoJSON)]` ordenados por trimestre (DEF, EFM,
+FMA...). `geojson_de_registro()` (el primer .zip) queda por compatibilidad. La conversión shapefile ->
+GeoJSON usa **geopandas** (y `pyogrio` para listar capas), importados solo dentro de esas funciones.
+`idesep` no se importa desde `connectors/__init__.py`, así los demás conectores siguen sin
+dependencias. Los 5 eventos cargados tienen su **uuid fijo** en `EVENTOS_FEN` (`cargar_fen.py`); para
+sumar uno nuevo basta su título, que se busca en el catálogo de forma normalizada (sin distinguir
+mayúsculas, tipo de guion ni espacios). Solo se descargan adjuntos del propio `idesep.senamhi.gob.pe`
+por HTTPS, con tope de 80 MB y reintentos ante fallas de red (los errores 4xx no se reintentan en
+`_http`, pero el cargador reintenta cada evento hasta 3 veces con 5 s de pausa: IDESEP responde a
+ratos HTTP 400 a la página de un registro y al rato bien, visto el 25-10-2026 en dos corridas seguidas).
 
-Mapas cargados en la tabla `mapa` con `variable='FEN'` (el mensual usa `variable='precipitacion'`):
+**Cómo se guardan (desde el 25-10-2026, HU-15): una fila por evento y trimestre** en la tabla `mapa`
+con `variable='FEN'` (el mensual usa `variable='precipitacion'`):
+- `periodo` sigue siendo el evento (`"1997-1998"`, `"2017"`), nunca un mes.
+- `trimestre` es el código de SENAMHI (`DEF` = diciembre a febrero, `EFM` = enero a marzo, `FMA` =
+  febrero a abril); `null` en el mapa mensual.
+- `meses` es el texto legible que calcula `meses_legibles(trimestre, periodo)` del cargador
+  (`"diciembre de 1997 a febrero de 1998"`, `"enero a marzo de 2023"`): los meses antes de enero son
+  del primer año del evento y los demás del último (un evento de un solo año, `"2017"`, empieza en
+  diciembre de 2016). Pruebas sin red en `backend/tests/test_idesep.py` (`TestTrimestre`).
+- Índice único `mapa_uuid_trimestre_key` sobre `(uuid, coalesce(trimestre, ''))` (migración
+  `20261025020623_mapa_trimestre`, que reemplazó a `mapa_uuid_key`): el upsert es por evento y
+  trimestre y `null` cuenta como un valor. Las 5 filas de antes recibieron su trimestre real en la
+  migración y el cargador las actualizó en su sitio (no se borró ninguna).
 
-| Evento | periodo | Polígonos |
-|---|---|---|
-| El Niño 82-83 | 1982-1983 | 2620 |
-| El Niño 97-98 | 1997-1998 | 1694 |
-| El Niño Costero 2017 | 2017 | 1590 |
-| El Niño Costero 2023 | 2023 | 944 |
-| El Niño 2023-2024 | 2023-2024 | 2197 |
+Filas cargadas el 25-10-2026 (con `--simplificar 0.005 --decimales 5`; peso = `pg_column_size(geojson)`):
+
+| Evento | periodo | trimestre | meses | Polígonos | Peso |
+|---|---|---|---|---|---|
+| El Niño 82-83 | 1982-1983 | DEF | diciembre de 1982 a febrero de 1983 | 2620 | 281 KB |
+| | | EFM | enero a marzo de 1983 | 2044 | 228 KB |
+| | | FMA | febrero a abril de 1983 | 1760 | 230 KB |
+| El Niño 97-98 | 1997-1998 | DEF | diciembre de 1997 a febrero de 1998 | 1694 | 239 KB |
+| | | EFM | enero a marzo de 1998 | 18 (*) | 204 KB |
+| | | FMA | febrero a abril de 1998 | 2320 | 273 KB |
+| El Niño Costero 2017 | 2017 | DEF | diciembre de 2016 a febrero de 2017 | 1590 | 221 KB |
+| | | EFM | enero a marzo de 2017 | 18 (*) | 169 KB |
+| | | FMA | febrero a abril de 2017 | 1754 | 241 KB |
+| El Niño Costero 2023 | 2023 | EFM | enero a marzo de 2023 | 944 | 71 KB |
+| | | FMA | febrero a abril de 2023 | 1037 | 74 KB |
+| El Niño 2023-2024 | 2023-2024 | DEF | diciembre de 2023 a febrero de 2024 | 2197 | 115 KB |
+| | | EFM | enero a marzo de 2024 | 1300 | 86 KB |
+
+(*) En esos dos .zip SENAMHI entregó los polígonos ya unidos por clase: un multipolígono por cada uno
+de los 18 valores de `RANGO`; se ven igual en el mapa. 1982-83, 1997-98 y 2017 traen 3 trimestres;
+Costero 2023 (EFM y FMA) y 2023-2024 (DEF y EFM) traen 2: **13 filas** en total. El de 2017 `FMA`
+(febrero a abril) es el que incluye marzo de 2017, cuando se desbordó el río Piura.
 
 Cada feature trae solo la propiedad `RANGO` (rango de anomalía en texto, p. ej. `"-120 - -60"`).
-Cobertura nacional; pesan hasta ~5.5 MB cada uno (0,3 a 0,9 MB con `--simplificar 0.005`).
-
-> **Ojo: son de un trimestre, no de todo el evento.** Cada registro de IDESEP trae un .zip por
-> trimestre (p. ej. 1997-98: DEF 1997-1998, EFM 1998 y FMA 1998) y `geojson_de_registro()` toma
-> el primero. Quedaron cargados diciembre a febrero (1982-83, 1997-98, 2017, 2023-24) y enero a
-> marzo (2023). El frontend rotula cada evento con sus meses. Pendiente: cargar los demás
-> trimestres y dejar elegirlos.
+Cobertura nacional; sin simplificar pesan hasta ~5.5 MB cada uno.
 
 **Carga** (única vía de escritura; son mapas estáticos, no van en la ingesta horaria):
 ```bash
-docker compose run --rm worker python -m backend.mapas.cargar_fen            # prueba en seco
-docker compose run --rm worker python -m backend.mapas.cargar_fen --aplicar  # upsert por uuid
+docker compose build worker                                                  # si cambió el código del cargador
+docker compose run --rm worker python -m backend.mapas.cargar_fen --simplificar 0.005 --decimales 5            # prueba en seco
+docker compose run --rm worker python -m backend.mapas.cargar_fen --aplicar --simplificar 0.005 --decimales 5  # upsert por (uuid, trimestre)
 ```
 Opciones: `--simplificar 0.005` (aligerar geometrías), `--decimales 5`, `--exportar DIR`
-(GeoJSON para `backend/mapas/visor_geojson.html`), `--catalogo` (lista uuid + título).
-El upsert usa el índice único `mapa_uuid_key`, así que correrlo varias veces no duplica filas.
-Sale con código 1 si algún evento falla o no aparece en el catálogo.
+(un GeoJSON por evento y trimestre, `fen_<periodo>_<trimestre>.geojson`, para
+`backend/mapas/visor_geojson.html`), `--catalogo` (lista uuid + título).
+El upsert usa el índice único `mapa_uuid_trimestre_key`, así que correrlo varias veces no duplica filas.
+Sale con código 1 si algún evento falla (tras sus 3 intentos) o no aparece en el catálogo; en ese caso
+basta volver a correrlo: los eventos que sí entraron quedan guardados.
 
 Para `--exportar` dentro de Docker hay que montar una carpeta del host (con `--rm` el contenedor
 se borra y los archivos con él). En PowerShell:
@@ -1528,13 +1832,14 @@ normal en la selva).
 
 Los avisos de SENAMHI llegan como alertas tipo `aviso` (§5.6.1): amarillo = `aviso`, naranja =
 `alerta`, rojo = `emergencia`. El nivel resultante (normal/aviso/alerta/emergencia) alimenta el
-titular y el mapa (y alimentará la push por FCM cuando exista, §10). La lluvia medida va aparte de lo
-oficial:
+titular y el mapa, y desde el 24-10-2026 la push por FCM (tarea `push`, §5.6.12, que lee el nivel de
+`titular_zona`). La lluvia medida va aparte de lo oficial:
 - Si la zona está en `aviso` solo por lluvia medida, el rótulo es "Atentos a la lluvia"; con un
   aviso amarillo de SENAMHI además, "Aviso amarillo".
 - No cuenta en la insignia ni en la métrica "alertas y avisos" (en temporada de lluvias serían
   decenas de estaciones).
-- **No deberá disparar una push como alerta** cuando haya push: el snapshot la marca `oficial: false` (§8).
+- **No dispara una push**: el snapshot la marca `oficial: false` (§8) y la tarea `push` solo mira el
+  nivel de `titular_zona`, donde la lluvia medida vale como máximo `aviso` (§5.6.12).
 
 En fase 2 se **cruza con los reportes ciudadanos** para ponderar su confianza (un reporte en zona
 con alerta oficial pesa más).
@@ -1587,6 +1892,7 @@ de lluvia, 127 caudales, 5 alertas), refresh_cache 1,2 s, titular a los 5 min (2
 | `nowcast` | 10 min | nowcasting de SENAMHI para ahora, +1 h y +2 h (§5.6.5); límite de 240 s y `expires` de 540 s |
 | `rios` | 1 h | avisos hidrológicos de SENAMHI: la lista del país y el detalle de todos los avisos vigentes (los de los ríos vigilados primero, 10 por corrida), con su sentido crecida/descenso, para las señales del Mashcón (`rio_senal`) y de los ríos del país (`rio_cauce_senal`) (§5.6.7); límite de 240 s. No crea alertas |
 | `titular` | 30 min | titular en lenguaje claro por departamento (tabla `titular_zona`, 24 + Callao) a partir de `alerta_actual`, `caudal_actual`, `lluvia_senamhi_actual`, `aviso_vigente`, `rio_senal` y `comunicado_enfen`; con `SIMPAC_LLM_KEY` lo redacta un modelo de lenguaje a partir de cifras ya calculadas y se valida, si no, reglas fijas (origen `reglas`); `titular_corto` siempre por reglas (§5.6.10); límite de 120 s (deja de pedir al modelo a los 90 s). No crea alertas |
+| `push` | 5 min | avisos por Firebase Cloud Messaging a la app Android (temas `pais` y `zona_<slug>`) cuando el nivel de `titular_zona` de un departamento sube a alerta o emergencia o vuelve la calma; memoria en `push_estado`; nunca por aviso amarillo ni lluvia medida; sin credenciales solo deja su latido (§5.6.12); límite de 60 s (deja de enviar a los 40 s); al arrancar se encola 7 min después (420 s), tras `titular`. Desde el 24-10-2026: 10 tareas registradas |
 | `refresh_cache` | 5 min | snapshot en Redis para la API |
 
 **Despliegue de avisos con ícono, pronóstico y nowcasting**, en este orden (todo es aditivo: si
@@ -1603,8 +1909,8 @@ algo sale mal, el worker y el frontend anteriores siguen funcionando):
 4. El frontend, **solo después** del paso 1: pide las columnas nuevas de `aviso_vigente` (si no
    existen, vuelve a las de antes una vez por sesión y el mapa va sin insignias) y las vistas nuevas.
 
-**BD:** la estructura está en `supabase/migrations/` (historia, 32 archivos) y `supabase/schema.sql`
-(foto). `lectura_caudal` es el historial; la vista **`caudal_actual`** da la última lectura de ayer u
+**BD:** la estructura está en `supabase/migrations/` (historia, 35 archivos al 24-10-2026) y
+`supabase/schema.sql` (foto). `lectura_caudal` es el historial; la vista **`caudal_actual`** da la última lectura de ayer u
 hoy de cada estación (es la que usan el mapa y el snapshot). La vista **`alerta_actual`** da las
 alertas que se muestran: las vigentes, y la lluvia medida solo con 3 h o menos (§5.6.2); la leen el
 frontend y el snapshot, no la tabla `alerta`. Todo cambio de BD va como migración nueva.
@@ -1616,9 +1922,11 @@ del inicio son 19 consultas REST a 17 vistas o tablas, ninguna repetida, medidas
   `nowcast_estado` / `nowcast_vigente` (el umbral de 30 min está en la vista), `lluvia_senamhi_actual`,
   `lectura_lluvia` (24 h de Cajamarca), `mapa` (FEN y mensual), `report` (reportes vigentes).
 - Ríos vigilados (§5.6.7): `rio_vigilado_mapa`, `rio_zona_mapa`, `rio_senal` y la tabla
-  `rio_incidente`. Ríos del país (§5.6.8): `rio_cauce_mapa` (todo con `cauce_lejos`; `cauce` por río)
-  y `rio_cauce_senal`. A dónde acudir (§5.6.9): tabla `punto_acudir` por caja de la vista. Titular
-  (§5.6.10): tabla `titular_zona` por departamento.
+  `rio_incidente`. Ríos del país (§5.6.8): `rio_cauce_mapa` (todo con `cauce_lejos`; `cauce` por río;
+  desde el 24-10, `ancho_m` y `franja` por río solo en alerta o emergencia) y `rio_cauce_senal`. Zonas
+  estimadas de los ríos del país (§5.6.11): `rio_cauce_zona_mapa` por río a la vista desde zoom 12 y
+  para el río más cercano de la tarjeta. A dónde acudir (§5.6.9): tabla `punto_acudir` por caja de la
+  vista. Titular (§5.6.10): tabla `titular_zona` por departamento (`titular` y `titular_corto`).
 - Páginas: Alertas = `alerta_actual` + `aviso_vigente` + ríos vigilados; "Pasadas" = la tabla `alerta`
   entre dos fechas de Perú (máximo 30 días, hasta 500 filas; **no existe** una vista `alerta_historial`);
   Histórico = `lectura_caudal` (por estación y río, umbrales de `caudal_actual`) y `lectura_lluvia`
@@ -1639,6 +1947,13 @@ y, tras la verificación adversarial del 19/20-10-2026, `20261020035127_report_f
 La BD de Supabase estuvo pausada del 15 al 19-10-2026 (plan gratuito) y se reanudó el 19-10 a las
 22:10; worker y API se reconstruyeron el 19-10 a las 22:19 y los tres contenedores (con el frontend)
 el 20-10 a las 00:49, hora de Lima.
+
+**Despliegue del 24-10-2026** (fase construida el 20-10): `20261020164538_push_estado`,
+`20261020164715_rio_cauce_mapa_franja` y `20261020165455_rio_cauce_zona` (las tres registradas; 35 en
+total), carga única `cargar_cauces_zonas --aplicar` (40 filas), `docker compose up -d --build frontend
+backend worker` (frontend con `node:22-alpine`, worker con `google-auth` y el secreto de Firebase
+montado), primera corrida de `push` con credenciales a las 21:58 UTC. La app Kotlin se instaló en el
+emulador con `adb install -r -g`.
 
 ### 7.2. Prototipo (sin dependencias, congelado)
 
@@ -1689,7 +2004,7 @@ Stack completo en `docker-compose.yml` (4 servicios):
 |---|---|---|
 | `frontend` | React build servido por **nginx** (gzip precomprimido, caché inmutable de `/assets/`, CSP; §8.2) | 8080 |
 | `backend` | API **FastAPI async** (`backend/app.py`), CORS solo para los orígenes de SIMPAC | 8000 |
-| `worker` | **Celery + beat**: ingesta horaria, ENFEN cada 6 h, avisos SENAMHI, lluvia nacional, pronóstico por localidad, nowcasting, avisos hidrológicos, titular por departamento cada 30 min, refresco de caché | — |
+| `worker` | **Celery + beat**: ingesta horaria, ENFEN cada 6 h, avisos SENAMHI, lluvia nacional, pronóstico por localidad, nowcasting, avisos hidrológicos, titular por departamento cada 30 min, push por FCM cada 5 min, refresco de caché (10 tareas) | — |
 | `redis` | caché (snapshot) + cola/broker de Celery | 6379 |
 
 ### ¿Por qué esta arquitectura? (van a entrar varias personas a la vez)
@@ -1746,9 +2061,13 @@ docker compose up --build
   `Access-Control-Allow-Origin` y con `-H 'Origin: http://localhost:8080'` sí (`/health` responde
   `{"ok":true,"service":"simpac-api"}` con `Vary: Origin`; `/api/snapshot`, 46 KB en 0,03 s el
   20-10-2026).
-- **Imagen del frontend:** `frontend/Dockerfile` compila con `node:20-alpine`; `@supabase/supabase-js`
-  2.116 declara `node >= 22` y npm lo avisa (`EBADENGINE`), pero compila y corre igual. Conviene subir
-  a `node:22-alpine` (pendiente, §10). La app Android pide Node 22 (`appmobile/README.md`).
+- **Imagen del frontend:** `frontend/Dockerfile` compila con `node:22-alpine` desde el 20-10-2026
+  (antes `node:20-alpine`, con el aviso `EBADENGINE` de `@supabase/supabase-js` 2.116, que declara
+  `node >= 22`); reconstruida el 24-10 sin el aviso. La app Kotlin no necesita Node (§8.4).
+- **Secreto de Firebase en el worker:** con `FIREBASE_CREDENCIALES_ARCHIVO` en el `.env`,
+  `docker-compose.yml` monta ese JSON de solo lectura en `/run/secrets/firebase.json` y pasa la ruta en
+  `FIREBASE_CREDENCIALES_MONTADA`; vacío, monta `.firebase-vacio.json` (`{}`) y la tarea `push` solo
+  deja su latido (§5.6.12). El JSON nunca entra en la imagen ni en git.
 - El frontend recibe las llaves públicas por *build-args*; `SUPABASE_DB_URL` (secreto) solo lo usa
   el worker vía `.env` (nunca en git, ni en la imagen, ni en el contenedor de la API).
 - **`SUPABASE_DB_URL` debe ser la del pooler** (`...pooler.supabase.com:5432`, usuario
@@ -1766,20 +2085,25 @@ docker compose up --build
 **Cargas únicas y corridas sueltas** (dentro del contenedor worker, que tiene `SUPABASE_DB_URL`;
 sin `--aplicar`, los cargadores solo validan y muestran el resumen):
 ```bash
-docker compose run --rm worker python -m backend.mapas.cargar_fen --aplicar    # mapas El Niño (§5.7)
+docker compose run --rm worker python -m backend.mapas.cargar_fen --aplicar --simplificar 0.005 --decimales 5    # mapas El Niño por trimestre (§5.7)
 docker compose run --rm worker python -m backend.mapas.cargar_rios             # río vigilado, en seco (§5.6.7)
 docker compose run --rm worker python -m backend.mapas.cargar_rios --aplicar   # río vigilado, escribe
 docker compose run --rm worker python -m backend.mapas.cargar_cauces --desde-copia           # ríos del país, en seco (§5.6.8)
 docker compose run --rm worker python -m backend.mapas.cargar_cauces --desde-copia --aplicar # ríos del país, escribe
 docker compose run --rm worker python -m backend.mapas.cargar_acudir                         # a dónde acudir, en seco (§5.6.9)
 docker compose run --rm worker python -m backend.mapas.cargar_acudir --aplicar               # a dónde acudir, escribe
+docker compose run --rm worker python -m backend.mapas.cargar_cauces_zonas                   # zonas de relieve de los ríos del país, en seco (§5.6.11)
+docker compose run --rm worker python -m backend.mapas.cargar_cauces_zonas --aplicar         # zonas de relieve, escribe
 docker compose run --rm worker python -m backend.ingesta.rios                  # una corrida de la tarea 'rios'
 docker compose run --rm worker python -m backend.ingesta.titular               # una corrida de la tarea 'titular' (§5.6.10)
+docker compose run --rm worker python -m backend.ingesta.push                  # una corrida de la tarea 'push' (§5.6.12)
+docker compose exec worker python -m backend.ingesta.push --prueba --zona Cajamarca   # mensaje de prueba al tema zona_cajamarca
 ```
 Las demás tareas se corren igual (`python -m backend.ingesta`, `.enfen`, `.avisos`,
 `.lluvia_nacional`, `.pronostico`, `.nowcast`); la tabla está en el `README.md` de la raíz. Los datos
-de `backend/data/` (cauces, acudir, ríos vigilados, localidades) viajan en la imagen del worker: tras
-cambiarlos, reconstruirla.
+de `backend/data/` (cauces, cauces_zonas, acudir, ríos vigilados, localidades) viajan en la imagen del
+worker: tras cambiarlos, reconstruirla. `zonas_relieve.py` no corre en el contenedor: necesita su
+propio venv (`requirements-relieve.txt`, §5.6.11).
 
 > **Gotcha (worker + Redis):** un cliente `redis.asyncio` ata su pool al event loop donde se usa
 > primero. El worker corre cada tarea con `asyncio.run()` (loop nuevo y cerrado en cada corrida),
@@ -1819,6 +2143,17 @@ cambiarlos, reconstruirla.
   worker con el rol `postgres`. Las vistas `rio_cauce_mapa` y `rio_cauce_senal` son `security_invoker`
   con SELECT para los dos roles. Verificado en `pg_policies` e `information_schema.role_table_grants`
   el 20-10-2026.
+- **Tablas nuevas del 20-10-2026** (aplicadas el 20-10, en uso desde el 24-10): `rio_cauce_zona`
+  (RLS, `lectura publica rio cauce zona`, vista `rio_cauce_zona_mapa` `security_invoker` con SELECT
+  para `anon` y `authenticated`: es un dato público) y `push_estado` (**RLS sin políticas ni grants**:
+  la memoria del avisador no es pública; la lee y escribe solo el worker). `rio_cauce_mapa` se
+  recreó con `create or replace` y conserva sus grants. La cuenta de servicio de Firebase es el único
+  secreto nuevo: va montada de solo lectura en el worker, nunca en la imagen, en git ni en la API.
+- **App Kotlin:** lee Supabase con la publishable key (RLS) y la API de solo lectura; no tiene
+  secretos (la URL y la llave pública se inyectan en `BuildConfig` al compilar); el token de registro
+  de FCM se guarda cifrado (`EncryptedSharedPreferences`); en release solo https, salvo `10.0.2.2` y
+  `localhost` por http (`res/xml/red_release.xml`); el WebView del Mapa concede geolocalización solo
+  al origen de la WEB configurada y no accede a archivos locales (§8.4).
 - **Cuentas (Supabase Auth):** correo y contraseña, con confirmación por correo (`signUp` devuelve
   `confirmar` cuando no hay sesión hasta abrir el enlace; la página lo dice y también cuando el correo
   ya tenía cuenta, sin revelar cuál), "olvidé mi contraseña" por `resetPasswordForEmail` y contraseña
@@ -1845,8 +2180,7 @@ cambiarlos, reconstruirla.
   `X-Frame-Options: SAMEORIGIN`, `Referrer-Policy: strict-origin-when-cross-origin` y `access_log off`
   (no se guardan direcciones IP). Si se suma un dominio externo nuevo hay que agregarlo a la CSP en
   los tres bloques del `nginx.conf`.
-- **Service worker** (`public/sw.js`, registrado por `src/pwa.js` solo en producción y fuera de
-  Capacitor): guarda la cáscara de la app (`/assets/`, `index.html`, manifest), nunca datos de Supabase
+- **Service worker** (`public/sw.js`, registrado por `src/pwa.js` solo en producción): guarda la cáscara de la app (`/assets/`, `index.html`, manifest), nunca datos de Supabase
   ni tiles; sin red la app lo dice. Nota: en el navegador integrado del asistente el registro falló
   ("An unknown error occurred when fetching the script") aunque nginx sirve `/sw.js` con 200; no se
   pudo confirmar en Chrome (pendiente).
@@ -1880,48 +2214,86 @@ cambiarlos, reconstruirla.
   enlaces (arreglo del 20-10-2026: antes ocupaba 2 o 3 líneas a todo el ancho sobre la hoja); desde
   `lg`, el texto completo de siempre.
 
-### 8.3. App Android (Capacitor)
+### 8.3. App Android anterior (Capacitor), retirada el 24-10-2026
 
-La app Android es la misma web empaquetada con **Capacitor 8.5.3**: un proyecto Android nativo
-(`frontend/android/`, generado por Capacitor y versionado) que abre la build de Vite dentro de un
-WebView del sistema. El detalle de requisitos, firma y publicación está en `appmobile/README.md`; aquí
-lo que un desarrollador necesita saber:
-- **Configuración:** `frontend/capacitor.config.json`: `appId` `pe.simpac.app`, `appName` `SIMPAC`,
-  `webDir` `dist`, `androidScheme: https` (la web corre en `https://localhost`, por eso Stadia sirve sin
-  llave y `capacitor://localhost` y `https://localhost` están en el CORS de la API), `allowMixedContent`
-  false, pantalla de inicio y barra de estado en `#0f172a`. Versiones de Android en
-  `frontend/android/variables.gradle`: `minSdk 24` (Android 7.0, el mínimo de Capacitor 8),
-  `targetSdk 36`, `compileSdk 36`. Plugins: `@capacitor/geolocation` (el GPS; `hooks/useGeolocation.js`
-  lo usa por import dinámico y en la web usa `navigator.geolocation`), `app`, `splash-screen`,
-  `status-bar`. Permisos: `INTERNET`, `ACCESS_COARSE_LOCATION`, `ACCESS_FINE_LOCATION` (solo en primer
-  plano). El service worker no se registra dentro de la app.
-- **Comandos** (desde `frontend/`, `package.json`): `npm run android:sync` (build + `npx cap sync
-  android`; hay que correrlo cada vez que cambia la web), `android:apk` (`gradlew assembleDebug`, APK de
-  prueba), `android:aab` (`gradlew bundleRelease`, para Play Console), `android:apk:release`,
-  `android:open` (Android Studio), `android:run`. Requisitos: Node 22, JDK 21, Android SDK con
-  `platforms;android-36` y `build-tools;36.0.0`, `JAVA_HOME` y `ANDROID_HOME`; `frontend/.env` con las
-  llaves públicas de Supabase (Vite las mete en el bundle). Desde Git Bash `cmd //c gradlew.bat` no
-  encuentra el script (conversión de rutas de MSYS): usar PowerShell o `./gradlew.bat`.
-- **Compilación verificada el 20-10-2026** (Windows, PowerShell): `npm run build` 9,4 s, `npx cap sync
-  android` 1,7 s, `gradlew assembleDebug` 9 s con el daemon caliente (214 tareas) ->
-  `frontend/android/app/build/outputs/apk/debug/app-debug.apk`, 5 304 253 bytes (5,06 MiB). El primer
-  intento falló en `:app:mergeDebugAssets` con "Duplicate resources": los `.gz` que deja el plugin
-  `precomprimir` de Vite los copia `cap sync` a `assets/public/` y AAPT los toma como duplicados; se
-  excluyen con `!*.gz` en `ignoreAssetsPattern` de `frontend/android/app/build.gradle` (el WebView no
-  los necesita). Probada en el emulador `Pixel_7a` (Google Play x86_64) sin ventana: con los 2 GB por
-  defecto Android mata la app por memoria; con `-memory 3072` carga el mapa con sus tiles, el chip de
-  nivel, el río Mashcón y la barra inferior.
-- **Firma:** la release se firma con un keystore propio que no va al repo (`key.properties`, `*.jks` y
-  `*.keystore` en `.gitignore`); `build.gradle` lee `frontend/android/key.properties` o, si no existe,
-  las variables `SIMPAC_KEYSTORE_FILE`, `SIMPAC_KEYSTORE_PASSWORD`, `SIMPAC_KEY_ALIAS`,
-  `SIMPAC_KEY_PASSWORD`; sin ninguna de las dos el release se compila sin firmar (el debug usa la llave
-  de depuración). `versionCode 1`, `versionName "1.0"`: subirlos antes de cada publicación.
-- **Límites:** es un WebView, no una interfaz nativa (el rendimiento del mapa es el del navegador del
-  teléfono). Sin notificaciones push todavía (`@capacitor/push-notifications` + FCM; el
-  `google-services.json` no está y queda fuera del repo). Sin conexión no hay datos, igual que la web.
-  Ícono adaptable propio (gota blanca sobre azul oscuro) para Android 8+; la pantalla de inicio sigue
-  siendo la de Capacitor. No publicada en Google Play (requiere cuenta de desarrollador, política de
-  privacidad pública y cuestionarios de contenido; pasos en `appmobile/README.md`).
+Entre el 14-10 y el 24-10-2026 la app de SIMPAC fue la misma web empaquetada con **Capacitor 8.5.3**
+(`frontend/android/`, `frontend/capacitor.config.json`, `appId` `pe.simpac.app`, origen
+`https://localhost`, GPS por `@capacitor/geolocation`; APK de prueba de 5 304 253 bytes compilado el
+20-10 y probado en el emulador `Pixel_7a`). Desde el 20-10 la app es la nativa en Kotlin (§8.4), con
+el mismo `applicationId`, así que instalarla reemplazó a esta. **El 24-10-2026 se retiró Capacitor del
+repo** después de arreglar el WebView del Mapa de la app Kotlin: se borraron `frontend/android/` y
+`frontend/capacitor.config.json`, los scripts `android:*` de `frontend/package.json` y las
+dependencias `@capacitor/*`; `hooks/useGeolocation.js` quedó solo con `navigator.geolocation` (el
+WebView de la app Kotlin concede la geolocalización del sistema al origen de la web) y `src/pwa.js`
+ya no comprueba `window.Capacitor`. Los orígenes `https://localhost` y `capacitor://localhost` siguen
+en el CORS por defecto de la API (`backend/config.py`) sin hacer daño.
+
+### 8.4. App Android nativa (Kotlin + Jetpack Compose)
+
+Construida el 20-10-2026 e integrada el 24-10 en `appmobile/android/` (36 archivos Kotlin), por
+decisión del usuario de tener una app nativa con push. La guía completa (requisitos, compilar, emulador,
+FCM, firma, Play Console) está en `appmobile/README.md`; aquí el contrato con el backend y la BD.
+- **Identidad y versiones:** `applicationId` `pe.simpac.app` (el que tenía la app de Capacitor: la reemplazó al
+  instalarse), `versionCode 2`, `versionName "2.0"`; AGP 9.0.1, Kotlin 2.3.20, Compose BOM 2026.03.01,
+  Gradle 9.1.0, JDK 21 (toolchain 17), `minSdk 26` (Android 8.0), `targetSdk`/`compileSdk 36`;
+  Navigation Compose 2.9.5, DataStore 1.1.7, security-crypto 1.1.0, OkHttp 4.12.0, kotlinx-serialization
+  1.9.0, play-services-location 21.3.0, Firebase BOM 34.0.0 + firebase-messaging, google-services 4.4.3
+  (el plugin se aplica solo si existe `app/google-services.json`, que no se versiona; sin él la app
+  compila y el interruptor dice "Notificaciones no configuradas en esta instalación").
+- **Qué lee y de dónde** (`data/Repositorio.kt`, `data/Http.kt` con OkHttp; columnas explícitas, como
+  la web): Supabase REST con la publishable key (`BuildConfig.SUPABASE_URL` / `SUPABASE_KEY`, tomadas
+  al compilar de `SIMPAC_SUPABASE_URL`/`SIMPAC_SUPABASE_KEY`, `frontend/.env` o `frontend/.env.example`;
+  ningún archivo del proyecto lleva la clave): `titular_zona` (titular, `titular_corto`, detalle,
+  nivel, `generado_en`, `revisado_en`, origen), `alerta_actual`, `rio_cauce_mapa` + `rio_cauce_senal`
+  (chip del río con señales), `pronostico_vigente` (caja alrededor de la posición), `estacion` (el
+  departamento por GPS = la estación de SENAMHI más cercana, como la web; de respaldo la capital más
+  cercana) y `punto_acudir` (caja de 30 km); y `GET <API>/api/snapshot` de FastAPI para el contexto
+  ENFEN. Cada consulta guarda su última respuesta en `filesDir/simpac_cache` (`CacheDisco`) y, si la
+  red falla, se muestra con la franja "Sin conexión" y la hora; el titular con más de 3 h sin
+  `revisado_en` lleva franja "desactualizado"; sin titular el semáforo dice "Sin datos" (nunca "Normal"
+  por algo no medido). Direcciones por defecto: API `http://10.0.2.2:8000` y WEB `http://10.0.2.2:8080`
+  (el Docker de la PC visto desde el emulador), editables en Cuenta > Ajustes (DataStore).
+- **Pantallas** (`ui/`, barra inferior de 5): Inicio (semáforo con color + etiqueta, `titular_corto` y
+  detalle con "Generado el ... por reglas de SIMPAC con datos oficiales", chips "N alertas oficiales" y
+  "Río X: estado en estación (valor)", ENFEN, pronóstico de 3 días, Llamar 105 / 116, fuentes con hora,
+  pie referencial), Alertas (emergencia > alerta > aviso, oficiales primero, lluvia medida aparte como
+  no oficial, filtro Mi zona / Todo el país), Mapa (la web en un WebView con JavaScript y
+  geolocalización solo para el origen de la WEB, `useWideViewPort`/`loadWithOverviewMode`; botones
+  Recargar y abrir en el navegador; los enlaces a otros sitios salen al navegador), Acudir (105, 116,
+  115, 106 con la salvedad del SAMU y los 3 puntos más cercanos con "Llamar" y "Cómo llegar" por
+  `geo:`), Cuenta (las cuentas se manejan en la web: botón a `<WEB>/cuenta`; ajustes; interruptor de
+  notificaciones; Acerca de). Lógica pura en `dominio/` (Nivel, Departamentos con `slugTema`, Geo,
+  Tiempo, Alertas, Acudir, Pronostico, Rios), probada en JVM: 22 pruebas (`DominioTest` 16,
+  `ModelosTest` 6) más 4 de Compose UI en `androidTest` (`InicioScreenTest`).
+- **Push (contrato con §5.6.12):** al prender el interruptor pide `POST_NOTIFICATIONS` (Android 13+) y
+  se suscribe a `pais` y `zona_<slug>` (`push/PushSimpac.kt`); al cambiar de departamento se desuscribe
+  del anterior; al apagar, de los dos. `push/ServicioMensajes.kt` muestra la notificación en el canal
+  `alertas` (importancia alta) y al tocarla `MainActivity` abre la pestaña que diga `data.ruta`
+  (`/alertas`). El token de registro se guarda cifrado (`AlmacenSeguro`). Verificado el 24-10-2026 con
+  el envío real del worker y con `--prueba --zona Cajamarca`.
+- **Compilación verificada el 24-10-2026** (Windows, PowerShell, `JAVA_HOME` jdk-21.0.11, `ANDROID_HOME`
+  con `android-36`): `.\gradlew.bat testDebugUnitTest assembleDebug` BUILD SUCCESSFUL (22 pruebas, 0
+  fallas; 4 min la primera vez por descargas, 5-22 s después) ->
+  `appmobile/android/app/build/outputs/apk/debug/app-debug.apk`, **15 846 448 bytes (15,1 MiB)**.
+  Emulador Pixel_7a sin ventana (`-memory 3072`, imagen Google Play x86_64): Inicio, Alertas, Acudir,
+  Cuenta y el push se vieron bien; el Mapa (WebView) cargaba la web pero la captura salía en blanco en
+  ese emulador con `-gpu swiftshader_indirect` y con `-gpu host` (el árbol de accesibilidad traía los 92
+  nodos con sus medidas; una página simple sí se pintaba en el mismo WebView y Chrome del emulador sí
+  pintaba la web; `LAYER_TYPE_SOFTWARE` no cambió nada). **Causa y arreglo (24-10-2026)**: con el
+  DevTools remoto del WebView (`adb forward tcp:9222 localabstract:webview_devtools_remote_<pid>`)
+  `innerHeight` y `documentElement.clientHeight` daban 705 px pero `100vh` y `height: 100%` resolvían a
+  0: el `WebView(ctx)` creado en el `factory` de `AndroidView` no trae `LayoutParams` y el `ViewGroup`
+  de Compose le pone `WRAP_CONTENT`, y con alto `WRAP_CONTENT` Chromium (AwLayoutSizer,
+  `force_zero_layout_height`) deja el alto de layout en 0, así que `html`/`body`/`#root` y el
+  `div.h-screen` de la web medían 0 px (la app de Capacitor no lo sufría: su WebView venía del XML con
+  `match_parent`, y la misma web en ese APK daba `100vh = 845` con el mismo WebView 155). Con
+  `layoutParams = ViewGroup.LayoutParams(MATCH_PARENT, MATCH_PARENT)` en `ui/mapa/MapaScreen.kt`
+  `100vh = 705`, Leaflet mide 649 px, cargan 16 tiles y la captura muestra el mapa, el chip SIMPAC y la
+  hoja. Sin excepciones de `pe.simpac.app` en logcat.
+- **Límites y pendientes:** WebView del Mapa en teléfono real (en el emulador ya pinta); una vez el botón atrás dentro del
+  WebView volvió a Inicio en vez de retroceder (revisar `canGoBack` en `onPageFinished`); la sesión de la
+  web (Supabase Auth) no se comparte con la app; sin iOS; firma y Play Console (`appmobile/README.md`);
+  avisos de deprecación de `security-crypto` 1.1.0 (sin reemplazo publicado por AndroidX).
 
 ---
 
@@ -1951,6 +2323,8 @@ scraping HTML/PDF.**
 | CENEPRED | ArcGIS REST | referencia; SIGRID pide token (§5.5) |
 | Stadia Maps (mapa base) | tiles raster, sin llave en `localhost` | API key gratuita en un dominio real (§8.2) |
 | API de Anthropic (titular, opcional) | `POST /v1/messages` con `urllib`, solo con `SIMPAC_LLM_KEY` | no es una fuente de datos: redacta cifras ya calculadas y se valida (§5.6.10) |
+| Copernicus DEM GLO-30 (relieve) | teselas GeoTIFF del bucket público de AWS, sin autenticación, leídas con `tifffile` | carga única por río con `zonas_relieve.py`, fuera del contenedor; teselas fuera del repo; aviso literal de Copernicus en cada zona (§5.6.11) |
+| Firebase Cloud Messaging (push, salida) | `POST .../v1/projects/<id>/messages:send` con token OAuth2 firmado con la cuenta de servicio | no es una fuente: es el canal de aviso a la app; solo con credenciales en el worker; nunca la clave en logs ni en git (§5.6.12) |
 
 Reglas:
 - **Backend como proxy** siempre (evita CORS y mixed-content; obligatorio para IGP).
@@ -1970,7 +2344,8 @@ Reglas:
       pero pide token (§5.5). Pedir acceso a CENEPRED si se quieren sus capas de peligro y riesgo.
 - [x] Persistencia + ingesta + API (prototipo SQLite/stdlib, sección 7).
 - [x] Persistencia en **PostgreSQL + PostGIS** (Supabase) con job horario en el worker (Celery beat).
-- [x] Conector **IDESEP** + 5 mapas históricos de eventos El Niño en la tabla `mapa` (sección 5.7).
+- [x] Conector **IDESEP** + mapas históricos de eventos El Niño en la tabla `mapa` (sección 5.7): 5
+      eventos, 13 filas (una por evento y trimestre desde el 25-10-2026, HU-15).
 - [x] API en **FastAPI** async con caché en Redis (sección 8), de solo lectura.
 - [x] Refactor modular del backend y frontend + pruebas sin red (22 sep).
 - [x] Comunidad con **ids uuid**, permisos por columna y votos calculados por la BD (sección 8.1).
@@ -1985,8 +2360,9 @@ Reglas:
       `localidades_senamhi.json`): hoy se guardan pero no se muestran.
 - [ ] **Nowcasting:** calibrar el umbral de 30 min con `retraso_min` del latido (cuánto tarda
       SENAMHI en publicar) y revisar cada cuánto se detiene.
-- [ ] Conector de **push** (Firebase) que dispare la notificación cuando `alerta` cambie de nivel,
-      solo con lo oficial (`oficial: true`): la lluvia medida no se notifica como alerta.
+- [x] **Push** (Firebase, 20/24-10-2026, §5.6.12): la tarea `push` avisa cuando el nivel de
+      `titular_zona` de un departamento cambia a alerta o emergencia o vuelve la calma; la lluvia medida
+      y los avisos amarillos nunca se notifican. Verificado de extremo a extremo con la app Kotlin.
 - [ ] Reejecutar la verificación en **temporada de lluvias (oct–abr)** y revisar las alertas de lluvia:
   - cada cuánto salen (`latido.alertas` y `alertas_6h`);
   - las 8 estaciones de valle amazónico con referencia de 5 mm/h y lluvia de llano amazónico (Jaén,
@@ -2031,20 +2407,38 @@ Reglas:
       chunks de vendors, PWA, consultas del inicio en una sola ola (19 REST, titular visible a los 468 ms
       con assets en caché el 20-10-2026).
 - [x] **App Android** (§8.3, 14-10-2026): Capacitor, APK de prueba compilado y probado en emulador el
-      20-10-2026; falta firmar y publicar.
+      20-10-2026. **Reemplazada el 20-10 por la app nativa en Kotlin + Compose** (§8.4, integrada el
+      24-10: 22 pruebas JVM, APK de 15,1 MiB, push recibido en el emulador); Capacitor retirado del
+      repo el 24-10; falta firmar y publicar.
 - [ ] **Cargar los 4 ríos nuevos de ANA** (Quiroz, Sisa, Yauca, Acarí; copias ya en
-      `backend/data/cauces/`): `cargar_cauces --desde-copia --aplicar` (§5.6.8).
-- [ ] **`titular_corto` en la tarjeta:** `lib/queries.js getTitular` debe pedir `titular_corto` para que la
-      tarjeta "Tu zona ahora" use el texto de la BD (hoy ninguno de los 25 `titular` cabe en 110
-      caracteres y siempre se muestra la frase determinista, §5.6.10).
+      `backend/data/cauces/`): `cargar_cauces --desde-copia --aplicar` (§5.6.8). Y el **alias del río
+      Piura** en `cauces_alias.json` (su estación "Puente Sanchez Cerro" no quedó emparejada:
+      `estaciones = []`, el mapa no lo resalta y la tarjeta desde Piura dice "El río con trazo más
+      cercano está a 34 km (Chira)"); Moche y Reque no tienen fila en `rio_cauce`.
+- [x] **`titular_corto` en la tarjeta** (20/24-10-2026): `getTitular` pide `titular_corto` y la tarjeta
+      lo usa con la misma regla de frescura y nivel (§5.6.10).
 - [ ] **Activar el modelo del titular** (`SIMPAC_LLM_KEY`) si el equipo lo decide; costo estimado en
       §5.6.10.
 - [ ] **Auth en producción:** Redirect URLs del dominio real y de la app en el panel de Supabase Auth;
       política de privacidad pública (también la pide Google Play).
-- [ ] **Push** (web y app): `@capacitor/push-notifications` + FCM y una tarea del worker que avise cuando
-      entra un aviso de nivel 3 o 4 del departamento elegido, solo con lo oficial.
-- [ ] **Firmar y publicar la app** en Google Play (upload key, AAB, ficha, cuestionarios; `appmobile/README.md`).
-- [ ] `frontend/Dockerfile` a `node:22-alpine` (supabase-js 2.116 pide Node 22; hoy solo es un aviso de npm).
+- [x] **Push** (20/24-10-2026): tarea `push` del worker + FCM + app Kotlin suscrita a `pais` y
+      `zona_<slug>` (§5.6.12, §8.4). La web no recibe push (no hay Web Push).
+- [x] **WebView del Mapa de la app Kotlin** (24-10-2026): se veía en blanco porque el `WebView` creado
+      dentro de `AndroidView` quedaba con alto `WRAP_CONTENT` y Chromium resolvía `100vh` y
+      `height: 100%` como 0 px; arreglado con `LayoutParams(MATCH_PARENT, MATCH_PARENT)` en
+      `ui/mapa/MapaScreen.kt` (§8.4): el emulador ya muestra tiles, chip y hoja. Capacitor retirado
+      del repo ese día (§8.3). Queda probarlo en un teléfono real.
+- [ ] **Firmar y publicar la app** en Google Play (upload key, `bundleRelease` en `appmobile/android/`,
+      ficha, política de privacidad, cuestionarios; `appmobile/README.md`).
+- [x] `frontend/Dockerfile` a `node:22-alpine` (20-10-2026; reconstruido el 24-10 sin `EBADENGINE`).
+- [x] **Zonas estimadas con el relieve para los ríos del país** (§5.6.11, 20/24-10-2026): 20 ríos
+      calculados y cargados (`rio_cauce_zona`, 40 filas), franja de atención referencial en
+      `rio_cauce_mapa`, capa y tarjeta de la web las usan.
+- [ ] **Más ríos con zonas de relieve:** el tramo alto del Marañón (Balsas, Corral Quemado) con
+      `--centro`, y revisar en el navegador los 17 ríos que no tuvieron captura (§5.6.11). Los 6 de
+      selva baja no se calculan.
+- [ ] **Mover el JSON de la cuenta de servicio de Firebase fuera del repo** (hoy en la raíz de la PC de
+      desarrollo, ignorado por git) y apuntar `FIREBASE_CREDENCIALES_ARCHIVO` ahí (§5.6.12).
 - [ ] **A dónde acudir:** albergues y zonas seguras oficiales (mesa de partes de la municipalidad), número
       del COER Cajamarca, servidores de INDECI caídos; refrescar RENIPRESS cada mes (`--descargar`).
 - [ ] Confirmar en Chrome el registro del service worker (en el navegador integrado del asistente falló).
@@ -2053,6 +2447,37 @@ Reglas:
 ---
 
 *Endpoints capturados por inspección de red de sitios públicos el 2026-09-06; GeoSNIRH, RENIPRESS,
-CENEPRED, CGBVP y gob.pe verificados el 2026-10-14. Documento actualizado el 2026-10-14 con la
-verificación y los arreglos del 19 y 20-10-2026. Sujetos a cambios del lado de cada organismo; por eso
-cada fuente vive en su propio conector con tests.*
+CENEPRED, CGBVP y gob.pe verificados el 2026-10-14; Copernicus DEM (AWS) y FCM v1 el 2026-10-20.
+Documento actualizado el 2026-10-14 con la verificación y los arreglos del 19 y 20-10-2026, y el
+2026-10-24 con la integración de la app Kotlin, el push y las zonas de relieve (§5.6.11, §5.6.12,
+§8.4). Sujetos a cambios del lado de cada organismo; por eso cada fuente vive en su propio conector con
+tests.*
+
+## 11. Integración del 24-10-2026: push, zonas de relieve y app Kotlin
+
+Resumen de lo integrado el 24-10-2026 (construido el 20-10); el detalle de cada pieza está en §5.6.11
+(zonas de relieve y franja), §5.6.12 (push) y §8.4 (app Kotlin), y el estado en `docs/ESTADO.md`.
+
+- **Tarea `push` del worker** (`backend/ingesta/push.py`, cada 300 s, soft 60 / hard 90, encolada al
+  arrancar con `countdown` 420): lee `titular_zona`, compara con `push_estado` (migración
+  `20261020164538_push_estado`) y manda por FCM (API HTTP v1, token OAuth2 firmado con `google-auth`)
+  solo cuando una zona sube a alerta/emergencia o baja de ahí ("vuelve la calma"); temas `pais` y
+  `zona_<slug>`; `sin_dato` no toca nada. Credenciales: en Docker, `FIREBASE_CREDENCIALES_ARCHIVO`
+  (ruta en el host) se monta en `/run/secrets/firebase.json` y `backend/config.py` la prefiere
+  (`FIREBASE_CREDENCIALES_MONTADA`); fuera de Docker vale `FIREBASE_CREDENCIALES` (ruta o base64). Sin
+  credenciales la tarea solo deja su latido con el aviso. Prueba: `docker compose exec worker python -m
+  backend.ingesta.push --prueba --zona Cajamarca`. Verificado de extremo a extremo el 24-10 con la app
+  Kotlin en el emulador (ver `appmobile/README.md`).
+- **Zonas estimadas con el relieve** (`backend/mapas/zonas_relieve.py`, `requirements-relieve.txt`,
+  sin GDAL): HAND sobre Copernicus DEM GLO-30 alrededor de la estación de cada río de `rio_cauce`
+  (tramo de hasta 60 km), umbrales ~2 m y ~3 m, control de calidad (2 m entre 2 % y 8 % del corredor);
+  salida `backend/data/cauces_zonas/<rio>.geojson` + `_indice.json`; cargador
+  `backend/mapas/cargar_cauces_zonas.py` (prueba en seco por defecto, `--aplicar`, `--podar`) a
+  `rio_cauce_zona` (migración `20261020165455_rio_cauce_zona`, vista `rio_cauce_zona_mapa` con la
+  geometría simplificada). La web los pide por río visible desde zoom 12 (capa `zona`,
+  `frontend/src/map/layers/zonasRio.js`) y la tarjeta "Tu zona ahora" los usa para el chip
+  Dentro/Fuera. Franja de atención referencial: columnas `ancho_m` y `franja` de `rio_cauce_mapa`
+  (migración `20261020164715_rio_cauce_mapa_franja`), solo con el río en alerta o emergencia.
+- **App Android**: la app nativa en Kotlin + Compose vive en `appmobile/android/` y está documentada en
+  `appmobile/README.md`; la de Capacitor se retiró del repo el 24-10-2026 (§8.3) tras arreglar el
+  WebView del Mapa (alto 0 por `LayoutParams` `WRAP_CONTENT`; ahora pinta en el emulador sin ventana).

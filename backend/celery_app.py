@@ -128,3 +128,21 @@ def _al_arrancar(**_):
     rios.delay()
     # countdown: el titular resume lo que las otras tareas acaban de escribir (avisos, lluvia, ríos)
     titular.apply_async(countdown=300)
+
+
+# Avisador push (HU-20, backend/ingesta/push.py): cada 5 min lee titular_zona y manda por FCM solo
+# los cambios a alerta/emergencia y la vuelta a la calma. 60 s: push.py deja de enviar a los 40 s
+# (PLAZO_S) para que el latido se escriba siempre; sin FIREBASE_CREDENCIALES solo deja el latido.
+@celery.task(name="backend.celery_app.push", soft_time_limit=60, time_limit=90)
+def push():
+    from backend.ingesta.push import actualizar
+    return actualizar()
+
+
+celery.conf.beat_schedule["push"] = {"task": "backend.celery_app.push", "schedule": 300.0}
+
+
+@beat_init.connect
+def _al_arrancar_push(**_):
+    # 420 s: después del titular (300 s), que es lo que el avisador lee
+    push.apply_async(countdown=420)

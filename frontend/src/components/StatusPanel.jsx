@@ -274,9 +274,12 @@ export default function StatusPanel({
               <div className="space-y-1.5 px-4 pt-4 text-sm text-muted-foreground">
                 <Titulo>Qué dicen las fuentes hoy</Titulo>
                 <p className="text-foreground">{p.local}</p>
-                {zona?.resumenBd && !zona.titular.interpretado && (
+                {/* el titular largo (<= 240) y el detalle de la BD; la tarjeta de arriba lleva solo
+                    titular_corto (<= 110), así que aquí va lo que no cabía */}
+                {zona?.resumenBd && zona.resumenBd.titular !== zona.titular.texto && (
                   <p className="text-foreground">
-                    {zona.resumenBd.titular}{" "}
+                    {zona.resumenBd.titular}
+                    {zona.resumenBd.detalle ? ` ${zona.resumenBd.detalle}` : ""}{" "}
                     <span className="text-xs text-muted-foreground">
                       (resumen {zona.resumenBd.origen === "llm" ? "redactado automáticamente con las cifras oficiales" : "del servidor de SIMPAC"})
                     </span>

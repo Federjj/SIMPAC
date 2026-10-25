@@ -1,0 +1,16 @@
+# Lo que generan Gradle y Android Studio en este proyecto (la raiz del repo tiene el mismo bloque).
+*.iml
+.gradle/
+/local.properties
+/.idea/
+/build/
+/app/build/
+/captures/
+.externalNativeBuild
+.cxx
+# Credenciales de Firebase: se descargan de la consola y no se versionan
+/app/google-services.json
+# Firma
+/key.properties
+*.jks
+*.keystore

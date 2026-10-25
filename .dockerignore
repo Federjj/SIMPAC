@@ -23,3 +23,6 @@ appmobile
 # No corren en producción: se quedan fuera de las imágenes
 backend/prototipo
 backend/tests
+# Zonas estimadas con el relieve junto a los ríos del país (~3 MB) que carga
+# backend/mapas/cargar_cauces_zonas.py
+!backend/data/cauces_zonas/*.geojson

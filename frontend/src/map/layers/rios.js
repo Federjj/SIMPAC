@@ -7,7 +7,7 @@ import {
   GEOMETRIAS, ROTULOS_DESDE, aLatLngs, aligerar, avisosDe, cajaConMargen, detallePorZoom, elegirRotulados, emparejarCauces,
   enVista, esFuerte, estadoRio, extenderTramo, guardarDetalle, latLngsTramo, licenciaCorta, lista, notaCauces, tramoCubre,
 } from "@/lib/cauces";
-import { NOTA_SIMULACION, conSimulacion } from "@/lib/simulacion";
+import { NOTA_SIMULACION, conSimulacion, simularCauce } from "@/lib/simulacion";
 import { CAUCE_HEX, RIO_HEX } from "../palette";
 import { enlaceSeguro, escapeHtml, popupHtml } from "../markers";
 import { iconoRio, textoRotulo } from "../marcadores";
@@ -54,7 +54,9 @@ const num = (v) => Number(v).toLocaleString("es-PE", { maximumFractionDigits: 2 
 const minuscula = (t) => t.charAt(0).toLowerCase() + t.slice(1);
 const NOTA_CAUCE =
   "Las franjas junto al río marcan la zona que podría afectar si se desborda (capa «Zonas que un río podría afectar»).";
-const SIN_ZONAS = "Para este río no hay un mapa de zonas inundables cargado.";
+// las zonas estimadas (si SIMPAC las tiene para el río) y la franja de atención van en la otra capa
+const SIN_ZONAS =
+  "Si SIMPAC estimó zonas que este río podría afectar (con el relieve; no es un mapa oficial) se ven en la capa «Zonas que un río podría afectar» al acercarse; la franja punteada junto al cauce, solo en alerta o emergencia, es referencial.";
 const ESPERA_VISTA_MS = 150; // tras moveend, antes de revisar detalle y nombres
 const GUIA_PX = 6; // simplificación de la guía del nombre (píxeles con el zoom de ahora)
 // "2021-01-11" -> "11/01/2021"
@@ -450,9 +452,13 @@ export default {
     // fila de ANA -> {rio, estado, cauce}: la estación a la que se refiere el aviso hidrológico de
     // su río (solo esa: las demás estaciones del río no lo heredan)
     const conAviso = new Map();
-    for (const rio of emparejados) {
-      const id = rio.fila.rio_ana;
-      const est = estadoRio({ lecturas: rio.lecturas, avisos_hidro: avisosDe(senalesCauces, id) });
+    for (const rio0 of emparejados) {
+      const id = rio0.fila.rio_ana;
+      // simulación de un río del país (solo desarrollo, ?simular=rio:<rio_ana>:alerta|emergencia)
+      const sim = simularCauce({ rioAna: id, lecturas: rio0.lecturas, avisos_hidro: avisosDe(senalesCauces, id) });
+      simulada ||= sim.activa;
+      const rio = sim.activa ? { ...rio0, lecturas: sim.lecturas } : rio0;
+      const est = estadoRio({ lecturas: sim.lecturas, avisos_hidro: sim.avisos_hidro });
       if (!rio.lecturas.length && !est.zona.avisoHidro) continue;
       estados.set(id, est);
       nacionales.push(rio);
@@ -460,6 +466,7 @@ export default {
         for (const c of rio.lecturas)
           if (avisoEsDeEstacion(est.zona.avisoHidro, c.estacion))
             conAviso.set(c, { rio: { nombre: rio.fila.nombre }, estado: est.zona, cauce: est.cauce });
+      if (sim.activa) rio0.lecturas.forEach((c0, i) => sim.lecturas[i] !== c0 && reemplazo.set(c0, sim.lecturas[i]));
     }
     const trazos = dibujarNacionales(group, nacionales, estados);
     if (trazos.size) seguirVista(group, map, trazos, estados);

@@ -1,20 +1,15 @@
 import L from "leaflet";
 import { History } from "lucide-react";
 import { getMapaFEN } from "@/lib/queries";
+import { DEFECTO_FEN, OPCIONES_FEN, etiquetaFEN, migrarValorFEN, partirFEN } from "@/lib/fen";
 import { popupHtml } from "../markers";
 import { FUENTE_SENAMHI } from "../senamhi";
 
-// Mapas de eventos El Niño pasados: cuánto más (o menos) llovió que lo normal en mm
-// acumulados (SENAMHI/IDESEP, tabla mapa con variable 'FEN'). Cada registro de IDESEP trae
-// varios trimestres; el cargador guardó el primero: diciembre a febrero (en 2023, enero a
-// marzo), no todo el evento. Por eso cada evento dice sus meses.
-const EVENTOS = [
-  { valor: "1982-1983", etiqueta: "El Niño 1982-1983 (dic a feb)", meses: "diciembre de 1982 y febrero de 1983" },
-  { valor: "1997-1998", etiqueta: "El Niño 1997-1998 (dic a feb)", meses: "diciembre de 1997 y febrero de 1998" },
-  { valor: "2017", etiqueta: "El Niño costero 2017 (dic a feb)", meses: "diciembre de 2016 y febrero de 2017" },
-  { valor: "2023", etiqueta: "El Niño costero 2023 (ene a mar)", meses: "enero y marzo de 2023" },
-  { valor: "2023-2024", etiqueta: "El Niño 2023-2024 (dic a feb)", meses: "diciembre de 2023 y febrero de 2024" },
-];
+// Mapas de eventos El Niño pasados: cuánto más (o menos) llovió que lo normal en mm acumulados
+// (SENAMHI/IDESEP, tabla mapa con variable 'FEN'). SENAMHI publica cada evento por trimestres (DEF =
+// diciembre a febrero, EFM = enero a marzo, FMA = febrero a abril) y la BD guarda una fila por evento
+// y trimestre, así que el selector ofrece "El Niño 1997-1998, dic a feb", "... ene a mar", etc.
+// (lib/fen.js). Los meses exactos que muestran la nota y el popup salen de la BD (columna `meses`).
 
 // Rangos de SENAMHI ("300 - 550", "< -800", "> 2,500") agrupados en 6 clases por su punto medio.
 // "Cerca de lo normal" es solo +-30 mm: en la costa desértica 30 a 60 mm más ya es mucho
@@ -70,15 +65,18 @@ export default {
   label: "Eventos El Niño pasados",
   Icon: History,
   defaultVisible: false,
-  opciones: { etiqueta: "Evento", valores: EVENTOS, defecto: "1997-1998" },
+  // valores "<periodo>|<trimestre>"; migrar lleva lo recordado con el formato viejo ("1997-1998")
+  // al primer trimestre del evento (lib/preferencias.js)
+  opciones: { etiqueta: "Evento y trimestre", valores: OPCIONES_FEN, defecto: DEFECTO_FEN, migrar: migrarValorFEN },
   legend: CLASES.map(({ color, label }) => ({ color, label, zona: true })),
   fuente:
-    "Lluvia de un trimestre del evento frente a lo normal (el primero que publica SENAMHI: su verano, cuando más llueve). SENAMHI (IDESEP).",
+    "Lluvia de un trimestre del evento frente a lo normal; SENAMHI publica cada evento en trimestres (dic a feb, ene a mar, feb a abr) y aquí se elige cuál ver. SENAMHI (IDESEP).",
   load: getMapaFEN,
   render(group, mapa, { opcion, map }) {
-    if (!mapa?.geojson) return "No hay mapa para ese evento.";
-    const ev = EVENTOS.find((e) => e.valor === opcion);
-    const evento = ev?.etiqueta ?? mapa.titulo;
+    if (!mapa?.geojson) return "No hay mapa para ese evento y trimestre.";
+    const { periodo, trimestre } = partirFEN(opcion);
+    const evento = etiquetaFEN(mapa.periodo ?? periodo, mapa.trimestre ?? trimestre);
+    const meses = mapa.meses || null; // "diciembre de 1997 a febrero de 1998", lo calculó el cargador
     L.geoJSON(mapa.geojson, {
       pane: "areas",
       attribution: FUENTE_SENAMHI,
@@ -91,13 +89,15 @@ export default {
         capa.bindPopup(
           popupHtml({
             title: evento,
-            resumen: ev
-              ? `Entre ${ev.meses} aquí llovió ${frase(f.properties?.RANGO)}.`
+            resumen: meses
+              ? `De ${meses}, aquí llovió ${frase(f.properties?.RANGO)}.`
               : `Aquí llovió ${frase(f.properties?.RANGO)}.`,
             nota: "Fuente: SENAMHI (IDESEP).",
           })
         ),
     }).addTo(group);
-    return `${evento}: dónde llovió más (azul) o menos (marrón) que lo normal en esos meses. Cada evento fue distinto.`;
+    return meses
+      ? `${evento}: dónde llovió más (azul) o menos (marrón) que lo normal de ${meses}. Cada evento y cada trimestre fue distinto.`
+      : `${evento}: dónde llovió más (azul) o menos (marrón) que lo normal en esos meses. Cada evento fue distinto.`;
   },
 };

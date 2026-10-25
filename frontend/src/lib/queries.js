@@ -1,4 +1,5 @@
 import { supabase } from "./supabaseClient";
+import { partirFEN } from "@/lib/fen";
 import { cache, cached, faltaColumna, filas, siExiste, todas } from "./consultaCache";
 
 // Todas las lecturas usan la publishable key (lectura pública por RLS).
@@ -301,20 +302,24 @@ export async function getMapaAnomalias() {
   return m ?? null;
 }
 
-// Mapa de un evento El Niño pasado (variable 'FEN'; periodo = "1997-1998", "2017", ...).
+// Mapa de un trimestre de un evento El Niño pasado (variable 'FEN'). `valor` es "<periodo>|<trimestre>"
+// ("1997-1998|DEF", lib/fen.js); con solo el periodo ("2017") trae el primer trimestre que haya.
+// Devuelve también `trimestre` y `meses` ("diciembre de 1997 a febrero de 1998"), que la capa muestra.
 // Son mapas fijos: se guardan en memoria toda la sesión.
-export async function getMapaFEN(periodo) {
+export async function getMapaFEN(valor) {
+  const { periodo, trimestre } = partirFEN(valor);
+  if (!periodo) return null;
   const [m] = await cached(
-    `fen:${periodo}`,
-    () =>
-      filas(
-        supabase
-          .from("mapa")
-          .select("titulo,periodo,fuente,geojson")
-          .eq("variable", "FEN")
-          .eq("periodo", periodo)
-          .limit(1)
-      ),
+    `fen:${periodo}|${trimestre ?? ""}`,
+    () => {
+      let q = supabase
+        .from("mapa")
+        .select("titulo,periodo,trimestre,meses,fuente,geojson")
+        .eq("variable", "FEN")
+        .eq("periodo", periodo);
+      q = trimestre ? q.eq("trimestre", trimestre) : q.order("trimestre", { ascending: true, nullsFirst: false });
+      return filas(q.limit(1));
+    },
     Infinity
   );
   return m ?? null;
@@ -557,7 +562,9 @@ export function getSenalesCauces() {
 // Titular interpretado del departamento (tabla titular_zona: lo escribe la tarea 'titular' del
 // worker cada 30 min, con reglas fijas o un modelo de lenguaje validado). Es OPCIONAL: null si la
 // tabla aún no existe, no hay fila o la consulta falla; la tarjeta usa entonces el titular
-// determinista de lib/zonaAhora.js (titularCorto). Caché de 5 min.
+// determinista de lib/zonaAhora.js (titularCorto). titular_corto (<= 110 caracteres, lo garantiza
+// la BD) es el que va en las dos líneas de la tarjeta; titular (<= 240) y detalle van en la altura
+// completa de la hoja. Caché de 5 min.
 export function getTitular(depto) {
   if (!depto) return Promise.resolve(null);
   return cached(
@@ -567,7 +574,7 @@ export function getTitular(depto) {
         const [f] = await filas(
           supabase
             .from("titular_zona")
-            .select("departamento,titular,detalle,nivel,generado_en,revisado_en,origen")
+            .select("departamento,titular,titular_corto,detalle,nivel,generado_en,revisado_en,origen")
             .eq("departamento", depto)
             .limit(1)
         );
@@ -577,5 +584,68 @@ export function getTitular(depto) {
         return null;
       }),
     5 * 60_000
+  );
+}
+
+// --- rios-frontend-zonas: zonas estimadas y franja de los ríos del país ---
+
+// Zonas que un río del país podría afectar (vista rio_cauce_zona_mapa, estimación de SIMPAC con el
+// relieve: subtipo bajo_2m y bajo_3m), SOLO de los ríos pedidos (`rioAnas`): nunca el país entero de
+// golpe. La capa `zona` pide las de los ríos cuya caja toca la vista desde zoom 12 y "Tu zona ahora"
+// las del río más cercano. Caché por río (60 min: la carga es única); un río sin zonas se recuerda
+// como [] (no se vuelve a pedir). null si la vista aún no existe (otro agente la crea): el mapa no
+// dibuja nada y no falla.
+let sinZonasPais = false;
+const ZONAS_TTL_MS = 60 * 60_000;
+export async function getCaucesZonas(rioAnas = []) {
+  const ids = [...new Set(rioAnas.filter(Boolean))];
+  if (!ids.length || sinZonasPais) return sinZonasPais ? null : [];
+  const fresca = (id) => {
+    const h = cache.get(`zonas_cauce:${id}`);
+    return Boolean(h) && Date.now() - h.t < ZONAS_TTL_MS;
+  };
+  const faltan = ids.filter((id) => !fresca(id));
+  if (faltan.length) {
+    const pedido = siExiste(() =>
+      filas(
+        supabase
+          .from("rio_cauce_zona_mapa")
+          .select("clave,rio_ana,subtipo,area_km2,metodo,fuente,licencia,atribucion,nota,geojson")
+          .in("rio_ana", faltan)
+          .order("clave")
+      )
+    );
+    // una promesa por río, resuelta con solo sus filas (así la caché es por río)
+    for (const id of faltan)
+      cached(`zonas_cauce:${id}`, () => pedido.then((z) => (z == null ? null : z.filter((f) => f.rio_ana === id))), ZONAS_TTL_MS);
+  }
+  const partes = await Promise.all(ids.map((id) => cache.get(`zonas_cauce:${id}`).p));
+  if (partes.some((p) => p === null)) {
+    sinZonasPais = true; // la vista no existe: no se insiste en esta sesión
+    return null;
+  }
+  return partes.flat();
+}
+
+// Franja de atención referencial de un río del país (vista rio_cauce_mapa: columnas franja y
+// ancho_m de la migración rio_cauce_mapa_franja): la capa `zona` la pide por río y solo para los que
+// están en alerta o emergencia. { ancho_m, franja (GeoJSON Polygon/MultiPolygon) } o null si el río
+// no tiene fila o la vista aún no trae las columnas (se recuerda por sesión).
+let sinFranja = false;
+export async function getFranjaRio(rioAna) {
+  if (!rioAna || sinFranja) return null;
+  return cached(
+    `franja:${rioAna}`,
+    async () => {
+      try {
+        const [f] = await filas(supabase.from("rio_cauce_mapa").select("rio_ana,ancho_m,franja").eq("rio_ana", rioAna).limit(1));
+        return f?.franja ? { ancho_m: f.ancho_m, franja: f.franja } : null;
+      } catch (e) {
+        if (!faltaColumna(e)) throw e;
+        sinFranja = true;
+        return null;
+      }
+    },
+    60 * 60_000
   );
 }

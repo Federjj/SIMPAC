@@ -355,3 +355,27 @@ export const ACCION_AVISO = {
   alerta: "Evita quebradas y laderas; si llueve fuerte, no cruces ríos ni huaycos.",
   emergencia: "Aléjate de ríos, quebradas y laderas, y sigue las indicaciones de Defensa Civil.",
 };
+
+// ---------------------------------------------------------------------------
+// Ríos del país con zonas estimadas y franja de atención (lib/zonaAhora.js, lib/cauces.js,
+// map/layers/zonasRio.js, components/TuZona.jsx)
+// ---------------------------------------------------------------------------
+
+// Un mismo diccionario para la tarjeta, el popup y la leyenda: la zona estimada con el relieve nunca
+// se presenta como mapa oficial, y la franja junto al cauce nunca como mapa de inundación.
+export const FRASES_RIO_PAIS = {
+  // chip de la tarjeta junto a la distancia a un río con trazo de ANA (no vigilado)
+  trazo: "trazo de ANA",
+  // chips de la zona estimada de un río del país (el Mashcón conserva sus textos de siempre)
+  dentroZona: "Dentro de la zona que podría inundarse (estimación SIMPAC con el relieve)",
+  fueraZona: "Fuera de la zona que podría inundarse (estimación SIMPAC con el relieve)",
+  sinZonas: "Este río no tiene mapa de zonas; la franja junto al cauce es solo referencial",
+  // solo cuando el departamento no tiene ningún río con trazo ni vigilado
+  sinRiosDepto: "Aquí SIMPAC no vigila ríos con mapa de zonas todavía",
+  lejosTrazo: "El río con trazo más cercano está a",
+  // popup y leyenda de la capa
+  metodo: "Estimación de SIMPAC con el relieve; no es un mapa oficial.",
+  franjaLeyenda: "Franja de atención junto al río (referencial, no es un mapa de inundación)",
+  franjaPopup:
+    "La franja punteada es una banda de ancho fijo a cada lado del trazo de ANA que marca el entorno inmediato del río que hay que vigilar; no es un mapa de inundación ni dice hasta dónde llegaría el agua.",
+};

@@ -152,3 +152,19 @@ test("si leer window.localStorage ya lanza (datos del sitio bloqueados) o no exi
   }
   assert.equal(guardarLocal({ v: 1 }, null), false); // sin almacén no se guarda
 });
+
+test("opciones.migrar lleva un valor guardado viejo al formato nuevo antes de validarlo", () => {
+  // como la capa FEN desde el 25-10-2026: valores "<evento>|<trimestre>" y lo guardado antes era solo el evento
+  const migrar = (v) => (typeof v === "string" && !v.includes("|") ? `${v}|DEF` : v);
+  const fen = {
+    id: "fen",
+    defaultVisible: false,
+    opciones: { valores: [{ valor: "1997-1998|DEF" }, { valor: "2017|DEF" }, { valor: "2017|FMA" }], defecto: "1997-1998|DEF", migrar },
+  };
+  const capas = [fen, { id: "rio", defaultVisible: true }];
+  assert.equal(aplicar(capas, { v: 1, opciones: { fen: "2017" } }, { hoy: HOY }).opciones.fen, "2017|DEF");
+  assert.equal(aplicar(capas, { v: 1, opciones: { fen: "2017|FMA" } }, { hoy: HOY }).opciones.fen, "2017|FMA");
+  assert.equal(aplicar(capas, { v: 1, opciones: { fen: "1997-1998" } }, { hoy: HOY }).opciones.fen, "1997-1998|DEF"); // el defecto
+  assert.equal(aplicar(capas, { v: 1, opciones: { fen: "1600" } }, { hoy: HOY }).opciones.fen, "1997-1998|DEF"); // desconocido
+  assert.deepEqual(normalizar(capas, { v: 1, opciones: { fen: "2017" } }).opciones, { fen: "2017|DEF" });
+});

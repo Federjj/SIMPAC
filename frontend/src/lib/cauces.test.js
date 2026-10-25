@@ -189,3 +189,54 @@ test("aLatLngs, latLngsTramo y avisosDe", () => {
   assert.deepEqual(avisosDe(senales, "napo"), []);
   assert.deepEqual(avisosDe(null, "napo"), []);
 });
+
+// --- rios-frontend-zonas: zonas estimadas y franja de los ríos del país ---
+import { ZONAS_DESDE, anchoFranja, conFranja, notaZonasPais, riosParaZonas, zonasDeCauce } from "./cauces.js";
+
+test("zonasDeCauce: filas de rio_cauce_zona_mapa con la forma de las del Mashcón, bajo_3m primero", () => {
+  const z = zonasDeCauce([
+    { clave: "piura:relieve:1", rio_ana: "piura", subtipo: "bajo_2m", geojson: { type: "Polygon", coordinates: [] } },
+    { clave: "piura:relieve:2", rio_ana: "piura", subtipo: "bajo_3m", geojson: { type: "Polygon", coordinates: [] } },
+    { clave: "piura:relieve:3", rio_ana: "piura", subtipo: "otro", geojson: { type: "Polygon", coordinates: [] } },
+    { clave: "piura:relieve:4", rio_ana: "piura", subtipo: "bajo_2m", geojson: null },
+  ]);
+  assert.deepEqual(z.map((x) => x.clave), ["piura:relieve:2", "piura:relieve:1"]);
+  assert.equal(z[0].rio, "piura");
+  assert.equal(z[0].tipo, "estimada");
+  assert.deepEqual(zonasDeCauce(null), []);
+});
+
+test("riosParaZonas: solo los ríos cuya caja toca la vista y solo desde zoom 12 (nunca el país entero)", () => {
+  aligerar([HUALLAGA, JEQUETEPEQUE]);
+  const rios = [{ fila: HUALLAGA, lecturas: [] }, { fila: JEQUETEPEQUE, lecturas: [] }];
+  assert.equal(ZONAS_DESDE, 12);
+  assert.deepEqual(riosParaZonas(rios, [-79.1, -7.3, -78.9, -7.2], 12), ["jequetepeque"]);
+  assert.deepEqual(riosParaZonas(rios, [-79.1, -7.3, -78.9, -7.2], 11), []);
+  assert.deepEqual(riosParaZonas(rios, [-76.1, -9.6, -75.9, -9.4], 14), ["huallaga"]);
+  assert.deepEqual(riosParaZonas(rios, [-70, -15, -69, -14], 14), []);
+  assert.deepEqual(riosParaZonas(rios, null, 14), []);
+});
+
+test("franja: ancho por largo del río y solo en alerta o emergencia", () => {
+  assert.equal(anchoFranja(30), 60);
+  assert.equal(anchoFranja(135.27), 120);
+  assert.equal(anchoFranja(333), 250);
+  assert.equal(anchoFranja(50), 120);
+  assert.equal(anchoFranja(200), 250);
+  const tranquilo = estadoRio({ lecturas: [PICOTA], avisos_hidro: [], ahora: AHORA });
+  assert.equal(conFranja(tranquilo), false);
+  const alerta = estadoRio({ lecturas: [PICOTA], avisos_hidro: [AVISO_NARANJA], ahora: AHORA });
+  assert.equal(conFranja(alerta), true);
+  assert.equal(conFranja(estadoRio({ lecturas: [{ ...PICOTA, valor: 9900 }], ahora: AHORA })), true);
+  assert.equal(conFranja(null), false);
+});
+
+test("notaZonasPais cuenta los ríos con zonas estimadas y los que llevan franja", () => {
+  assert.equal(
+    notaZonasPais({ conZonas: ["Río Piura"], franjas: ["Río Tumbes", "Río Piura"] }),
+    "1 río del país con zonas estimadas con el relieve (Río Piura; desde zoom 12); franja de atención referencial en 2 ríos en alerta o emergencia: Río Tumbes y Río Piura."
+  );
+  assert.equal(notaZonasPais({ conZonas: [], franjas: [] }), "Ningún río del país a la vista tiene zonas estimadas todavía.");
+  assert.equal(notaZonasPais({ conZonas: [], franjas: [], sinVista: true }), "");
+  assert.equal(notaZonasPais({ sinVista: true, franjas: ["Río Tumbes"] }), "franja de atención referencial en 1 río en alerta o emergencia: Río Tumbes.");
+});

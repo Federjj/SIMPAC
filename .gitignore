@@ -48,22 +48,28 @@ Thumbs.db
 .idea/
 .vscode/
 
-# App Android (Capacitor, proyecto en frontend/android). El proyecto nativo se versiona;
-# lo generado por Gradle, Capacitor y Android Studio, no.
-/frontend/android/.gradle/
-/frontend/android/build/
-/frontend/android/app/build/
-/frontend/android/capacitor-cordova-android-plugins/
-/frontend/android/local.properties
-/frontend/android/.idea/
-/frontend/android/*.iml
-/frontend/android/app/*.iml
-/frontend/android/app/src/main/assets/public/
-/frontend/android/app/src/main/assets/capacitor.config.json
-/frontend/android/app/src/main/assets/capacitor.plugins.json
-/frontend/android/app/src/main/res/xml/config.xml
-/frontend/android/app/google-services.json
 # Firma de la app: nunca al repo
 key.properties
 *.jks
 *.keystore
+
+# Cuenta de servicio de Firebase (avisador push): secreto, nunca al repo. Va en .env como base64
+# (FIREBASE_CREDENCIALES, ver .env.docker.example) o fuera del repo.
+*firebase-adminsdk*.json
+# Zonas que podrían inundarse junto a los ríos del país, estimadas con el relieve
+# (backend/mapas/zonas_relieve.py, ~3 MB) que carga backend/mapas/cargar_cauces_zonas.py
+!/backend/data/cauces_zonas/*.geojson
+
+# App Android nativa (Kotlin + Jetpack Compose, proyecto en appmobile/android). El proyecto se
+# versiona; lo que generan Gradle y Android Studio, no. google-services.json (Firebase) se descarga
+# de la consola y nunca va al repo.
+/appmobile/android/.gradle/
+/appmobile/android/build/
+/appmobile/android/app/build/
+/appmobile/android/local.properties
+/appmobile/android/.idea/
+/appmobile/android/*.iml
+/appmobile/android/app/*.iml
+/appmobile/android/.kotlin/
+/appmobile/android/app/google-services.json
+/appmobile/android/key.properties

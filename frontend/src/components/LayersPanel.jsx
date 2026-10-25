@@ -11,7 +11,8 @@ import { ATRIBUCION_SENAMHI } from "@/map/senamhi";
 // (aro del color con su glifo), disco del pronóstico (blanco con su glifo; punteado = "tendencia
 // a"), mancha del nowcasting (cuadro con borde punteado), rayado (zona estimada junto a un río),
 // línea (un río resaltado; punteada = faja marginal), disco de un río (blanco con aro), rombo
-// (desborde pasado), punto (lugar nombrado en un aviso) o círculo (zona alrededor de una estación).
+// (desborde pasado), punto (lugar nombrado en un aviso), círculo (zona alrededor de una estación) o
+// franja (banda punteada de atención junto a un río del país).
 function Muestra({ color, zona, gota, anillo, forma, glifo, punteado }) {
   if (forma === "insignia")
     return (
@@ -54,6 +55,9 @@ function Muestra({ color, zona, gota, anillo, forma, glifo, punteado }) {
     );
   if (forma === "circulo")
     return <span className="h-3 w-3 shrink-0 rounded-full" style={{ background: `${color}2E`, border: `1.5px solid ${color}` }} />;
+  // franja de atención junto a un río del país: contorno punteado y relleno muy suave
+  if (forma === "franja")
+    return <span className="h-3 w-4 shrink-0 rounded-[3px]" style={{ background: `${color}1F`, border: `1.5px dashed ${color}` }} />;
   if (forma === "rio")
     return <span className="h-[18px] w-[18px] shrink-0 rounded-full bg-white shadow" style={{ border: `3px solid ${color}` }} />;
   if (forma === "rombo")

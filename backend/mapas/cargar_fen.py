@@ -4,12 +4,19 @@ Cargador de los mapas históricos de eventos El Niño (IDESEP/SENAMHI) a Supabas
 Son mapas estáticos (no cambian), por eso no van en la ingesta horaria: se cargan
 a mano cuando haga falta. Es la única vía que escribe estos mapas en la tabla mapa.
 
+Cada registro de IDESEP trae un .zip por trimestre (DEF = diciembre a febrero, EFM =
+enero a marzo, FMA = febrero a abril) y se guarda UNA FILA POR EVENTO Y TRIMESTRE:
+periodo es el evento ("1997-1998"), trimestre el código de SENAMHI ("DEF") y meses el
+texto legible ("diciembre de 1997 a febrero de 1998"). Hasta el 24-10-2026 se guardaba
+solo el primer .zip (5 filas); hoy son 13.
+
 Por defecto es una prueba en seco: descarga y muestra el resumen, sin escribir.
-Con --aplicar hace upsert por uuid (idempotente: correrlo dos veces no duplica filas).
+Con --aplicar hace upsert por (uuid, trimestre) (idempotente: correrlo dos veces no
+duplica filas; las filas viejas, con su trimestre ya puesto por la migración, se actualizan).
 
 Se corre dentro del contenedor worker, que ya tiene geopandas y SUPABASE_DB_URL:
     docker compose run --rm worker python -m backend.mapas.cargar_fen
-    docker compose run --rm worker python -m backend.mapas.cargar_fen --aplicar
+    docker compose run --rm worker python -m backend.mapas.cargar_fen --aplicar --simplificar 0.005 --decimales 5
 
 Opciones:
     --simplificar 0.005   simplifica geometrías (grados; ~550 m) para aligerar el peso
@@ -29,6 +36,7 @@ import json
 import logging
 import os
 import sys
+import time
 from dataclasses import dataclass
 
 if __package__ in (None, ""):   # permite también: python backend/mapas/cargar_fen.py
@@ -43,6 +51,12 @@ log = logging.getLogger("cargar_fen")
 # (variable='precipitacion'), que es el que muestra hoy el frontend.
 VARIABLE = "FEN"
 FUENTE = "SENAMHI/IDESEP"
+
+MESES = ["enero", "febrero", "marzo", "abril", "mayo", "junio",
+         "julio", "agosto", "setiembre", "octubre", "noviembre", "diciembre"]
+# inicial con la que SENAMHI nombra cada mes en el código del trimestre (D de diciembre, etc.);
+# como enero y junio/julio comparten letra, el código se resuelve por su mes inicial en TRIMESTRES.
+_MES_INICIAL = {t: (11 + i) % 12 for i, t in enumerate(idesep.TRIMESTRES)}   # DEF -> 11 (diciembre)
 
 
 @dataclass(frozen=True)
@@ -67,19 +81,56 @@ EVENTOS_FEN = [
     # Para sumar otro evento basta el título exacto (ver --catalogo): el uuid se resuelve solo.
 ]
 
+# Índice único mapa_uuid_trimestre_key: (uuid, coalesce(trimestre, '')), así el mapa mensual
+# (trimestre null) y una capa sin trimestre en el nombre también caben una sola vez.
 UPSERT = (
-    "insert into mapa (uuid, titulo, variable, periodo, fuente, geojson) "
-    "values (%s, %s, %s, %s, %s, %s::jsonb) "
-    "on conflict (uuid) do update set titulo=excluded.titulo, variable=excluded.variable, "
-    "periodo=excluded.periodo, fuente=excluded.fuente, geojson=excluded.geojson, ts_captura=now()"
+    "insert into mapa (uuid, titulo, variable, periodo, trimestre, meses, fuente, geojson) "
+    "values (%s, %s, %s, %s, %s, %s, %s, %s::jsonb) "
+    "on conflict (uuid, (coalesce(trimestre, ''))) do update set titulo=excluded.titulo, "
+    "variable=excluded.variable, periodo=excluded.periodo, meses=excluded.meses, "
+    "fuente=excluded.fuente, geojson=excluded.geojson, ts_captura=now()"
 )
+
+
+def anios_del_evento(periodo: str) -> tuple[int, int]:
+    """
+    (año en que empieza el verano, año en que termina). "1997-1998" -> (1997, 1998);
+    "2017" -> (2016, 2017): el evento de un solo año empieza en diciembre del anterior.
+    """
+    partes = [int(p) for p in periodo.split("-") if p.strip().isdigit()]
+    if not partes:
+        raise ValueError(f"periodo sin año: {periodo!r}")
+    return (partes[0], partes[-1]) if len(partes) > 1 else (partes[0] - 1, partes[0])
+
+
+def meses_legibles(trimestre: str | None, periodo: str) -> str | None:
+    """
+    Meses que cubre un trimestre de un evento, en palabras:
+      ("DEF", "1997-1998") -> "diciembre de 1997 a febrero de 1998"
+      ("EFM", "2023")      -> "enero a marzo de 2023"
+      ("FMA", "2017")      -> "febrero a abril de 2017"
+    Si el trimestre cruza el año nuevo (NDE, DEF), los meses antes de enero son del primer año
+    del evento y los demás del último; si no lo cruza, todos son del último año.
+    None si el trimestre no se reconoce.
+    """
+    if not trimestre or trimestre.upper() not in _MES_INICIAL:
+        return None
+    inicio = _MES_INICIAL[trimestre.upper()]
+    anio_ini, anio_fin = anios_del_evento(periodo)
+    cruza = inicio + 2 >= 12
+    m1, m3 = inicio, (inicio + 2) % 12
+    a1 = anio_ini if cruza and m1 >= inicio else anio_fin
+    a3 = anio_ini if cruza and m3 >= inicio else anio_fin
+    if a1 == a3:
+        return f"{MESES[m1]} a {MESES[m3]} de {a1}"
+    return f"{MESES[m1]} de {a1} a {MESES[m3]} de {a3}"
 
 
 def _resumen(geojson: str) -> str:
     data = json.loads(geojson)
     feats = data.get("features", [])
     tipos = sorted({(f.get("geometry") or {}).get("type", "?") for f in feats})
-    return f"{len(feats)} features, {'/'.join(tipos)}, {len(geojson) / 1e6:.1f} MB"
+    return f"{len(feats)} features, {'/'.join(tipos)}, {len(geojson) / 1e6:.2f} MB"
 
 
 def _resolver(eventos: list[EventoFEN]) -> tuple[list[tuple[EventoFEN, str]], list[str]]:
@@ -97,6 +148,33 @@ def _resolver(eventos: list[EventoFEN]) -> tuple[list[tuple[EventoFEN, str]], li
     return resueltos, no_encontrados
 
 
+# IDESEP responde a veces HTTP 400 a la página de un registro y al rato bien (visto el 25-10-2026 en
+# dos corridas seguidas, con registros distintos). _http.con_reintentos no repite los 4xx (en general
+# repetirlos no arregla nada), así que acá cada evento se intenta hasta 3 veces con una pausa.
+INTENTOS_POR_EVENTO = 3
+PAUSA_S = 5
+
+
+def _con_paciencia(fn, *args, intentos: int = INTENTOS_POR_EVENTO, pausa: float = PAUSA_S):
+    for intento in range(1, intentos + 1):
+        try:
+            return fn(*args)
+        except Exception as e:
+            if intento == intentos:
+                raise
+            log.warning("Falló (%s: %s); reintento %d/%d en %ds", type(e).__name__, e, intento, intentos - 1, pausa)
+            time.sleep(pausa)
+
+
+@dataclass(frozen=True)
+class Fila:
+    evento: EventoFEN
+    uuid: str
+    trimestre: str | None
+    meses: str | None
+    geojson: str
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description="Carga los mapas históricos de eventos El Niño a Supabase.")
     ap.add_argument("--aplicar", action="store_true", help="escribe en la BD (sin esto es prueba en seco)")
@@ -112,32 +190,39 @@ def main(argv: list[str] | None = None) -> int:
             print(f"{r.uuid}  {r.titulo}")
         return 0
 
-    listos: list[tuple[EventoFEN, str, str]] = []
+    listos: list[Fila] = []
     resueltos, fallidos = _resolver(EVENTOS_FEN)
     for evento, uuid in resueltos:
         try:
-            geojson = idesep.geojson_de_registro(uuid, args.simplificar, args.decimales)
+            capas = _con_paciencia(idesep.capas_de_registro, uuid, args.simplificar, args.decimales)
         except Exception as e:  # un mapa caído no debe frenar a los demás
             log.error("No se pudo obtener %s (%s): %s", evento.periodo, uuid, e)
             fallidos.append(evento.titulo)
             continue
-        log.info("OK %s | %s | %s", evento.periodo, uuid, _resumen(geojson))
-        listos.append((evento, uuid, geojson))
-        if args.exportar:
-            os.makedirs(args.exportar, exist_ok=True)
-            ruta = os.path.join(args.exportar, f"fen_{evento.periodo}.geojson")
-            with open(ruta, "w", encoding="utf-8") as f:
-                f.write(geojson)
+        if len({t for t, _, _ in capas}) < len(capas):
+            log.warning("%s: hay capas con el mismo trimestre; se guarda la última de cada una", evento.periodo)
+        for trimestre, enlace, geojson in capas:
+            meses = meses_legibles(trimestre, evento.periodo)
+            if not trimestre:
+                log.warning("%s: %s no dice el trimestre en su nombre; se guarda sin él", evento.periodo, enlace)
+            log.info("OK %s %s (%s) | %s | %s", evento.periodo, trimestre or "-", meses or "sin meses", uuid, _resumen(geojson))
+            listos.append(Fila(evento, uuid, trimestre, meses, geojson))
+            if args.exportar:
+                os.makedirs(args.exportar, exist_ok=True)
+                ruta = os.path.join(args.exportar, f"fen_{evento.periodo}_{trimestre or 'sin_trimestre'}.geojson")
+                with open(ruta, "w", encoding="utf-8") as f:
+                    f.write(geojson)
 
     if args.aplicar and listos:
         try:
             with conectar() as conn, conn.cursor() as cur:
-                for evento, uuid, geojson in listos:
-                    cur.execute(UPSERT, (uuid, evento.titulo, VARIABLE, evento.periodo, FUENTE, geojson))
+                for fila in listos:
+                    cur.execute(UPSERT, (fila.uuid, fila.evento.titulo, VARIABLE, fila.evento.periodo,
+                                         fila.trimestre, fila.meses, FUENTE, fila.geojson))
         except RuntimeError as e:   # falta SUPABASE_DB_URL o psycopg
             log.error("%s Corre el cargador dentro del contenedor worker.", e)
             return 2
-        log.info("Guardados %d mapas en la tabla mapa.", len(listos))
+        log.info("Guardados %d mapas (evento y trimestre) en la tabla mapa.", len(listos))
     elif not args.aplicar:
         log.info("Prueba en seco: no se escribió nada. Usa --aplicar para guardar.")
 

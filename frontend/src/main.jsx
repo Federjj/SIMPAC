@@ -9,7 +9,7 @@ import { registrarServiceWorker } from "./pwa";
 
 // degradados de los glifos del tiempo (una sola vez, antes de dibujar cualquiera)
 montarDefsIconos();
-// service worker (public/sw.js): cáscara de la app sin red; solo en producción y fuera de Capacitor
+// service worker (public/sw.js): cáscara de la app sin red; solo en producción
 registrarServiceWorker();
 
 createRoot(document.getElementById("root")).render(

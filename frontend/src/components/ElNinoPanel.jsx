@@ -3,6 +3,7 @@ import { ChevronRight, History, ShieldAlert, Thermometer, X } from "lucide-react
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { getIcenSerie } from "@/lib/queries";
+import { EVENTOS_FEN, mesesCortos, valorFEN } from "@/lib/fen";
 import { MESES, MESES_CORTOS } from "@/lib/tiempo";
 import { ENFEN_HEX } from "@/map/palette";
 
@@ -212,11 +213,13 @@ function resumenSerie(reales) {
   return `En ${mesLargo(ultimo.mes)} el mar frente a la costa norte no estaba más caliente de lo normal.`;
 }
 
-const EVENTOS = [
-  { valor: "1997-1998", texto: "1997-1998" },
-  { valor: "2017", texto: "2017 (costero)" },
-  { valor: "2023", texto: "2023 (costero)" },
-];
+// Botones "Así llovió en otros El Niño": uno por evento (abre su primer trimestre, el verano) y, si
+// el evento tiene más trimestres, chips chicos con los otros. Lista y valores en lib/fen.js.
+const EVENTOS = EVENTOS_FEN.map((e) => ({
+  periodo: e.periodo,
+  texto: e.nombre.replace(/^El Niño /, "").replace(/^costero (\S+)$/, "$1 (costero)"),
+  trimestres: e.trimestres,
+}));
 
 export default function ElNinoPanel({ enfen, mar, icen, icenTmp, onVerEvento, onCerrar }) {
   const [serie, setSerie] = useState(null);
@@ -350,16 +353,35 @@ export default function ElNinoPanel({ enfen, mar, icen, icenTmp, onVerEvento, on
               Así llovió en otros El Niño
             </h3>
             <p className="text-sm leading-snug">
-              Mira en el mapa dónde llovió mucho más de lo normal en el verano de otros El Niño. Cada evento fue
-              distinto: sirve para ver qué zonas se afectaron antes, no para predecir este.
+              Mira en el mapa dónde llovió mucho más de lo normal en otros El Niño. Cada evento fue distinto: sirve
+              para ver qué zonas se afectaron antes, no para predecir este.
             </p>
-            <div className="flex flex-wrap gap-2">
+            <div className="flex flex-col gap-2">
               {EVENTOS.map((e) => (
-                <Button key={e.valor} variant="secondary" size="sm" onClick={() => onVerEvento(e.valor)}>
-                  {e.texto}
-                </Button>
+                <div key={e.periodo} className="flex flex-wrap items-center gap-1.5">
+                  <Button variant="secondary" size="sm" onClick={() => onVerEvento(valorFEN(e.periodo, e.trimestres[0]))}>
+                    {e.texto}
+                    <span className="ml-1.5 font-normal text-muted-foreground">{mesesCortos(e.trimestres[0])}</span>
+                  </Button>
+                  {e.trimestres.slice(1).map((t) => (
+                    <button
+                      key={t}
+                      type="button"
+                      onClick={() => onVerEvento(valorFEN(e.periodo, t))}
+                      className="rounded-full border border-border px-2 py-0.5 text-xs text-muted-foreground hover:bg-accent hover:text-foreground"
+                      aria-label={`${e.texto}, ${mesesCortos(t)}`}
+                    >
+                      {mesesCortos(t)}
+                    </button>
+                  ))}
+                </div>
               ))}
             </div>
+            <p className="text-xs leading-snug text-muted-foreground">
+              SENAMHI publica cada evento por trimestres (dic a feb, ene a mar, feb a abr): son meses distintos del
+              mismo El Niño, no eventos distintos. El botón abre el primero; los otros van al lado. En 2017 el de feb a
+              abr incluye marzo, cuando se desbordó el río Piura.
+            </p>
           </div>
         </div>
       </section>
