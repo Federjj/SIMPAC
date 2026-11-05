@@ -38,7 +38,9 @@ appmobile/android/
   gradle/libs.versions.toml            versiones (AGP 9.0.1, Kotlin 2.3.20, Compose BOM 2026.03.01...)
   gradle/wrapper/                      Gradle 9.1.0
   app/build.gradle.kts                 applicationId pe.simpac.app, minSdk 26, target/compileSdk 36,
-                                       BuildConfig con la URL y la llave publica de Supabase, firma,
+                                       BuildConfig con la URL y la llave publica de Supabase y con las
+                                       direcciones de fabrica API_URL / WEB_URL (propiedades simpac.apiUrl
+                                       y simpac.webUrl; obligatorias y por https en release), firma,
                                        google-services SOLO si existe app/google-services.json
   app/google-services.json             (NO versionado) credenciales de Firebase, ver mas abajo
   app/src/main/AndroidManifest.xml     permisos INTERNET, ubicacion en primer plano, POST_NOTIFICATIONS;
@@ -70,10 +72,13 @@ datos). El `build.gradle.kts` las toma de las variables de entorno `SIMPAC_SUPAB
 `SIMPAC_SUPABASE_KEY`, si no de `frontend/.env` y si no de `frontend/.env.example`; así ningún
 archivo de este proyecto lleva una clave escrita.
 
-Direcciones configurables (Cuenta > Ajustes): por defecto API `http://10.0.2.2:8000` y WEB
-`http://10.0.2.2:8080`, que desde el emulador son el Docker de la PC. En un teléfono real poner la IP
-de la PC (solo en la compilación debug, que permite http) o el dominio real con https (el release solo
-permite http hacia 10.0.2.2 y localhost: `res/xml/red_release.xml`).
+Direcciones configurables (Cuenta > Ajustes): la app trae de fábrica las que le dio Gradle al
+compilar (`BuildConfig.API_URL` y `BuildConfig.WEB_URL`, propiedades `simpac.apiUrl` y
+`simpac.webUrl`; ver "Direcciones de producción"). En debug sin propiedades son API
+`http://10.0.2.2:8000` y WEB `http://10.0.2.2:8080`, que desde el emulador son el Docker de la PC. En
+un teléfono real poner la IP de la PC (solo en la compilación debug, que permite http) o el dominio
+real con https (el release solo permite http hacia 10.0.2.2 y localhost: `res/xml/red_release.xml`).
+"Restablecer" vuelve a las direcciones de fábrica de esa compilación.
 
 ## Requisitos
 
@@ -102,8 +107,8 @@ Desde `appmobile/android/`:
 | `.\gradlew.bat assembleDebug` | APK de prueba firmado con la llave de depuración: `app/build/outputs/apk/debug/app-debug.apk` |
 | `.\gradlew.bat testDebugUnitTest` | Pruebas JVM (`app/src/test`): parseo de las respuestas, orden de alertas, distancia, slug del tema, "hace X", regla de "a dónde acudir", pronóstico y ríos. Informe en `app/build/reports/tests/testDebugUnitTest/index.html` |
 | `.\gradlew.bat connectedDebugAndroidTest` | Prueba de Compose UI (`app/src/androidTest/InicioScreenTest.kt`) en el emulador o teléfono conectado |
-| `.\gradlew.bat bundleRelease` | AAB para Play Console: `app/build/outputs/bundle/release/app-release.aab` (firmado si hay keystore) |
-| `.\gradlew.bat assembleRelease` | APK release firmado para repartir fuera de la tienda |
+| `.\gradlew.bat bundleRelease -Psimpac.apiUrl=... -Psimpac.webUrl=...` | AAB para Play Console: `app/build/outputs/bundle/release/app-release.aab` (firmado si hay keystore). Sin las dos propiedades el build se detiene con un mensaje claro (ver "Direcciones de producción") |
+| `.\gradlew.bat assembleRelease -Psimpac.apiUrl=... -Psimpac.webUrl=...` | APK release firmado para repartir fuera de la tienda (misma regla) |
 
 Verificado el 2026-10-20 (Windows 10, PowerShell, JDK 21, SDK con `android-36`): `assembleDebug`
 4 min la primera vez (descargas) y 18 s después; APK debug de 15 758 393 bytes; 22 pruebas JVM en
@@ -227,6 +232,49 @@ backend.ingesta.push --prueba --zona Cajamarca` llegó al emulador suscrito a `z
 "SIMPAC: prueba en Cajamarca", canal `alertas`; la primera vez tardó unos minutos mientras FCM
 propagaba la suscripción) y al tocarla la app abrió la pestaña Alertas. Detalle técnico de la tarea
 (reglas, latido, siembra de `push_estado`): `docs/README-tecnico.md` §5.6.12.
+
+## Direcciones de producción
+
+La app lleva "de fábrica" la dirección de la API (FastAPI en Railway) y de la web (Vercel o Netlify);
+la persona puede cambiarlas en Cuenta > Ajustes y "Restablecer" vuelve a las de fábrica. Se dan al
+compilar como propiedades de Gradle (`simpac.apiUrl` y `simpac.webUrl`), que `app/build.gradle.kts`
+expone como `BuildConfig.API_URL` y `BuildConfig.WEB_URL` (`data/Ajustes.kt` las usa como
+predeterminadas):
+
+| Variante | Sin propiedades | Con propiedades |
+|---|---|---|
+| debug | `http://10.0.2.2:8000` y `http://10.0.2.2:8080` (el Docker de la PC desde el emulador) | las que se den (sirve para probar la producción desde un APK debug) |
+| release | **el build falla** antes de ejecutar nada: `Release sin direcciones de produccion: define simpac.apiUrl y simpac.webUrl en gradle.properties o -P (...)` | las que se den; deben ir por **https** (una `http://` hacia un dominio real también detiene el build, porque `red_release.xml` la bloquearía en el teléfono) |
+
+Comandos, desde `appmobile/android/` en PowerShell, con el dominio público que dé Railway al servicio
+`api` (*Settings > Networking > Generate Domain*) y el de Vercel del frontend:
+
+```powershell
+.\gradlew.bat bundleRelease   -Psimpac.apiUrl=https://<api>.up.railway.app -Psimpac.webUrl=https://<web>.vercel.app
+.\gradlew.bat assembleRelease -Psimpac.apiUrl=https://<api>.up.railway.app -Psimpac.webUrl=https://<web>.vercel.app
+```
+
+Las mismas dos líneas se pueden dejar en `appmobile/android/gradle.properties` (están comentadas al
+final del archivo) para no escribirlas cada vez; no son secretos. Si la web vive en Netlify, el valor
+es `https://<web>.netlify.app`; con dominio propio, ese dominio.
+
+Qué revisar al cambiar de dominio:
+
+- **Red** (`res/xml/red_release.xml`): el release solo admite https (certificados del sistema), y http
+  únicamente hacia `10.0.2.2`, `localhost` y `127.0.0.1`. Railway (`*.up.railway.app`) y Vercel
+  (`*.vercel.app`) sirven https con certificados públicos, así que no hay nada que agregar. Supabase
+  va siempre por https.
+- **Mapa (WebView)**: la geolocalización se concede solo al origen de la WEB configurada
+  (`ui/mapa/MapaScreen.kt` calcula el origen con `origenDe(conf.webUrl)`, nunca con un valor fijo), y
+  los enlaces a otros orígenes se abren en el navegador. El WebView no permite contenido mixto, así
+  que la web en Vercel debe cargar todo por https (Supabase, los tiles de Stadia Maps y la API).
+- **CORS de la API**: la app llama a `GET /api/snapshot` con OkHttp (sin origen, no le afecta CORS).
+  La web hoy no llama a la API (lee Supabase directo), pero `SIMPAC_CORS_ORIGENES` del servicio `api`
+  lleva igual el dominio de Vercel por si alguna página empieza a usar `/api/snapshot`.
+- **Firma**: el keystore y sus contraseñas van en `appmobile/android/key.properties` (no versionado,
+  ver "Firma de la app"). Sin keystore, Gradle igual termina `assembleRelease`/`bundleRelease` pero
+  deja el paquete **sin firmar** (`app/build/outputs/apk/release/app-release-unsigned.apk`), que ni
+  Play ni un teléfono aceptan: es lo esperado hasta que exista `key.properties`.
 
 ## Firma de la app (una sola vez, la guarda quien publica)
 

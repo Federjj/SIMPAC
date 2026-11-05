@@ -108,7 +108,10 @@ fun CuentaScreen(abrirEnWeb: (String) -> Unit, vm: AjustesViewModel = viewModel(
             Spacer(Modifier.height(10.dp))
             OutlinedTextField(value = api, onValueChange = { api = it }, label = { Text("Dirección de la API") }, singleLine = true, modifier = Modifier.fillMaxWidth())
             OutlinedTextField(value = web, onValueChange = { web = it }, label = { Text("Dirección de la web") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-            LineaFuente("Por defecto apuntan a la PC desde el emulador (10.0.2.2). En un teléfono, usa la IP de la PC o el dominio real.")
+            LineaFuente(
+                if (pe.simpac.app.data.Ajustes.APUNTA_AL_EMULADOR) "Por defecto apuntan a la PC desde el emulador (10.0.2.2). En un teléfono, usa la IP de la PC o el dominio real."
+                else "Por defecto: API ${pe.simpac.app.data.Ajustes.API_POR_DEFECTO} y web ${pe.simpac.app.data.Ajustes.WEB_POR_DEFECTO}. \"Restablecer\" vuelve a esas direcciones.",
+            )
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Button(onClick = { vm.guardarDirecciones(api, web) }) { Text("Guardar") }
                 TextButton(onClick = { vm.restablecerDirecciones() }) { Text("Restablecer") }

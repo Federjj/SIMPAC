@@ -16,11 +16,12 @@ npm install
 cp .env.example .env # llaves públicas de Supabase (en PowerShell: Copy-Item .env.example .env)
 npm run dev          # http://localhost:5173 (SPA: cualquier ruta recarga bien)
 npm test             # 157 pruebas de los módulos puros (node --test src/lib/*.test.js src/map/*.test.js, ~1 s)
-npm run build        # compila a dist/ y deja un .gz al lado de cada .js/.css (plugin precomprimir de vite.config.js)
+npm run build        # compila a dist/ y deja un .gz al lado de cada .js/.css (plugin precomprimir de vite.config.js; no en Vercel ni Netlify)
 npm run preview      # sirve dist/ para mirarlo
 ```
 Variables (`.env`, solo públicas; Vite las expone al navegador): `VITE_SUPABASE_URL` y
-`VITE_SUPABASE_PUBLISHABLE_KEY`. Sin ellas la app no arranca (`supabaseUrl is required`). Cliente:
+`VITE_SUPABASE_PUBLISHABLE_KEY` (y, opcional, `VITE_STADIA_API_KEY` para el mapa base en un dominio
+real; ver "Despliegue en Vercel"). Sin las dos primeras la app no arranca (`supabaseUrl is required`). Cliente:
 `src/lib/supabaseClient.js`. En Docker las inyecta `frontend/Dockerfile` como `ARG` desde
 `SUPABASE_URL` y `SUPABASE_PUBLISHABLE_KEY` del `.env` de la raíz (`docker-compose.yml`, servicio
 `frontend`, nginx en `:8080`). `index.html` usa `%VITE_SUPABASE_URL%` para el `preconnect`. La web no
@@ -827,13 +828,94 @@ las dependencias `@capacitor/*`, la rama nativa de `hooks/useGeolocation.js` (ah
 `window.Capacitor` de `src/pwa.js`. Requisitos, firma, publicación en Play y emulador sin ventana de la
 app actual (Kotlin) en **`appmobile/README.md`**.
 
+## Despliegue en Vercel
+Desde el 04-11-2026 la web se puede publicar en **Vercel** sin Docker: `frontend/vercel.json` repite
+el contrato de `nginx.conf` (SPA, CSP y cabeceras, caché) y Vercel compila con `npm run build`. El
+backend (API, worker y Redis) va aparte, en Railway; la web no lo llama (lee Supabase directo), así
+que el orden no importa. Netlify es la alternativa equivalente (`frontend/netlify.toml`, al final).
+
+**Qué hace `vercel.json`** (sintaxis vigente de https://vercel.com/docs/project-configuration/vercel-json):
+- `framework: "vite"`, `buildCommand: "npm run build"`, `outputDirectory: "dist"` (valen aunque el
+  panel diga otra cosa) y `trailingSlash: false` (`/alertas/` redirige 308 a `/alertas`).
+- **SPA**: `rewrites` manda a `/index.html` toda ruta que no empiece por `/assets/` ni `/iconos/` ni
+  sea `/sw.js` o `/manifest.webmanifest` (patrón `/:ruta((?!assets/|iconos/|sw\.js|manifest\.webmanifest).*)`).
+  Vercel sirve primero los archivos que existen y recién después aplica el rewrite, así que
+  `/assets/noexiste.js` responde 404 (nunca `index.html` con tipo de script), igual que en nginx.
+- **Cabeceras**: en `/(.*)` la misma `Content-Security-Policy` de `nginx.conf` (letra por letra; si se
+  suma un dominio externo nuevo hay que cambiarla en `nginx.conf`, `vercel.json` y `netlify.toml`),
+  `X-Content-Type-Options nosniff`, `X-Frame-Options SAMEORIGIN` y `Referrer-Policy
+  strict-origin-when-cross-origin`; `Cache-Control: public, max-age=31536000, immutable` en
+  `/assets/(.*)` y `no-cache` en todo lo demás salvo `/iconos/` (cubre `index.html`, `sw.js`, el manifest
+  y las rutas de la SPA, que también entregan `index.html`). La CSP no necesita nada más para Vercel:
+  no se usan Analytics ni Speed Insights. En un **preview** con la barra de Vercel (vercel.live)
+  activada la CSP la bloquea y sale un error en consola, sin efecto en la web; en producción no se
+  inyecta nada.
+- **Compresión**: Vercel comprime (gzip y brotli) por su cuenta, así que el plugin `precomprimir` de
+  `vite.config.js` no corre cuando existe la variable `VERCEL` (ni `NETLIFY`), que la plataforma
+  define sola en su build; los `.gz` solo serían archivos de más. Localmente y en Docker sigue igual.
+
+**Mapa base en un dominio real.** Las tiles de Stadia salen sin llave solo desde `localhost`. Para el
+dominio de Vercel hay dos caminos (https://docs.stadiamaps.com/authentication/): autorizar el
+**dominio** en el panel de Stadia (recomendado para el navegador, no hay llave en el código; Stadia
+revisa el `Origin` y el `Referer`, que nuestra `Referrer-Policy` sí manda) o una **API key** gratuita
+en la variable `VITE_STADIA_API_KEY`, que `map/baseMap.js` agrega a la URL de las tiles como
+`?api_key=...` (pública en el navegador, como la de Supabase). Vacía o ausente, la URL queda como
+siempre. La CSP ya permite `https://tiles.stadiamaps.com` en `img-src` y `connect-src`.
+
+**Pasos en el panel de Vercel** (todo desde https://vercel.com, sin CLI):
+1. **Add New > Project > Import Git Repository**: conectar la cuenta de GitHub y elegir
+   `github.com/Federjj/SIMPAC` (rama `main`).
+2. En la pantalla de configuración: **Root Directory** = `frontend` (botón Edit); **Framework
+   Preset** = Vite (lo toma de `vercel.json`; Build Command `npm run build` y Output Directory
+   `dist` quedan iguales).
+3. **Environment Variables** (las tres son públicas; nunca la secret key ni la connection string):
+   `VITE_SUPABASE_URL`, `VITE_SUPABASE_PUBLISHABLE_KEY` (los valores de `frontend/.env.example`) y
+   `VITE_STADIA_API_KEY` (la llave creada en stadiamaps.com, o vacía si se autorizó el dominio).
+   Marcar Production y Preview.
+4. **Deploy**. El build tarda 1 a 2 min; al terminar Vercel da un dominio `*.vercel.app`.
+5. **Dominio**: Settings > Domains para sumar uno propio (CNAME a `cname.vercel-dns.com` o los
+   registros que indique). Cada cambio de variable pide un **Redeploy** (Deployments > ... > Redeploy),
+   porque Vite las copia en el build.
+
+**Después del primer deploy** (fuera de Vercel):
+- **Stadia**: en stadiamaps.com > Manage Properties > Authentication Configuration autorizar
+  `<dominio>.vercel.app` y el dominio propio (los subdominios van explícitos).
+- **Supabase Auth**: Authentication > URL Configuration > Redirect URLs: agregar
+  `https://<dominio>/cuenta` (la confirmación de correo y "olvidé mi contraseña" vuelven ahí; ver
+  "Cuentas y sesión") y, si se quiere, poner `https://<dominio>` como Site URL.
+- **API en Railway**: sumar `https://<dominio>` a `SIMPAC_CORS_ORIGENES` del servicio `api`
+  (separados por coma, sin barra final). Hoy la web no llama a la API, pero así queda listo si una
+  página empieza a usar `/api/snapshot`.
+
+**Cómo verificar** (con el dominio real):
+```bash
+curl -sI https://<dominio>/ | grep -i -E "content-security-policy|x-frame|x-content-type|referrer-policy|cache-control"
+curl -sI https://<dominio>/alertas | grep -i -E "^HTTP|cache-control"      # 200 y no-cache (es index.html)
+curl -sI https://<dominio>/assets/noexiste.js | grep -i "^HTTP"            # 404
+curl -sI "https://<dominio>/assets/$(curl -s https://<dominio>/ | grep -o 'assets/index-[^"]*\.js' | head -1 | cut -d/ -f2)" | grep -i cache-control  # immutable
+curl -sI https://<dominio>/sw.js | grep -i cache-control                   # no-cache
+```
+En el navegador: abrir `https://<dominio>/alertas` y **recargar** (debe seguir en Alertas, no 404);
+el mapa debe pintar tiles (si quedan grises, la pestaña Red muestra 401 de `tiles.stadiamaps.com`:
+falta autorizar el dominio o la llave); crear una cuenta y ver que el correo de confirmación vuelve a
+`/cuenta`. Nota: `npm run build` local con `VERCEL=1` reproduce la build de Vercel (sin `.gz`).
+
+**Netlify (alternativa)**: `frontend/netlify.toml` hace lo mismo (`[build]` con `command = "npm run
+build"` y `publish = "dist"`, redirect `/* -> /index.html 200` sin `force`, así un archivo que existe se
+sirve primero, y las mismas cabeceras por `[[headers]]`). En el panel: Add new site > Import from Git >
+el repo, **Base directory** = `frontend` (ahí lee el `netlify.toml`), las mismas tres variables en
+Environment variables y Deploy. Diferencia: en Netlify `/assets/noexiste.js` responde `index.html` con
+200 (el redirect no distingue carpetas); el resto, igual. Las URLs de Supabase, Stadia y CORS se
+registran igual que arriba.
+
 ## Notas
 - **Lectura pública**: los datos oficiales y los reportes se leen con la publishable key (RLS).
 - **Escritura** (reportes, votos, comentarios, chat, perfil, preferencias): necesita sesión de
   Supabase Auth (`/cuenta`).
 - **Mapa base**: Stadia Alidade Smooth sirve sin llave solo a `localhost`. En un **dominio real**
-  hace falta su API key gratuita (`?api_key=…` en `TILES`, `map/baseMap.js`; pasarla por una variable
-  `VITE_…` y sumar el dominio a la cuenta de Stadia). La **app Android** cumple hoy la condición
+  hay que autorizar el dominio en la cuenta de Stadia o poner su API key gratuita en
+  `VITE_STADIA_API_KEY` (`map/baseMap.js` la agrega como `?api_key=…`; ver "Despliegue en Vercel" y
+  `.env.example`). La **app Android** cumple hoy la condición
   porque su origen es `https://localhost`; si Stadia cambia esa regla, pasar la llave o cambiar la
   base a OpenStreetMap/CARTO con su atribución (`appmobile/README.md`).
 - **CSP**: cualquier dominio externo nuevo va en los tres bloques de `nginx.conf`.

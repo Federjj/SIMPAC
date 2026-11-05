@@ -10,6 +10,7 @@ import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
+import pe.simpac.app.BuildConfig
 import pe.simpac.app.dominio.Departamentos
 
 private val Context.almacenAjustes: DataStore<Preferences> by preferencesDataStore(name = "simpac_ajustes")
@@ -28,9 +29,14 @@ data class AjustesApp(
 /** Ajustes en DataStore (Preferences). No guarda ningun secreto: para eso esta AlmacenSeguro. */
 class Ajustes(private val contexto: Context) {
     companion object {
-        // Direcciones del emulador: 10.0.2.2 es la PC donde corre Docker (API :8000, web nginx :8080)
-        const val API_POR_DEFECTO = "http://10.0.2.2:8000"
-        const val WEB_POR_DEFECTO = "http://10.0.2.2:8080"
+        // Direcciones de fabrica: vienen de las propiedades de Gradle simpac.apiUrl / simpac.webUrl
+        // (app/build.gradle.kts). En debug sin propiedades son las del emulador (10.0.2.2 es la PC donde
+        // corre Docker: API :8000, web nginx :8080); en release son obligatorias y por https.
+        val API_POR_DEFECTO: String = BuildConfig.API_URL
+        val WEB_POR_DEFECTO: String = BuildConfig.WEB_URL
+
+        /** Verdadero si la app trae de fabrica las direcciones del emulador (compilacion debug sin propiedades). */
+        val APUNTA_AL_EMULADOR: Boolean = API_POR_DEFECTO.startsWith("http://10.0.2.2")
 
         private val DEPARTAMENTO = stringPreferencesKey("departamento")
         private val USAR_GPS = booleanPreferencesKey("usar_gps")

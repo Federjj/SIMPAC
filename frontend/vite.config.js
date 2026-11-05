@@ -7,7 +7,11 @@ import { join } from "node:path";
 
 // Deja un .gz al lado de cada .js/.css/.svg/.json/.html del build que pese 1 KB o más: nginx lo sirve
 // tal cual (nginx.conf, gzip_static) sin comprimir en cada visita. Sin dependencias: zlib de Node.
-// Es solo del build; en desarrollo (vite) no hace nada.
+// Es solo del build; en desarrollo (vite) no hace nada. En Vercel y Netlify (variables VERCEL y
+// NETLIFY, que sus builds definen solas) no corre: esas plataformas comprimen por su cuenta y los
+// .gz solo serían archivos de más en el despliegue.
+const enPlataforma = Boolean(process.env.VERCEL || process.env.NETLIFY);
+
 function precomprimir() {
   let salida = "dist";
   return {
@@ -36,7 +40,7 @@ function precomprimir() {
 }
 
 export default defineConfig({
-  plugins: [react(), precomprimir()],
+  plugins: [react(), ...(enPlataforma ? [] : [precomprimir()])],
   resolve: {
     alias: {
       "@": fileURLToPath(new URL("./src", import.meta.url)),

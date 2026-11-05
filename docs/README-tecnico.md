@@ -2295,6 +2295,187 @@ FCM, firma, Play Console) está en `appmobile/README.md`; aquí el contrato con 
   web (Supabase Auth) no se comparte con la app; sin iOS; firma y Play Console (`appmobile/README.md`);
   avisos de deprecación de `security-crypto` 1.1.0 (sin reemplazo publicado por AndroidX).
 
+### 8.5. Despliegue en la nube: Railway (API, worker, Redis) y Vercel (web)
+
+Guía preparada el 04-11-2026 contra la documentación de Railway de ese día. `docker-compose.yml` no
+cambia (sigue siendo el stack local de §8); en la nube cada pieza va a su propio servicio y nada se
+despliega desde esta máquina: el usuario conecta sus cuentas de GitHub, Railway y Vercel desde el
+navegador.
+
+| Pieza | Dónde | Cómo se construye y arranca | Red |
+|---|---|---|---|
+| BD, cuentas, fotos, chat | Supabase (ya está) | — | pooler `aws-0-sa-east-1.pooler.supabase.com` (IPv4) |
+| `Redis` | Railway, servicio de base de datos Redis (plantilla del panel) | lo crea Railway | expone `REDIS_URL` por la red privada del proyecto |
+| `api` | Railway, desde el repo de GitHub, `backend/Dockerfile`; ajustes en Settings (referencia versionada: `railway.api.json`) | uvicorn en `$PORT` (lo inyecta Railway), healthcheck `/health`, reinicio *On failure* | dominio público `https://<nombre>.up.railway.app` |
+| `worker` | Railway, mismo repo y Dockerfile; ajustes en Settings (referencia: `railway.worker.json`), variable `INSTALAR_MAPAS=1` (llega al `ARG` como *build arg*) | `celery -A backend.celery_app worker --beat --loglevel=info --concurrency 2`, reinicio *Always* | sin puerto ni dominio |
+| web | Vercel (o Netlify), carpeta `frontend/` | `npm run build` -> `dist/`, sitio estático (`frontend/vercel.json`, `frontend/netlify.toml`) | dominio `https://<proyecto>.vercel.app` |
+| app Android | APK o Play (`appmobile/README.md`) | — | Cuenta > Ajustes: API = dominio de Railway, Web = dominio de Vercel |
+
+**Quién habla con quién.** La web lee Supabase directo con la llave pública y **no llama a la API**
+(`frontend/src` no usa `/api/snapshot`): CORS en la API importa solo si algún día la usa, por eso
+`SIMPAC_CORS_ORIGENES` lleva igual el dominio de Vercel. La app Android sí pide `GET /api/snapshot` a
+la API (OkHttp, sin CORS) y abre la web en su WebView. El worker escribe en Supabase por el pooler y
+refresca el snapshot en Redis; la API lee Redis y, si está vacío, Supabase. Mientras el worker corre,
+Supabase gratuito no se pausa por inactividad (recibe consultas cada hora).
+
+**Ajustes de cada servicio (y los archivos `railway.api.json`, `railway.worker.json`).** Lo que cada
+servicio necesita está escrito en esos dos archivos de la raíz, en el formato *config as code* de
+Railway (`railway.json`). **Ojo:** la documentación de Railway (04-11-2026) dice textual que *config as
+code* está deprecado, que "New services cannot opt into Config as Code" y que los archivos solo siguen
+leyéndose en servicios que ya los usaban, hasta el 2026-12-01 (corte duro). Como los servicios de SIMPAC
+se crean nuevos, **los dos archivos no se van a leer**: sirven como referencia versionada de lo que hay
+que escribir a mano en el panel (Settings de cada servicio, abajo) y como entrada de `railway config
+migrate` si más adelante se pasa a *Infrastructure as Code*. Si el panel todavía ofreciera Settings >
+*Config-as-code* > *Railway Config File*, iría la ruta absoluta desde la raíz del repo
+(`/railway.api.json`, `/railway.worker.json`), pero no hay que contar con eso. Campos:
+`build.builder` `DOCKERFILE` y `build.dockerfilePath` `backend/Dockerfile` (el contexto del build es la
+raíz, como en compose; equivale a la variable `RAILWAY_DOCKERFILE_PATH`); `build.watchPatterns`
+`backend/**` (un push que solo toque `frontend/` o `appmobile/` no redespliega la API ni el worker);
+`deploy.startCommand`; en la API `deploy.healthcheckPath` `/health` y `healthcheckTimeout` 120 s (Railway
+lo prueba solo al desplegar, hasta recibir `2xx`, y recién entonces apaga el despliegue anterior; no es
+monitoreo continuo; debe aceptar el host `healthcheck.railway.app`, y FastAPI no filtra hosts);
+`deploy.restartPolicyType` `ON_FAILURE` con `restartPolicyMaxRetries` 10 en la API (el valor por
+defecto de Railway) y `ALWAYS` en el worker (debe correr siempre; Celery no suele salir solo, pero si
+muere no puede quedarse abajo hasta el próximo push). El worker no lleva healthcheck: no escucha HTTP.
+Todo esto se escribe en el panel (Settings > Build: *Builder*, *Dockerfile Path*, *Watch Paths*;
+Settings > Deploy: *Custom Start Command*, *Healthcheck Path*, *Restart Policy*). El reemplazo oficial es
+*Infrastructure as Code* (`.railway/railway.ts`, comandos `railway config init` / `pull` / `plan` /
+`apply`, y `railway config migrate --apply` para convertir los `railway.*.json` en ese archivo); exige la
+CLI de Railway con sesión iniciada, así que queda para cuando el proyecto exista (pendiente en
+`ESTADO.md`).
+
+**`PORT`.** Railway inyecta `PORT` a cada servicio y lo usa para el healthcheck y para enrutar el
+dominio público. Desde el 04-11-2026 `backend/Dockerfile` arranca con
+`CMD ["/bin/sh", "-c", "exec uvicorn backend.app:app --host 0.0.0.0 --port ${PORT:-8000}"]`: en Railway
+escucha donde toca y en `docker compose` (que no define `PORT`) sigue en 8000; `exec` deja a uvicorn como
+PID 1 (recibe el SIGTERM al detener). El *Custom Start Command* de la API (y `railway.api.json`) repite lo mismo, envuelto en
+`/bin/sh -c "..."` porque con Dockerfile Railway ejecuta el start command en forma *exec*, sin expandir
+variables (si se deja el start command vacío, corre el `CMD` del Dockerfile, que ya hace lo mismo). Para no depender de qué puerto propone el panel al generar el dominio, la API lleva además la
+variable `PORT=8000`: así uvicorn, el healthcheck y el dominio usan el mismo número. Comprobado en local
+el 04-11-2026: `docker run --rm -e PORT=9000 -p 9000:9000 <imagen>` responde en `/health`.
+
+**Build arg `INSTALAR_MAPAS`.** Railway pasa las variables del servicio al build como *build args*
+cuando el Dockerfile las declara con `ARG` (ya está: `ARG INSTALAR_MAPAS=0`). En el worker se pone la
+variable `INSTALAR_MAPAS=1` y el build instala `requirements-mapas.txt` (geopandas); en los logs del
+build se ve la línea del `pip install` de geopandas. Es la misma imagen que arma compose con
+`args: INSTALAR_MAPAS: "1"`. Nota: geopandas solo lo importa `backend/mapas/cargar_fen.py` (carga
+manual de los mapas FEN, que ya están en la BD), no las tareas; en Railway pesa en tamaño de imagen y
+tiempo de build (~400 MB más), no en memoria. Si nunca se van a recargar los mapas desde Railway, puede
+ir en `0`.
+
+**Variables por servicio** (Variables > *Raw Editor* acepta varias líneas `CLAVE=valor`; sin comillas;
+en la contraseña del pooler `@ : / # ? %` van codificados como en el `.env`; `${{...}}` es sintaxis de
+referencia de Railway, cualquier otro `$` es literal):
+
+| Variable | `api` | `worker` | Valor |
+|---|---|---|---|
+| `REDIS_URL` | sí | sí | `${{Redis.REDIS_URL}}` (referencia al servicio `Redis`; si se le cambia el nombre, cambia la referencia). Es la URL de la red privada (`...railway.internal`), no hace falta *Public Access* en Redis |
+| `SUPABASE_URL` | sí | sí | `https://clrnommkjyksnyrtnisf.supabase.co` |
+| `SUPABASE_PUBLISHABLE_KEY` | sí | sí | la llave pública (`sb_publishable_...`) |
+| `SNAPSHOT_TTL` | sí | sí | `900` |
+| `SIMPAC_CORS_ORIGENES` | sí | no | `https://<proyecto>.vercel.app` (y el dominio propio, separados por coma; sin barra final). Los *preview deployments* de Vercel tienen otro dominio: no se agregan, la web no llama a la API |
+| `PORT` | sí (recomendada) | no | `8000`, el mismo que se escribe al generar el dominio |
+| `SUPABASE_DB_URL` | **no** | sí | `postgresql://postgres.clrnommkjyksnyrtnisf:<password>@aws-0-sa-east-1.pooler.supabase.com:5432/postgres?sslmode=require` (pooler; la directa `db.<ref>.supabase.co` es solo IPv6) |
+| `SIMPAC_LLUVIA_DEPTS` | no | sí | `cajamarca` |
+| `FIREBASE_CREDENCIALES` | no | sí | el JSON de la cuenta de servicio **en base64** (abajo). Las variables `FIREBASE_CREDENCIALES_ARCHIVO` y `FIREBASE_CREDENCIALES_MONTADA` son solo de compose: en Railway no existen |
+| `FIREBASE_PROYECTO` | no | sí | `appsimpac` (opcional: `backend/config.py` lee `project_id` del JSON si falta) |
+| `SIMPAC_LLM_KEY`, `SIMPAC_LLM_MODELO` | no | opcional | vacías = titular por reglas (sin pedidos externos); con clave, el costo de §5.6.10 |
+| `INSTALAR_MAPAS` | no | sí | `1` (*build arg*, ver arriba) |
+
+**Cuenta de servicio de Firebase en base64.** `backend/config.py` (`ajustes_push`) pasa
+`FIREBASE_CREDENCIALES` tal cual y `backend/ingesta/push.py` (`cargar_credenciales`) acepta una ruta, el
+JSON o su base64 (prueba `test_json_directo_y_base64` en `backend/tests/test_push.py`): Railway no monta
+archivos, así que en la nube es la forma. En PowerShell, con la ruta al JSON (hoy está en la raíz del
+repo de la PC de desarrollo, ignorado por git; moverlo a una carpeta de claves fuera del repo):
+
+```powershell
+[Convert]::ToBase64String([IO.File]::ReadAllBytes("C:\ruta\claves\appsimpac-firebase-adminsdk-xxxx.json")) | Set-Clipboard
+```
+
+Deja el base64 en el portapapeles sin mostrarlo ni escribirlo en ningún archivo; se pega como valor de
+`FIREBASE_CREDENCIALES` en el worker (una sola línea de ~3 KB) y después se limpia el portapapeles
+(`Set-Clipboard -Value " "`). Linux/macOS: `base64 -w0 archivo.json | xclip -selection clipboard` o
+`| pbcopy`. Nunca pegarlo en el chat, en un commit ni en el `.env.docker.example`. Si se filtra, revocar
+la clave en la consola de Firebase (Configuración > Cuentas de servicio) y generar otra. Para que la
+primera corrida de `push` en Railway no reavise las alertas vigentes basta con que `push_estado` tenga
+filas (ya las tiene, es la BD compartida).
+
+**Pasos en el panel de Railway.**
+1. *New Project* > *Deploy from GitHub repo* > autorizar a Railway en GitHub (solo el repo
+   `Federjj/SIMPAC`) y elegirlo. El servicio que se crea es la API: renombrarlo `api` (Settings >
+   *Service Name*). Rama `main`; *Root Directory* se deja en `/`.
+2. En `api`, Settings (los valores de `railway.api.json`, que Railway ya no lee en servicios nuevos):
+   Build > *Builder* Dockerfile y *Dockerfile Path* `backend/Dockerfile` (si el campo no aparece, la
+   variable `RAILWAY_DOCKERFILE_PATH=backend/Dockerfile` hace lo mismo), *Watch Paths* `backend/**`;
+   Deploy > *Custom Start Command*
+   `/bin/sh -c "exec uvicorn backend.app:app --host 0.0.0.0 --port ${PORT:-8000}"`, *Healthcheck Path*
+   `/health`, *Healthcheck Timeout* 120, *Restart Policy* On failure (10 reintentos).
+3. *+ New* > *Database* > *Redis*. Dejarle el nombre `Redis` (la referencia `${{Redis.REDIS_URL}}` usa
+   ese nombre). No activar *Public Access*: la API y el worker llegan por la red privada.
+4. *+ New* > *GitHub Repo* > el mismo repo. Renombrarlo `worker`; Settings (valores de
+   `railway.worker.json`): *Builder* Dockerfile, *Dockerfile Path* `backend/Dockerfile`, *Watch Paths*
+   `backend/**`, *Custom Start Command*
+   `celery -A backend.celery_app worker --beat --loglevel=info --concurrency 2`, sin healthcheck, *Restart
+   Policy* Always. Sin dominio.
+5. Variables de cada servicio según la tabla (en el worker, `INSTALAR_MAPAS=1` antes del primer build; si
+   se agrega después, *Redeploy*). Cada cambio de variables redespliega el servicio.
+6. Solo en `api`: Settings > *Networking* > *Public Networking* > *Generate Domain*; cuando pida el puerto,
+   `8000` (el mismo de la variable `PORT`). Un dominio propio se agrega ahí mismo con un CNAME.
+7. Settings > *Deploy* > *Serverless*: apagado en los dos (abajo). Región (Settings > *Deploy* > *Regions*,
+   si el plan deja elegir): la más cercana a São Paulo, donde está el pooler de Supabase.
+8. Desde ahí, cada push a `main` que toque `backend/**` redespliega `api` y `worker` (build de 2 a 4 min;
+   el worker, al arrancar, encola todas sus tareas como en local).
+
+**Comprobación** (PowerShell usa `curl.exe`; en `cmd` y Git Bash, `curl`):
+```bash
+curl -s https://<api>.up.railway.app/health                      # {"ok":true,"service":"simpac-api"}
+curl -s -o /dev/null -w "%{http_code} %{size_download} bytes %{time_total}s\n" https://<api>.up.railway.app/api/snapshot   # 200, ~46 KB
+curl -sI -H "Origin: https://<proyecto>.vercel.app" https://<api>.up.railway.app/health | grep -i access-control   # Access-Control-Allow-Origin con ese dominio
+```
+`/api/snapshot` responde `503` solo si Redis está vacío y Supabase no responde (p. ej. proyecto pausado).
+Logs del worker (*Deployments* > *View Logs*): al arrancar, la lista `[tasks]` con las 10 tareas
+(`ingesta`, `refresh_cache`, `enfen`, `avisos`, `lluvia_nacional`, `pronostico`, `nowcast`, `rios`,
+`titular`, `push`), `beat: Starting...`, `Connected to redis://...railway.internal:6379/0` y en el primer
+minuto una línea `Task backend.celery_app.<nombre>[...] succeeded` por tarea (`titular` a los 5 min,
+`push` a los 7); después, `refresh_cache` cada 5 min, `nowcast` cada 10, `lluvia_nacional` y `titular`
+cada 30, `ingesta`, `avisos`, `pronostico` y `rios` cada hora, `enfen` cada 6 h. En Supabase (SQL
+Editor): `select servicio, max(ts) from latido group by servicio order by 2 desc` tiene que mostrar
+los 9 servicios que dejan latido (`refresh_cache` no escribe en la BD: se ve en `/api/snapshot`) con
+`ts` de la última hora; `select resumen from latido where servicio = 'push' order by ts desc limit 1`
+dice `credenciales: true` si el base64 se leyó bien. Un `WorkerLostError` o un reinicio sin excepción
+en los logs es señal de falta de memoria (Metrics del servicio): bajar a `--concurrency 1` o agregar
+`--max-memory-per-child 300000` al start command.
+
+**Costos y límites** (precios de la página de planes de Railway al 04-11-2026). Railway cobra por uso:
+USD 10 por GB de RAM al mes, 20 por vCPU al mes y 0,05 por GB de salida; el plan **Free** da USD 1 de
+crédito al mes y como máximo 0,5 GB y 1 vCPU por servicio; el **Trial** es un único crédito de USD 5
+(1 GB y 2 vCPU por servicio); **Hobby** cuesta USD 5 al mes con 5 de uso incluidos; **Pro** 20 con 20.
+Medido en local el 04-11-2026 (`docker stats`): API 52 MiB, Redis 6 MiB, worker 365 MiB al arrancar con
+la concurrencia por defecto (un proceso por CPU); en Railway va con `--concurrency 2` (tres procesos de
+Python más el hilo del beat), así que cabe en el límite de 0,5 GB del plan Free pero justo, y el
+crédito de USD 1 no cubre ni al worker un mes entero (0,35 GB x 10 = USD 3,5 solo en memoria). Estimado
+con Hobby: API 0,1 GB (1) + worker 0,35 GB (3,5) + Redis 0,05 GB (0,5) + CPU (el worker está casi
+siempre esperando a SENAMHI y ANA: 0,05 a 0,15 vCPU promedio, 1 a 3) = USD 6 a 8 al mes, de los que 5 ya
+van en la suscripción. Antes de desplegar, poner un límite de gasto (Workspace > *Usage* > *Set Usage
+Limits*: alerta por correo a un monto, y *hard limit* desde USD 10 que apaga los servicios). Railway
+**no duerme** los servicios por defecto: el modo *Serverless* (antes *App Sleeping*, Settings > Deploy)
+es opcional y apaga el contenedor a los 5 a 10 min sin tráfico de salida; dejarlo apagado en el worker
+(debe correr siempre: ingesta horaria, `nowcast` cada 10 min, `push` cada 5; además sus pedidos a
+SENAMHI lo mantendrían despierto) y también en la API (la app esperaría el arranque en frío en cada
+consulta). Un redespliegue reinicia el beat y encola todas las tareas al arrancar (igual que en local):
+con pushes muy seguidos a `main`, SENAMHI recibe esa ráfaga cada vez; `watchPatterns` lo limita a
+cambios de `backend/`.
+
+**Vercel (web), en corto.** *Add New Project* > importar `Federjj/SIMPAC` > *Root Directory* `frontend`
+(Vercel detecta Vite: `npm run build`, salida `dist`); variables `VITE_SUPABASE_URL`,
+`VITE_SUPABASE_PUBLISHABLE_KEY` y `VITE_STADIA_API_KEY` (o autorizar el dominio en el panel de Stadia,
+`frontend/.env.example`); `frontend/vercel.json` trae las rutas de la SPA y las cabeceras; Netlify, lo
+mismo con `frontend/netlify.toml`. Después: el dominio de Vercel en `SIMPAC_CORS_ORIGENES` de la API y en
+las *Redirect URLs* de Supabase Auth (`https://<proyecto>.vercel.app/cuenta`; `frontend/README.md`,
+"Cuentas y sesión", y el pendiente de §10); en la app Android, Cuenta > Ajustes con los dos dominios (o
+los valores por defecto de `appmobile/android/app/src/main/java/pe/simpac/app/data/Ajustes.kt` antes del
+release, que solo acepta `https`). El detalle de la web está en `frontend/README.md`.
+
 ---
 
 ## 9. Estrategia de adquisición y buenas prácticas

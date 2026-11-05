@@ -865,6 +865,39 @@ estaciones evaluadas, 1 alerta real de 6 h en Cotahuasi, Arequipa)
       key de Stadia (o cambiar la base a OSM/CARTO con su atribución); la app usa `https://localhost`
       y por eso hoy carga tiles sin llave.
 
+**Despliegue en la nube (preparado el 04-11-2026; lo ejecuta el usuario desde sus cuentas)**
+- [x] **Archivos y guía**: `railway.api.json` y `railway.worker.json` en la raíz, `backend/Dockerfile`
+      arranca uvicorn en `$PORT` (8000 si no existe: `docker compose` igual que antes), guía en
+      `README-tecnico.md` §8.5 y resumen en el `README.md` ("Despliegue en Railway y Vercel").
+- [ ] **Railway, proyecto desde `Federjj/SIMPAC`**: servicio Redis; servicio `api` (ajustes de
+      `railway.api.json` escritos en Settings: Dockerfile `backend/Dockerfile`, start command, healthcheck
+      `/health`, reinicio On failure; variables `REDIS_URL=${{Redis.REDIS_URL}}`, `SUPABASE_URL`,
+      `SUPABASE_PUBLISHABLE_KEY`, `SNAPSHOT_TTL`, `SIMPAC_CORS_ORIGENES` con el dominio de Vercel,
+      `PORT=8000`, dominio público generado); servicio `worker` (ajustes de `railway.worker.json` en
+      Settings, las de la API
+      más `SUPABASE_DB_URL` del pooler, `SIMPAC_LLUVIA_DEPTS`, `FIREBASE_CREDENCIALES` en base64,
+      `FIREBASE_PROYECTO=appsimpac`, `INSTALAR_MAPAS=1`, `SIMPAC_LLM_KEY` opcional; sin dominio).
+      Comprobar `/health`, `/api/snapshot` y los logs del worker (las 10 tareas con `succeeded`).
+- [ ] **Base64 de la cuenta de servicio de Firebase** con el comando de PowerShell de §8.5 (al
+      portapapeles, sin mostrarlo ni guardarlo) y pegarlo en `FIREBASE_CREDENCIALES` del worker. La
+      primera corrida de `push` con credenciales en un servidor nuevo avisa una vez las alertas vigentes
+      (`push_estado` ya está sembrada en la BD compartida, así que desde Railway no se repite).
+- [ ] **Plan y límite de gasto en Railway**: el plan Free (USD 1/mes, 0,5 GB por servicio) no alcanza
+      para el worker las 24 h; con Hobby (USD 5/mes con 5 incluidos) el stack sale en unos USD 7-9 al
+      mes. Poner un límite de uso con alerta (Workspace > Usage > Set Usage Limits) y dejar *Serverless*
+      apagado en `api` y `worker`. Vigilar la memoria del worker en Metrics (local: ~365 MiB al arrancar
+      con la concurrencia por defecto; en Railway va con `--concurrency 2`).
+- [ ] **Railway ya no lee `railway.*.json` en servicios nuevos** (config as code deprecado; en los
+      viejos deja de leerlos el 2026-12-01): los dos archivos quedan como referencia versionada y lo mismo
+      se escribe a mano en Settings de cada servicio (Dockerfile path, start command, healthcheck,
+      restart). Migrar a Infrastructure as Code (`.railway/railway.ts`, `railway config migrate`, con la
+      CLI y sesión iniciada) cuando el proyecto ya exista en Railway.
+- [ ] **Después de la API en Railway**: `SIMPAC_CORS_ORIGENES` con el dominio definitivo de Vercel (y el
+      propio si lo hay); en la app Android, Cuenta > Ajustes con `https://<api>.up.railway.app` y la web
+      de Vercel (o cambiar los valores por defecto de `data/Ajustes.kt` antes del release); Redirect
+      URLs de Supabase Auth con el dominio de Vercel; región de Railway lo más cerca de São Paulo
+      (`sa-east-1`, donde está el pooler de Supabase) si el plan lo permite.
+
 ---
 
 ## Reparto (para no duplicar)

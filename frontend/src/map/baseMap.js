@@ -4,9 +4,14 @@ import { escapeHtml } from "./markers";
 import { ajustePopup } from "./popups";
 
 // Mapa base: tiles Stadia Alidade Smooth (claro y limpio, con detalle de calles).
-// Gratis en localhost; al desplegar a un dominio real requiere una API key
-// gratuita de Stadia (?api_key=...).
-const TILES = "https://tiles.stadiamaps.com/tiles/alidade_smooth/{z}/{x}/{y}{r}.png";
+// Gratis en localhost sin llave. En un dominio real Stadia pide identificarse: o se autoriza el
+// dominio en su panel (recomendado para el navegador: no hay llave en el código; manda el Origin
+// y el Referer) o se pasa una API key gratuita con ?api_key=... Si VITE_STADIA_API_KEY está
+// definida (frontend/.env.example), va detrás de {r}.png; Leaflet reemplaza {z}{x}{y}{r} igual.
+const KEY_STADIA = import.meta.env.VITE_STADIA_API_KEY;
+const TILES =
+  "https://tiles.stadiamaps.com/tiles/alidade_smooth/{z}/{x}/{y}{r}.png" +
+  (KEY_STADIA ? `?api_key=${encodeURIComponent(KEY_STADIA)}` : "");
 const ATRIBUCION =
   '© <a href="https://stadiamaps.com/">Stadia Maps</a> © <a href="https://openmaptiles.org/">OpenMapTiles</a> © <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>';
 const PANTALLA_CORTA = "(max-width: 1023px)"; // más angosto que lg: la hoja va abajo

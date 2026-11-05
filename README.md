@@ -351,6 +351,44 @@ Para no depender de la base del proyecto:
 
 La capa "Lluvia del mes frente a lo normal" no tiene cargador automático y quedará vacía.
 
+## Despliegue en Railway y Vercel
+
+Para que SIMPAC se vea desde internet (y no solo en `localhost`) cada pieza va a un servicio en la
+nube; `docker-compose.yml` no cambia y sigue sirviendo para la instalación local. La guía paso a paso,
+con la lista exacta de variables por servicio, las comprobaciones y los costos, está en
+[`docs/README-tecnico.md` §8.5](docs/README-tecnico.md#85-despliegue-en-la-nube-railway-api-worker-redis-y-vercel-web);
+la parte de la web, en [`frontend/README.md`](frontend/README.md).
+
+| Pieza | Dónde | Con qué |
+|---|---|---|
+| Base de datos, cuentas, fotos y chat | Supabase (ya está en la nube) | nada que desplegar |
+| `redis` | [Railway](https://railway.com), servicio de base de datos **Redis** | lo crea el panel; expone `REDIS_URL` |
+| `api` | Railway, desde el repo de GitHub | `backend/Dockerfile` + los ajustes de `railway.api.json` escritos en Settings (uvicorn en el puerto `PORT` que asigna Railway, healthcheck en `/health`, reinicio si falla) y un dominio público `https://<nombre>.up.railway.app` |
+| `worker` | Railway, mismo repo y Dockerfile | los ajustes de `railway.worker.json` en Settings (`celery ... worker --beat --concurrency 2`, sin puerto ni dominio) y la variable `INSTALAR_MAPAS=1`, que el Dockerfile recibe como *build arg* |
+| Web | [Vercel](https://vercel.com) (o Netlify), carpeta `frontend/` | `npm run build` -> `dist/`; variables `VITE_SUPABASE_URL`, `VITE_SUPABASE_PUBLISHABLE_KEY` y la llave de Stadia Maps |
+| App Android | el APK o Play | en Cuenta > Ajustes se escriben la dirección de la API (Railway) y de la web (Vercel) |
+
+En resumen: en Railway se crea un proyecto desde `github.com/Federjj/SIMPAC`, se agrega un Redis y
+dos servicios del mismo repo (`api` y `worker`), cada uno con sus ajustes en Settings (Dockerfile
+`backend/Dockerfile`, start command, healthcheck y política de reinicio: los valores están en
+`railway.api.json` y `railway.worker.json`) y sus variables
+(las mismas del `.env`, pero escritas en el panel: `REDIS_URL` se referencia como
+`${{Redis.REDIS_URL}}`, `SUPABASE_DB_URL` es la del pooler, `SIMPAC_CORS_ORIGENES` lleva el dominio
+de Vercel y la cuenta de servicio de Firebase va en `FIREBASE_CREDENCIALES` como JSON en base64,
+porque Railway no monta archivos). Solo la API recibe dominio público. Comprobación:
+`https://<api>.up.railway.app/health` responde `{"ok":true,"service":"simpac-api"}` y los logs del
+worker muestran las 10 tareas del *beat* terminando con `succeeded`.
+
+Costos: Railway cobra por memoria y CPU usadas (USD 10 por GB-mes y 20 por vCPU-mes); el plan Free
+da USD 1 al mes y 0,5 GB por servicio, que no alcanza para el worker corriendo todo el día (unos 0,3 a
+0,4 GB), así que lo realista es el plan Hobby (USD 5 al mes, con 5 de uso incluidos: el stack completo
+sale en unos USD 7 a 9 al mes). Railway no duerme los servicios por defecto (el modo *Serverless* es
+opcional y hay que dejarlo apagado: el worker debe correr siempre para la ingesta horaria y el push).
+Vercel y Supabase tienen plan gratuito. Railway tiene deprecado el *config as code*: los servicios
+nuevos ya no leen `railway.*.json` (y los viejos dejan de hacerlo el 2026-12-01), por eso lo que traen
+se escribe a mano en Settings del servicio o se migra a su *Infrastructure as Code*
+(`.railway/railway.ts`, comando `railway config migrate`), ver §8.5.
+
 ## App Android
 
 Desde el 20 de octubre de 2026 la app es **nativa, en Kotlin + Jetpack Compose**, y vive en

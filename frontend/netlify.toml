@@ -1,0 +1,52 @@
+# Netlify, alternativa a Vercel (frontend/vercel.json) para servir la build de Vite. Mismo contrato
+# que frontend/nginx.conf: SPA (toda ruta que no sea un archivo cae en index.html), cabeceras de
+# seguridad, un año de caché inmutable para /assets/ (nombres con hash) y no-cache para index.html,
+# el manifest y el service worker. Netlify comprime (gzip y brotli) por su cuenta: el plugin
+# precomprimir de vite.config.js se apaga solo cuando existe la variable NETLIFY.
+#
+# En el panel de Netlify: Site configuration > Build & deploy > Base directory = frontend (así lee
+# este archivo y corre npm install aquí). Las rutas de abajo son relativas a esa base.
+# Variables (Environment variables): VITE_SUPABASE_URL, VITE_SUPABASE_PUBLISHABLE_KEY y, opcional,
+# VITE_STADIA_API_KEY (ver .env.example). Nunca secretos: Vite las expone al navegador.
+
+[build]
+  command = "npm run build"
+  publish = "dist"
+
+[build.environment]
+  NODE_VERSION = "22"
+
+# SPA: sin force, un archivo que existe se sirve antes que esta regla (como try_files en nginx).
+# Diferencia con nginx y Vercel: /assets/noexiste.js aquí responde index.html (200) y no 404.
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
+
+[[headers]]
+  for = "/*"
+  [headers.values]
+    Content-Security-Policy = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: blob: https://tiles.stadiamaps.com https://gibs.earthdata.nasa.gov https://idesep.senamhi.gob.pe https://*.supabase.co; connect-src 'self' https://*.supabase.co wss://*.supabase.co https://tiles.stadiamaps.com https://gibs.earthdata.nasa.gov; worker-src 'self'; manifest-src 'self'; frame-ancestors 'self'; base-uri 'self'; form-action 'self'; object-src 'none'"
+    X-Content-Type-Options = "nosniff"
+    X-Frame-Options = "SAMEORIGIN"
+    Referrer-Policy = "strict-origin-when-cross-origin"
+
+[[headers]]
+  for = "/assets/*"
+  [headers.values]
+    Cache-Control = "public, max-age=31536000, immutable"
+
+[[headers]]
+  for = "/index.html"
+  [headers.values]
+    Cache-Control = "no-cache"
+
+[[headers]]
+  for = "/sw.js"
+  [headers.values]
+    Cache-Control = "no-cache"
+
+[[headers]]
+  for = "/manifest.webmanifest"
+  [headers.values]
+    Cache-Control = "no-cache"
