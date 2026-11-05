@@ -861,15 +861,27 @@ estaciones evaluadas, 1 alerta real de 6 h en Cotahuasi, Arequipa)
       probadores durante 14 días), ficha, política de privacidad pública y cuestionario de seguridad
       de datos (ubicación solo en primer plano; token de FCM). Opcional: limpiar los avisos de
       deprecación de `security-crypto` 1.1.0 cuando AndroidX publique el reemplazo.
-- [ ] **Stadia Maps fuera de localhost**: al publicar la web en un dominio real hace falta una API
-      key de Stadia (o cambiar la base a OSM/CARTO con su atribución); la app usa `https://localhost`
-      y por eso hoy carga tiles sin llave.
+- [x] **Stadia Maps fuera de localhost**: la web en Vercel usa la API key de Stadia
+      (`VITE_STADIA_API_KEY`); los tiles cargan en el dominio real (verificado el 2026-11-05).
 
-**Despliegue en la nube (preparado el 04-11-2026; lo ejecuta el usuario desde sus cuentas)**
+**Despliegue en la nube (preparado el 04-11-2026; ejecutado el 05-11-2026)**
+- [x] **En producción**: web `https://simpac-v7nf.vercel.app` (Vercel, Root Directory `frontend`,
+      cabeceras y caché de `vercel.json` verificadas con curl, rutas con recarga, 404 en assets
+      inexistentes, brotli, service worker activo, 17 consultas a Supabase sin fallas); API
+      `https://simpac-production.up.railway.app` (`/health` 200 y `/api/snapshot` 200 en 1,2 s);
+      `worker` en Railway con las 10 tareas (ENFEN leyó el CO 19-2026 del 30-10 en la primera
+      corrida) y `Redis` de Railway. Railway no acepta *config as code* en servicios nuevos: los
+      ajustes se escribieron en Settings (Dockerfile vía `RAILWAY_DOCKERFILE_PATH=backend/Dockerfile`,
+      `PORT=8000`, healthcheck `/health`; el worker con `--concurrency 2` e `INSTALAR_MAPAS=1`).
+- [ ] **Tras el primer deploy**: `SIMPAC_CORS_ORIGENES=https://simpac-v7nf.vercel.app` en la API de
+      Railway, `https://simpac-v7nf.vercel.app/cuenta` en las Redirect URLs de Supabase Auth y la app
+      Android en release con `-Psimpac.apiUrl=https://simpac-production.up.railway.app
+      -Psimpac.webUrl=https://simpac-v7nf.vercel.app`.
 - [x] **Archivos y guía**: `railway.api.json` y `railway.worker.json` en la raíz, `backend/Dockerfile`
       arranca uvicorn en `$PORT` (8000 si no existe: `docker compose` igual que antes), guía en
       `README-tecnico.md` §8.5 y resumen en el `README.md` ("Despliegue en Railway y Vercel").
-- [ ] **Railway, proyecto desde `Federjj/SIMPAC`**: servicio Redis; servicio `api` (ajustes de
+- [x] **Railway, proyecto desde `Federjj/SIMPAC`** (hecho el 05-11-2026; el servicio de la API se
+      llama `SIMPAC` en el panel): servicio Redis; servicio `api` (ajustes de
       `railway.api.json` escritos en Settings: Dockerfile `backend/Dockerfile`, start command, healthcheck
       `/health`, reinicio On failure; variables `REDIS_URL=${{Redis.REDIS_URL}}`, `SUPABASE_URL`,
       `SUPABASE_PUBLISHABLE_KEY`, `SNAPSHOT_TTL`, `SIMPAC_CORS_ORIGENES` con el dominio de Vercel,
@@ -878,7 +890,7 @@ estaciones evaluadas, 1 alerta real de 6 h en Cotahuasi, Arequipa)
       más `SUPABASE_DB_URL` del pooler, `SIMPAC_LLUVIA_DEPTS`, `FIREBASE_CREDENCIALES` en base64,
       `FIREBASE_PROYECTO=appsimpac`, `INSTALAR_MAPAS=1`, `SIMPAC_LLM_KEY` opcional; sin dominio).
       Comprobar `/health`, `/api/snapshot` y los logs del worker (las 10 tareas con `succeeded`).
-- [ ] **Base64 de la cuenta de servicio de Firebase** con el comando de PowerShell de §8.5 (al
+- [x] **Base64 de la cuenta de servicio de Firebase** (hecho el 05-11-2026) con el comando de PowerShell de §8.5 (al
       portapapeles, sin mostrarlo ni guardarlo) y pegarlo en `FIREBASE_CREDENCIALES` del worker. La
       primera corrida de `push` con credenciales en un servidor nuevo avisa una vez las alertas vigentes
       (`push_estado` ya está sembrada en la BD compartida, así que desde Railway no se repite).

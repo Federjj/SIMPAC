@@ -353,6 +353,10 @@ La capa "Lluvia del mes frente a lo normal" no tiene cargador automático y qued
 
 ## Despliegue en Railway y Vercel
 
+**En producción desde el 2026-11-05:** web en `https://simpac-v7nf.vercel.app` (Vercel) y API en
+`https://simpac-production.up.railway.app` (Railway: `/health` y `/api/snapshot`), con el worker y
+Redis en el mismo proyecto de Railway. La base sigue en Supabase.
+
 Para que SIMPAC se vea desde internet (y no solo en `localhost`) cada pieza va a un servicio en la
 nube; `docker-compose.yml` no cambia y sigue sirviendo para la instalación local. La guía paso a paso,
 con la lista exacta de variables por servicio, las comprobaciones y los costos, está en
