@@ -10,7 +10,9 @@ import android.widget.Toast
 object Intents {
     /** Abre el marcador con el numero puesto (ACTION_DIAL: la persona confirma la llamada; no hace falta permiso). */
     fun marcar(contexto: Context, numero: String) {
-        val limpio = numero.filter { it.isDigit() || it == '+' }
+        // la fuente puede traer varios numeros ("076 602330 / 948 542 364"): se marca el primero
+        val primero = numero.split('/', ',', ';', '|').firstOrNull { it.any(Char::isDigit) } ?: numero
+        val limpio = primero.filter { it.isDigit() || it == '+' }
         if (limpio.isBlank()) { avisar(contexto, "Este lugar no tiene teléfono en la fuente"); return }
         lanzar(contexto, Intent(Intent.ACTION_DIAL, Uri.parse("tel:$limpio")), "No hay una app de teléfono")
     }

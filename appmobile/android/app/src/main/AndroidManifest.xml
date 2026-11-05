@@ -2,7 +2,7 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
 
-    <!-- Datos de Supabase y de la API, y la web dentro del WebView -->
+    <!-- Datos de Supabase y de la API, y los tiles del mapa (Stadia Maps u OpenStreetMap) -->
     <uses-permission android:name="android.permission.INTERNET" />
     <!-- Ubicacion solo en primer plano: la zona, la distancia a los puntos y el pronostico mas cercano -->
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />

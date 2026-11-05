@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Seguridad de red del release: todo por https. Solo el emulador (10.0.2.2) y localhost pueden ir
-     por http, para probar la API y la web de Docker. Un dominio real debe servir https. -->
+<!-- Seguridad de red del release: todo por https (Supabase, la API, los tiles del mapa). Solo el
+     emulador (10.0.2.2) y localhost pueden ir por http, para probar la API de Docker desde un APK
+     release; la web ya no se carga dentro de la app (el mapa es nativo). Un dominio real debe servir https. -->
 <network-security-config>
     <base-config cleartextTrafficPermitted="false" />
     <domain-config cleartextTrafficPermitted="true">

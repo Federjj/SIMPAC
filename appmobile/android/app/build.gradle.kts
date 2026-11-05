@@ -57,6 +57,14 @@ fun esDireccionDeRelease(url: String): Boolean {
 val direccionesReleaseValidas = apiUrlConfigurada != null && webUrlConfigurada != null &&
     esDireccionDeRelease(apiUrlConfigurada) && esDireccionDeRelease(webUrlConfigurada)
 
+// Llave de Stadia Maps para el mapa base (tiles Alidade Smooth). Es publica en el navegador de la web,
+// pero NO se versiona: se da como propiedad de Gradle (-Psimpac.stadiaKey=... o en un gradle.properties
+// local) o por la variable de entorno SIMPAC_STADIA_KEY. Sin llave, la app usa el mapa base de
+// OpenStreetMap (MAPNIK) con User-Agent = applicationId: sirve para desarrollar; para distribuir la app
+// hace falta la llave (ver appmobile/README.md).
+val stadiaKey = providers.gradleProperty("simpac.stadiaKey").orNull?.trim()?.takeIf { it.isNotBlank() }
+    ?: System.getenv("SIMPAC_STADIA_KEY")?.trim() ?: ""
+
 // Firma del release: key.properties (no versionado) o variables de entorno; sin ninguno, sin firmar.
 val keyProperties = Properties().apply {
     val archivo = rootProject.file("key.properties")
@@ -83,6 +91,7 @@ android {
         buildConfigField("String", "SUPABASE_URL", "\"$supabaseUrl\"")
         buildConfigField("String", "SUPABASE_KEY", "\"$supabaseKey\"")
         buildConfigField("boolean", "FIREBASE_CONFIGURADO", hayGoogleServices.toString())
+        buildConfigField("String", "STADIA_KEY", "\"$stadiaKey\"")
     }
 
     signingConfigs {
@@ -151,6 +160,9 @@ gradle.taskGraph.whenReady {
         )
     }
     if (empaquetaRelease) logger.lifecycle("Release de SIMPAC con API $apiUrlConfigurada y web $webUrlConfigurada")
+    if (empaquetaRelease && stadiaKey.isBlank()) {
+        logger.warn("Release sin simpac.stadiaKey: el mapa usara los tiles de OpenStreetMap (MAPNIK), que no son para distribuir una app (politica de uso de OSM). Da la llave de Stadia Maps con -Psimpac.stadiaKey=...")
+    }
 }
 
 dependencies {
@@ -178,6 +190,8 @@ dependencies {
     implementation(libs.kotlinx.serialization.json)
     implementation(libs.okhttp)
     implementation(libs.play.services.location)
+    // Mapa nativo de la pestana Mapa (tiles de Stadia Maps u OSM, polilineas, poligonos y marcadores)
+    implementation(libs.osmdroid.android)
 
     // La dependencia de FCM va siempre; sin google-services.json FirebaseApp no se inicializa y
     // la app lo detecta (push/PushSimpac.kt).

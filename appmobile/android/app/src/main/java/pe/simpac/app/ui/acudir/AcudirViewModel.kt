@@ -37,7 +37,7 @@ class AcudirViewModel(app: Application) : AndroidViewModel(app) {
             _estado.value = _estado.value.copy(cargando = true, error = null)
             val conf = contenedor.ajustes.actual()
             val app = getApplication<Application>()
-            val posicion = if (conf.usarGps && Ubicacion.tienePermiso(app)) Ubicacion.actual(app) else null
+            val posicion = (if (conf.usarGps && Ubicacion.tienePermiso(app)) Ubicacion.actual(app) else null)?.takeIf { Ubicacion.enPeru(it) }
             val depto = Departamentos.porNombre(conf.departamento) ?: Departamentos.POR_DEFECTO
             val centro = posicion ?: Posicion(depto.lat, depto.lon)
             val desde = if (posicion != null) "tu ubicación" else "el centro de ${depto.capital}"

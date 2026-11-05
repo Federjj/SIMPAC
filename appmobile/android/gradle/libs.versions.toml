@@ -20,6 +20,8 @@ playServicesLocation = "21.3.0"
 firebaseBom = "34.0.0"
 googleServices = "4.4.3"
 junit = "4.13.2"
+# Mapa nativo: osmdroid (tiles y overlays en una View; version estable actual en Maven Central)
+osmdroid = "6.1.20"
 
 [libraries]
 androidx-core-ktx = { module = "androidx.core:core-ktx", version.ref = "androidxCore" }
@@ -52,6 +54,7 @@ play-services-location = { module = "com.google.android.gms:play-services-locati
 firebase-bom = { module = "com.google.firebase:firebase-bom", version.ref = "firebaseBom" }
 firebase-messaging = { module = "com.google.firebase:firebase-messaging" }
 junit = { module = "junit:junit", version.ref = "junit" }
+osmdroid-android = { module = "org.osmdroid:osmdroid-android", version.ref = "osmdroid" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "androidGradlePlugin" }

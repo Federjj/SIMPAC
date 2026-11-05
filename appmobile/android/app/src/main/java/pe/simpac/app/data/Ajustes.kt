@@ -24,6 +24,7 @@ data class AjustesApp(
     val webUrl: String = Ajustes.WEB_POR_DEFECTO,
     val notificaciones: Boolean = false,       // interruptor de push por zona
     val temaZonaSuscrito: String? = null,      // ultimo tema zona_<slug> suscrito en FCM
+    val capasMapa: Set<String> = Ajustes.CAPAS_POR_DEFECTO,   // interruptores de la pestana Mapa
 )
 
 /** Ajustes en DataStore (Preferences). No guarda ningun secreto: para eso esta AlmacenSeguro. */
@@ -45,6 +46,10 @@ class Ajustes(private val contexto: Context) {
         private val WEB_URL = stringPreferencesKey("web_url")
         private val NOTIFICACIONES = booleanPreferencesKey("notificaciones")
         private val TEMA_ZONA = stringPreferencesKey("tema_zona")
+        private val CAPAS_MAPA = stringPreferencesKey("capas_mapa")
+
+        /** Capas encendidas al abrir el mapa por primera vez (igual que la web): avisos, zonas y rios. */
+        val CAPAS_POR_DEFECTO: Set<String> = setOf("avisos", "zonas", "rios")
     }
 
     val flujo: Flow<AjustesApp> = contexto.almacenAjustes.data.map { p ->
@@ -56,6 +61,7 @@ class Ajustes(private val contexto: Context) {
             webUrl = p[WEB_URL]?.takeIf { it.isNotBlank() } ?: WEB_POR_DEFECTO,
             notificaciones = p[NOTIFICACIONES] ?: false,
             temaZonaSuscrito = p[TEMA_ZONA],
+            capasMapa = p[CAPAS_MAPA]?.let { t -> t.split(",").map { it.trim() }.filter { it.isNotBlank() }.toSet() } ?: CAPAS_POR_DEFECTO,
         )
     }
 
@@ -70,4 +76,6 @@ class Ajustes(private val contexto: Context) {
     suspend fun guardarTemaZona(tema: String?) = contexto.almacenAjustes.edit {
         if (tema == null) it.remove(TEMA_ZONA) else it[TEMA_ZONA] = tema
     }
+    /** Se guarda siempre como texto (aunque sea vacio): asi "todas apagadas" no vuelve a las de fabrica. */
+    suspend fun guardarCapasMapa(capas: Set<String>) = contexto.almacenAjustes.edit { it[CAPAS_MAPA] = capas.joinToString(",") }
 }

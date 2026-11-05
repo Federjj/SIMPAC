@@ -22,6 +22,12 @@ object Ubicacion {
     }
 
     /**
+     * El Peru con margen (la misma caja que limita el mapa). Una posicion fuera (una persona de viaje,
+     * o el GPS de fabrica de un emulador) no sirve para centrar el mapa ni para elegir el departamento.
+     */
+    fun enPeru(p: Posicion): Boolean = p.lat in -20.5..2.5 && p.lon in -84.5..-66.0
+
+    /**
      * Ultima posicion conocida o una lectura nueva (hasta 8 s). null sin permiso, sin GPS o si no responde.
      * Primero Google Play Services (fused); si no esta, el LocationManager del sistema.
      */

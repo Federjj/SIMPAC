@@ -123,7 +123,10 @@ data class AvisoHidro(
     val sentido: String? = null,
     val inicio: String? = null,
     val fin: String? = null,
+    val valor: Double? = null,
+    val unidad: String? = null,
     val url: String? = null,
+    val visto_en: String? = null,
 )
 
 /** rio_cauce_senal: las senales de hoy de un rio con trazo. */
@@ -187,4 +190,178 @@ data class Snapshot(
     val alertas: List<AlertaActual> = emptyList(),
     val caudales: List<CaudalSnapshot> = emptyList(),
     val indices: List<JsonElement> = emptyList(),
+)
+
+// ---------------------------------------------------------------------------
+// Vistas del mapa nativo (pestana Mapa). La geometria llega como GeoJSON y queda en JsonElement:
+// la convierte dominio/GeoJson.kt fuera del hilo principal.
+// ---------------------------------------------------------------------------
+
+/** Una insignia de un aviso (aviso_vigente.anclas): centro de cada parte grande del poligono. */
+@Serializable
+data class AnclaAviso(
+    val lat: Double? = null,
+    val lon: Double? = null,
+    val parte: Int? = null,
+    val km2: Double? = null,
+    val mayor: Boolean = false,
+    val radio_km: Double? = null,
+)
+
+/** aviso_vigente: un dia (mapa) de un aviso de SENAMHI que no ha terminado, con su area en GeoJSON. */
+@Serializable
+data class AvisoVigente(
+    val id: Long,
+    val tipo: String? = null,            // "meteorologico" o "lluvia24h"
+    val anio: Int? = null,
+    val numero: Int? = null,
+    val mapa: Int? = null,
+    val nivel: Int? = null,              // 2 amarillo, 3 naranja, 4 rojo
+    val titulo: String? = null,
+    val tema: String? = null,            // lluvia, temperatura, viento, otro
+    val descripcion: String? = null,
+    val inicio: String? = null,
+    val fin: String? = null,
+    val en_curso: Boolean = false,
+    val departamentos: List<String> = emptyList(),
+    val url: String? = null,
+    val icono: String? = null,           // gota, gota_rayo, copo (lo calcula el worker)
+    val texto_dia: String? = null,
+    val anclas: List<AnclaAviso> = emptyList(),
+    val geojson: JsonElement? = null,
+)
+
+/** caudal_actual: la ultima lectura de una estacion de rio de ANA con sus umbrales. */
+@Serializable
+data class CaudalActual(
+    val estacion: String = "",
+    val rio: String? = null,
+    val departamento: String? = null,
+    val fecha: String? = null,
+    val hora: String? = null,
+    val valor: Double? = null,
+    val unidad: String? = null,
+    val umbral_alerta: Double? = null,
+    val umbral_emergencia: Double? = null,
+    val tendencia: String? = null,
+    val estado: String? = null,
+    val lat: Double? = null,
+    val lon: Double? = null,
+)
+
+/** rio_vigilado_mapa: un rio vigilado (hoy solo el Mashcon) con su cauce y afluentes en GeoJSON. */
+@Serializable
+data class RioVigiladoMapa(
+    val id: String,
+    val nombre: String? = null,
+    val departamento: String? = null,
+    val estacion_ana: String? = null,
+    val rio_ana: String? = null,
+    val centro_lat: Double? = null,
+    val centro_lon: Double? = null,
+    val zoom: Int? = null,
+    val cauce: JsonElement? = null,
+    val afluentes: JsonElement? = null,
+    val fuentes: JsonElement? = null,
+)
+
+/** rio_zona_mapa: una zona que el rio vigilado podria afectar (estimada con el relieve o del estudio INDECI-PNUD). */
+@Serializable
+data class RioZonaMapa(
+    val clave: String,
+    val rio: String? = null,
+    val tipo: String? = null,            // estimada, estudio, faja
+    val subtipo: String? = null,         // bajo_2m, bajo_3m, menor, mayor
+    val orden: Int? = null,
+    val nombre: String? = null,
+    val texto: String? = null,
+    val fuente: String? = null,
+    val fuente_url: String? = null,
+    val licencia: String? = null,
+    val atribucion: String? = null,
+    val metodo: String? = null,
+    val fecha_fuente: String? = null,
+    val area_km2: Double? = null,
+    val geojson: JsonElement? = null,
+)
+
+/** Un aviso de SENAMHI por lluvias que toca la cuenca de un rio vigilado (rio_senal.avisos_lluvia). */
+@Serializable
+data class AvisoLluviaSenal(
+    val tipo: String? = null,
+    val numero: Int? = null,
+    val nivel: Int? = null,
+    val en_curso: Boolean = false,
+    val inicio: String? = null,
+    val fin: String? = null,
+    val url: String? = null,
+)
+
+/** Lluvia medida por una estacion de SENAMHI de la cuenca frente a su referencia (rio_senal.lluvia_cuenca). */
+@Serializable
+data class LluviaCuenca(
+    val nombre: String? = null,
+    val pp_1h: Double? = null,
+    val pp_6h: Double? = null,
+    val umbral_1h: Double? = null,
+    val umbral_6h: Double? = null,
+)
+
+/** rio_senal: las senales de hoy de un rio vigilado. */
+@Serializable
+data class RioSenal(
+    val rio: String,
+    val avisos_lluvia: List<AvisoLluviaSenal> = emptyList(),
+    val lluvia_cuenca: List<LluviaCuenca> = emptyList(),
+    val avisos_hidro: List<AvisoHidro> = emptyList(),
+)
+
+/** rio_cauce_mapa: un rio del pais con el trazo de ANA simplificado a ~50 m (cauce_lejos). */
+@Serializable
+data class RioCauceMapa(
+    val rio_ana: String,
+    val rio: String? = null,
+    val nombre: String? = null,
+    val departamento: String? = null,
+    val estaciones: List<String> = emptyList(),
+    val km: Double? = null,
+    val fuente: String? = null,
+    val fuente_url: String? = null,
+    val licencia: String? = null,
+    val vigilado: Boolean = false,
+    val cauce_lejos: JsonElement? = null,
+)
+
+/** rio_cauce_mapa (solo rio_ana y cauce): el trazo fino (~6 m) de un rio, pedido al acercarse. */
+@Serializable
+data class RioCauceDetalle(
+    val rio_ana: String,
+    val cauce: JsonElement? = null,
+)
+
+/** rio_cauce_zona_mapa: una zona estimada con el relieve de un rio del pais (bajo_2m o bajo_3m). */
+@Serializable
+data class RioCauceZonaMapa(
+    val clave: String,
+    val rio_ana: String,
+    val subtipo: String? = null,
+    val area_km2: Double? = null,
+    val metodo: String? = null,
+    val fuente: String? = null,
+    val licencia: String? = null,
+    val nota: String? = null,
+    val atribucion: String? = null,
+    val geojson: JsonElement? = null,
+)
+
+/** estacion: una estacion de SENAMHI (M meteorologica, H hidrologica) con su posicion. */
+@Serializable
+data class EstacionSenamhi(
+    val cod: String,
+    val nombre: String? = null,
+    val tipo: String? = null,
+    val estado: String? = null,
+    val departamento: String? = null,
+    val lat: Double? = null,
+    val lon: Double? = null,
 )

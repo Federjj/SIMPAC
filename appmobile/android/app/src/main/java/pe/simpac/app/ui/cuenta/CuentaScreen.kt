@@ -44,7 +44,7 @@ import pe.simpac.app.ui.componentes.PieReferencial
 import pe.simpac.app.ui.componentes.Seccion
 
 @Composable
-fun CuentaScreen(abrirEnWeb: (String) -> Unit, vm: AjustesViewModel = viewModel()) {
+fun CuentaScreen(vm: AjustesViewModel = viewModel()) {
     val conf by vm.conf.collectAsStateWithLifecycle()
     val mensaje by vm.mensaje.collectAsStateWithLifecycle()
     val contexto = LocalContext.current
@@ -71,11 +71,14 @@ fun CuentaScreen(abrirEnWeb: (String) -> Unit, vm: AjustesViewModel = viewModel(
         Seccion("Tu cuenta de SIMPAC") {
             Text(
                 "Las cuentas se manejan en la web de SIMPAC (crear cuenta, entrar, reportar, votar y chatear). " +
-                    "Esta app no comparte la sesión de la web: si entras allá, tendrás que entrar también dentro del mapa de la app.",
+                    "Estos botones abren la web en el navegador del teléfono; la app no guarda esa sesión.",
                 style = MaterialTheme.typography.bodyMedium,
             )
             Spacer(Modifier.height(8.dp))
-            Button(onClick = { abrirEnWeb("/cuenta") }) { Text("Abrir mi cuenta en la web") }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button(onClick = { Intents.abrirNavegador(contexto, c.webUrl.trimEnd('/') + "/cuenta") }) { Text("Abrir mi cuenta en la web") }
+                OutlinedButton(onClick = { Intents.abrirNavegador(contexto, c.webUrl.trimEnd('/') + "/comunidad") }) { Text("Comunidad") }
+            }
         }
 
         Seccion("Notificaciones de tu zona") {
@@ -127,10 +130,10 @@ fun CuentaScreen(abrirEnWeb: (String) -> Unit, vm: AjustesViewModel = viewModel(
             LineaFuente("ANA: caudales y umbrales de ríos, trazo de los ríos (GeoSNIRH; RJ 056-2018-ANA y Carta Nacional del IGN).")
             LineaFuente("ENFEN: comunicado oficial del estado de El Niño costero. IGP: ICEN. NOAA: RONI.")
             LineaFuente("A dónde acudir: RENIPRESS de SUSALUD (ODC-By), padrón de comisarías del MININTER vía CENEPRED, bomberos del CGBVP, gob.pe.")
-            LineaFuente("Mapa base de la web: Stadia Maps y OpenStreetMap (ODbL).")
+            LineaFuente("Mapa base de la app y de la web: Stadia Maps, OpenMapTiles y OpenStreetMap (ODbL). Trazo del Mashcón: OpenStreetMap. Relieve de las zonas estimadas: Copernicus GLO-30.")
             Spacer(Modifier.height(6.dp))
             Text("Licencias de software", style = MaterialTheme.typography.labelLarge)
-            LineaFuente("Kotlin, Jetpack Compose, AndroidX, OkHttp, kotlinx.serialization (Apache 2.0); Firebase Cloud Messaging y Google Play Services (términos de Google).")
+            LineaFuente("Kotlin, Jetpack Compose, AndroidX, OkHttp, kotlinx.serialization, osmdroid (Apache 2.0); Firebase Cloud Messaging y Google Play Services (términos de Google).")
             TextButton(onClick = { Intents.abrirNavegador(contexto, "https://github.com/Federjj/SIMPAC") }) { Text("Código del proyecto en GitHub") }
         }
         PieReferencial()

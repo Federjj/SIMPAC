@@ -52,6 +52,8 @@ data class EstadoInicio(
     val deCache: Boolean = false,               // alguna consulta salio de la copia en disco
     val desactualizado: Boolean = false,        // el titular tiene mas de 3 h sin revisar
     val avisos: List<String> = emptyList(),     // consultas parciales que fallaron
+    val centroLat: Double? = null,              // tu punto (GPS) o el centro del departamento: lo usa "Ver el rio en el mapa"
+    val centroLon: Double? = null,
 )
 
 class InicioViewModel(app: Application) : AndroidViewModel(app) {
@@ -90,7 +92,7 @@ class InicioViewModel(app: Application) : AndroidViewModel(app) {
                 return@launch
             }
             val app = getApplication<Application>()
-            val posicion: Posicion? = if (conf.usarGps && Ubicacion.tienePermiso(app)) Ubicacion.actual(app) else null
+            val posicion: Posicion? = (if (conf.usarGps && Ubicacion.tienePermiso(app)) Ubicacion.actual(app) else null)?.takeIf { Ubicacion.enPeru(it) }
             val departamento = posicion?.let { repo.departamentoDe(it.lat, it.lon) } ?: conf.departamento
             val centro = posicion ?: Departamentos.porNombre(departamento)?.let { Posicion(it.lat, it.lon) }
                 ?: Posicion(Departamentos.POR_DEFECTO.lat, Departamentos.POR_DEFECTO.lon)
@@ -176,6 +178,8 @@ class InicioViewModel(app: Application) : AndroidViewModel(app) {
             deCache = deCache,
             desactualizado = datoTitular != null && Tiempo.desactualizado(revisadoMs),
             avisos = avisos,
+            centroLat = centro.lat,
+            centroLon = centro.lon,
         )
     }
 }

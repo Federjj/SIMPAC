@@ -38,7 +38,7 @@ enum class Pestana(val ruta: String, val etiqueta: String, val icono: ImageVecto
     CUENTA("cuenta", "Cuenta", Icons.Filled.AccountCircle);
 
     companion object {
-        /** Ruta de la web que manda la notificacion ("/alertas") o la pantalla Cuenta ("/cuenta") -> pestana. */
+        /** Ruta que manda la notificacion ("/alertas", "/cuenta") -> pestana. */
         fun desdeRuta(ruta: String?): Pestana = when (ruta?.trim()?.trimStart('/')?.substringBefore('/')?.substringBefore('?')) {
             "alertas" -> ALERTAS
             "cuenta" -> CUENTA
@@ -58,6 +58,9 @@ fun AppSimpac(pestanaInicial: Pestana?, vecesPedida: Int) {
     val rutaActual = entrada?.destination?.route
 
     fun ir(p: Pestana) {
+        // volver a tocar la pestana actual no hace nada: navegar a la misma ruta reemplaza la entrada
+        // de la pila y la pantalla (el mapa, por ejemplo) cambiaria de ciclo de vida sin recrearse
+        if (navController.currentBackStackEntry?.destination?.route == p.ruta) return
         navController.navigate(p.ruta) {
             popUpTo(navController.graph.findStartDestination().id) { saveState = true }
             launchSingleTop = true
@@ -84,11 +87,17 @@ fun AppSimpac(pestanaInicial: Pestana?, vecesPedida: Int) {
         },
     ) { relleno ->
         NavHost(navController, startDestination = Pestana.INICIO.ruta, modifier = Modifier.padding(relleno)) {
-            composable(Pestana.INICIO.ruta) { InicioScreen(irAlertas = { ir(Pestana.ALERTAS) }, irAcudir = { ir(Pestana.ACUDIR) }) }
+            composable(Pestana.INICIO.ruta) {
+                InicioScreen(
+                    irAlertas = { ir(Pestana.ALERTAS) },
+                    irAcudir = { ir(Pestana.ACUDIR) },
+                    irMapa = { e -> compartido.pedirEncuadre(e); ir(Pestana.MAPA) },
+                )
+            }
             composable(Pestana.ALERTAS.ruta) { AlertasScreen() }
             composable(Pestana.MAPA.ruta) { MapaScreen(compartido) }
             composable(Pestana.ACUDIR.ruta) { AcudirScreen() }
-            composable(Pestana.CUENTA.ruta) { CuentaScreen(abrirEnWeb = { ruta -> compartido.pedirRutaWeb(ruta); ir(Pestana.MAPA) }) }
+            composable(Pestana.CUENTA.ruta) { CuentaScreen() }
         }
     }
 }

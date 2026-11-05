@@ -3,9 +3,10 @@
 La app Android de SIMPAC es una **app nativa en Kotlin con Jetpack Compose** (HU-20 y HU-21 del
 backlog) que vive en **`appmobile/android/`**. Lee los mismos datos oficiales que la web (Supabase con
 la publishable key y la API de solo lectura de FastAPI), muestra el semáforo de tu zona con su titular
-en lenguaje claro, las alertas vigentes, a dónde acudir cerca de ti, abre el mapa de la web en un
-WebView y recibe **notificaciones push por Firebase Cloud Messaging (FCM)** cuando tu departamento
-entra en alerta o emergencia.
+en lenguaje claro, las alertas vigentes, a dónde acudir cerca de ti, un **mapa nativo** (osmdroid,
+sin WebView) con los avisos de SENAMHI, los ríos del país con su estado, las zonas que podrían
+inundarse, las estaciones de SENAMHI y los puntos de "A dónde acudir", y recibe **notificaciones push
+por Firebase Cloud Messaging (FCM)** cuando tu departamento entra en alerta o emergencia.
 
 Reemplaza a la app anterior hecha con Capacitor (la web empaquetada): tiene el mismo `applicationId`
 (`pe.simpac.app`), así que instalarla sobre la otra la sustituye. El proyecto de Capacitor se retiró del
@@ -17,9 +18,9 @@ repo el 24-10-2026.
 |---|---|---|
 | **Inicio** | Semáforo grande del departamento (elegido o detectado por GPS), `titular_corto` y detalle con "Generado el <hora>" y origen (reglas o modelo), chips con cuántas alertas oficiales hay y el río con señales, estado El Niño del ENFEN, pronóstico de 3 días de la localidad más cercana, botones "Llamar 105" y "Llamar 116", fuentes con hora y el pie "Información referencial..." | `titular_zona`, `alerta_actual`, `rio_cauce_mapa` + `rio_cauce_senal`, `pronostico_vigente` (caja alrededor de la posición), `estacion` (para saber el departamento por GPS) y `GET /api/snapshot` (contexto ENFEN) |
 | **Alertas** | Lista ordenada emergencia > alerta > aviso, oficiales primero; la "Lluvia medida" va aparte y marcada como no oficial; filtro "Mi zona / Todo el país"; cada tarjeta con color + etiqueta, referencia, zona, detalle, hora y fuente; vacío amable con la hora de la revisión | `alerta_actual` |
-| **Mapa** | La web de SIMPAC en un WebView (JavaScript y geolocalización habilitados, sin acceso a archivos locales; la geolocalización solo se concede al origen de la WEB configurada); botones Recargar y abrir en el Navegador; si la web no responde, mensaje con la dirección configurada. Los enlaces a otros sitios (fuentes oficiales) se abren en el navegador | `<WEB>/` |
+| **Mapa** | Mapa **nativo** con osmdroid (ver "Mapa nativo"): chip arriba con el nivel de tu zona, 5 capas con interruptor (avisos de SENAMHI, ríos, zonas que podrían inundarse, estaciones de SENAMHI, a dónde acudir), nombres de los ríos desde zoom 11, punto azul de tu ubicación y botón "centrar"; al tocar un área, un río, una zona o un punto se abre una hoja inferior de Material 3 en lenguaje claro con su fuente y hora; "Ver el aviso oficial" y "Ver el aviso de SENAMHI" abren el navegador. Solo la barra inferior de la app: no hay barras duplicadas | `aviso_vigente`, `caudal_actual`, `rio_vigilado_mapa`, `rio_zona_mapa`, `rio_senal`, `rio_cauce_mapa` (`cauce_lejos` y `cauce`), `rio_cauce_senal`, `rio_cauce_zona_mapa`, `estacion`, `punto_acudir`, `titular_zona`; tiles de Stadia Maps (o de OSM sin llave) |
 | **Acudir** | Números de emergencia (105, 116, 115, 106 con su salvedad) y los 3 puntos más cercanos (salud 24 h si está a menos de 15 km o el más cercano, comisaría, bomberos) en una caja de 30 km alrededor de la posición (GPS o centro del departamento), con distancia en línea recta, teléfono (abre el marcador), "Cómo llegar" (`geo:`), fuente y fecha del dato | `punto_acudir` |
-| **Cuenta** | Explica que las cuentas se manejan en la web (la sesión no se comparte) con botón que abre `<WEB>/cuenta` en el WebView; Ajustes: departamento, direcciones de la API y la WEB, interruptor de notificaciones por zona; "Acerca de" con fuentes y licencias | DataStore (ajustes) y FCM |
+| **Cuenta** | Explica que las cuentas se manejan en la web (la sesión no se comparte); "Abrir mi cuenta en la web" y "Comunidad" abren `<WEB>/cuenta` y `<WEB>/comunidad` en el **navegador del teléfono** (`ACTION_VIEW`); Ajustes: departamento, direcciones de la API y la WEB, interruptor de notificaciones por zona; "Acerca de" con fuentes y licencias | DataStore (ajustes) y FCM |
 
 Estados cubiertos: cargando, error con "Reintentar", **dato desactualizado** (el titular lleva más
 de 3 h sin revisarse: franja amarilla) y **sin conexión** (cada consulta guarda su última respuesta
@@ -28,7 +29,60 @@ muestra "Normal" por algo no medido: sin titular el semáforo dice "Sin datos" y
 
 Colores del semáforo iguales a la web (`dominio/Nivel.kt`): normal `#15803D`, aviso `#EAB308`
 (tinta `#A16207`), alerta `#F58E27` (`#C2410C`), emergencia `#DB0404` (`#B91C1C`), sin dato gris.
-Siempre color + etiqueta.
+Siempre color + etiqueta. Los colores del mapa (`dominio/Paleta.kt`) son los de
+`frontend/src/map/palette.js`: cauce azul `#1C7ED6` tranquilo, ámbar `#EAB308`, naranja `#F58E27`,
+rojo `#DB0404`, gris `#94A3B8`; zonas azul `#1D4ED8` sin señales, ámbar, naranja, rojo (trazo oscuro
+`#1E3A8A`, `#A16207`, `#C2410C`, `#991B1B`); acudir salud `#0F766E`, comisaría `#1D4ED8`, bomberos `#991B1B`.
+
+## Mapa nativo (pestaña Mapa)
+
+Hasta el 04-11-2026 la pestaña Mapa era la web dentro de un `WebView` (dos barras de navegación, todo
+apretado). Desde esa fecha es un **mapa nativo con osmdroid 6.1.20** (`org.osmdroid:osmdroid-android`,
+Apache 2.0) dentro de Compose (`AndroidView` con el `MapView` en `remember`, `onResume`/`onPause` con el
+ciclo de vida y `onDetach` al salir), que replica la lógica y los colores de la web (`lib/cauces.js`,
+`lib/zonaRio.js`, `lib/lenguaje.js textoRio`, `map/palette.js`, `map/layers/*.js`):
+
+| Capa (interruptor en la hoja "Capas" y chip en la barra de abajo) | Qué dibuja | Fuente | Desde zoom |
+|---|---|---|---|
+| Avisos de SENAMHI (prendida) | Polígonos de `aviso_vigente` que rigen hoy (hora del Perú) con relleno del color del nivel al 35 % y borde (amarillo `#EAB308`, naranja `#F58E27`, rojo `#DB0404`); insignia con el glifo del fenómeno (gota, gota con rayo, copo, termómetro, viento) en el ancla mayor o el centroide; solo se dibujan los que tocan la vista. Hoja: título en palabras, nivel ("Naranja (nivel 3 de 4)"), texto del día, qué hacer, vigencia, departamentos, "Ver el aviso oficial" | SENAMHI (áreas simplificadas, `backend` tarea `avisos`) | 5 |
+| Ríos (prendida) | Los ~100 ríos de `rio_cauce_mapa.cauce_lejos` (~50 m, 35 000 vértices) con halo blanco y el color del estado de `Cauces.estadoRio` (la peor estación de `caudal_actual` o, si es más alto, el aviso hidrológico de `rio_cauce_senal`); el Mashcón desde `rio_vigilado_mapa.cauce` con sus afluentes; discos de las estaciones de ANA con el color del estado; nombres de hasta 8 ríos a la vista desde zoom 11; trazo fino (`cauce`, ~6 m) por río visible desde zoom 13. Hoja: "Río X - tranquilo 0.42 m³/s (ANA, hoy 20:00)", umbrales de alerta y emergencia, frase y acción, aviso hidrológico si manda, fuente del trazo | ANA (niveles y GeoSNIRH), SENAMHI (avisos hidrológicos), OSM (Mashcón) | 5 (simplificado con Douglas-Peucker por debajo de zoom 10) |
+| Zonas que podrían inundarse (prendida) | `rio_zona_mapa` (Mashcón: estimadas bajo_2m rayada con borde oscuro y bajo_3m lisa tenue; estudio INDECI-PNUD 2005 lisa) y `rio_cauce_zona_mapa` (40 zonas de 20 ríos), con el color del nivel de la zona de hoy; se piden solo por los ríos cuya caja toca la vista (nunca el país entero). Hoja: "Zona que podría inundarse si el río se desborda - estimación de SIMPAC con el relieve (Copernicus), no es un mapa oficial", método, fuente, licencia y atribución | SIMPAC con Copernicus GLO-30; INDECI-PNUD 2005 | 12 |
+| Estaciones de SENAMHI (apagada) | Puntos pequeños (M azul claro `#3BA5EB`, H azul `#3B3BEB`) por caja alrededor de la vista. Hoja: nombre, tipo, departamento, código | SENAMHI | 10 |
+| A dónde acudir (apagada) | Marcadores por tipo con glifo (cruz, escudo, llama) por caja alrededor de la vista. Hoja: nombre, categoría, "Atiende las 24 horas, según la fuente" solo si la fuente lo dice, dónde, "Llamar" (`ACTION_DIAL`), "Cómo llegar" (`geo:`), fuente y fecha | SUSALUD RENIPRESS, MININTER vía CENEPRED, CGBVP | 11 |
+| Tu ubicación | Punto azul con halo (permiso pedido en Inicio) y botón flotante "centrar"; al abrir, el mapa centra en tu punto o en la capital del departamento elegido (zoom 13). Desde Inicio, "Ver el río en el mapa" lleva a la pestaña Mapa encuadrando tu punto y el cauce del río destacado | GPS del teléfono | - |
+
+Los interruptores se recuerdan en DataStore (`Ajustes.capasMapa`; de fábrica avisos, zonas y ríos, como
+la web). Todo el trabajo de red y parseo va fuera del hilo principal (`MapaViewModel`, `viewModelScope`
++ `Dispatchers.IO`/`Default`); al salir de la pestaña el ViewModel se limpia y cancela sus corrutinas.
+El parser GeoJSON (`dominio/GeoJson.kt`: Point, LineString, MultiLineString, Polygon, MultiPolygon,
+Feature y FeatureCollection; caja, centroide, punto en polígono, simplificación Douglas-Peucker) y la
+lógica de ríos (`dominio/Cauces.kt`) tienen pruebas JVM con los mismos casos que `lib/cauces.test.js`.
+Caché en disco con plazo: 10 min para ríos, zonas, estaciones y acudir; 5 min para avisos y señales.
+
+**Tiles.** Con `BuildConfig.STADIA_KEY` (propiedad de Gradle `simpac.stadiaKey` o variable de entorno
+`SIMPAC_STADIA_KEY`) usa Stadia Maps *Alidade Smooth*
+(`https://tiles.stadiamaps.com/tiles/alidade_smooth/{z}/{x}/{y}.png?api_key=...`, `@2x` en pantallas
+densas) con la atribución visible abajo "(c) Stadia Maps (c) OpenMapTiles (c) OpenStreetMap - Datos:
+SENAMHI, ANA". **Sin llave** (compilación de desarrollo) cae al mapa base de OpenStreetMap (MAPNIK) con
+`User-Agent = applicationId`: sirve para desarrollar, pero **para distribuir la app hace falta la llave**
+(la política de uso de los tiles de OSM no admite apps publicadas; Gradle avisa al empaquetar un release
+sin ella). La llave es pública en el navegador de la web, pero **no se versiona**: va por
+`-Psimpac.stadiaKey=...` o en un `gradle.properties` local (nunca en el repo). La caché de tiles vive en
+`cacheDir/osmdroid/tiles` (hasta 120 MB; `Configuration.getInstance().osmdroidTileCache`).
+
+**Límites.** Los nombres de los ríos van en una etiqueta recta sobre el tramo visible (osmdroid no
+escribe texto a lo largo de la línea como la web); los rótulos «zona que podría inundarse», la faja
+marginal de ANA, los desbordes pasados, el pronóstico por localidad, la lluvia por estación y las capas
+de El Niño siguen solo en la web. Con varias partes en el trazo fino de un río, se usa la primera por
+parte del trazo lejano. Los botones "+" y "−" de zoom van siempre visibles arriba a la izquierda (como
+el control de Leaflet en la web). Rendimiento: los ríos fuera de la vista no se dibujan, el trazo se
+simplifica por zoom (Douglas-Peucker) y los avisos solo se dibujan si tocan la vista. En el emulador
+Pixel_7a con GPU por software (`-gpu swiftshader_indirect`) todos los cuadros son lentos, también sin
+mapa: mediana de 97 ms al desplazar Inicio, 250 ms al arrastrar el mapa a zoom 13 y 500 ms a zoom 7
+(`adb shell dumpsys gfxinfo pe.simpac.app`, 04-11-2026); en un teléfono con GPU real va acelerado por
+hardware. Ese emulador tiene además `/data` casi lleno (392 MB libres): `installd` purga la caché de
+tiles y osmdroid anota `SQLITE_READONLY_DBMOVED` en logcat, sin romper el mapa. **Falta probarlo en un
+teléfono real.**
 
 ## Estructura
 
@@ -54,7 +108,9 @@ appmobile/android/
     MainActivity.kt                    abre la pestana que pide la notificacion (extra "ruta")
     dominio/                           logica pura, probada en JVM: Nivel, Departamentos (slug del tema
                                        FCM), Geo (haversine, caja), Tiempo ("hace X", hora de Peru),
-                                       Alertas (orden y oficialidad), Acudir, Pronostico, Rios
+                                       Alertas (orden y oficialidad), Acudir, Pronostico, Rios,
+                                       GeoJson (parser), Cauces (estado de los rios y zonas como la web),
+                                       Paleta (colores del mapa), AvisosMapa (avisos de hoy y sus textos)
     data/                              Modelos (kotlinx.serialization), Http (OkHttp: Supabase REST y
                                        API), CacheDisco (ultima respuesta por consulta), Ajustes
                                        (DataStore), AlmacenSeguro (EncryptedSharedPreferences para el
@@ -62,7 +118,10 @@ appmobile/android/
     push/                              PushSimpac (temas "pais" y "zona_<slug>"), ServicioMensajes
     ubicacion/                         una lectura de ubicacion en primer plano (fused o LocationManager)
     ui/                                Navegacion (barra de 5), tema, componentes y las pantallas
-                                       inicio/, alertas/, mapa/, acudir/, cuenta/ con sus ViewModel
+                                       inicio/, alertas/, mapa/, acudir/, cuenta/ con sus ViewModel;
+                                       ui/mapa/: MapaViewModel (datos y vista), GestorMapa (osmdroid:
+                                       tiles, overlays, toques), IconosMapa (dibujos con Canvas),
+                                       HojasMapa (hojas inferiores), MapaScreen (Compose)
   app/src/test/                        pruebas JVM (parseo, orden, distancia, slug, "hace X", acudir...)
   app/src/androidTest/                 prueba de Compose UI de la pantalla Inicio con datos falsos
 ```
@@ -104,7 +163,7 @@ Desde `appmobile/android/`:
 
 | Comando | Qué hace |
 |---|---|
-| `.\gradlew.bat assembleDebug` | APK de prueba firmado con la llave de depuración: `app/build/outputs/apk/debug/app-debug.apk` |
+| `.\gradlew.bat assembleDebug` | APK de prueba firmado con la llave de depuración: `app/build/outputs/apk/debug/app-debug.apk`. Con `-Psimpac.stadiaKey=<llave>` el mapa usa Stadia Maps; sin ella, OSM (solo para desarrollar) |
 | `.\gradlew.bat testDebugUnitTest` | Pruebas JVM (`app/src/test`): parseo de las respuestas, orden de alertas, distancia, slug del tema, "hace X", regla de "a dónde acudir", pronóstico y ríos. Informe en `app/build/reports/tests/testDebugUnitTest/index.html` |
 | `.\gradlew.bat connectedDebugAndroidTest` | Prueba de Compose UI (`app/src/androidTest/InicioScreenTest.kt`) en el emulador o teléfono conectado |
 | `.\gradlew.bat bundleRelease -Psimpac.apiUrl=... -Psimpac.webUrl=...` | AAB para Play Console: `app/build/outputs/bundle/release/app-release.aab` (firmado si hay keystore). Sin las dos propiedades el build se detiene con un mensaje claro (ver "Direcciones de producción") |
@@ -115,6 +174,11 @@ Verificado el 2026-10-20 (Windows 10, PowerShell, JDK 21, SDK con `android-36`):
 verde (`DominioTest` 16, `ModelosTest` 6). **Integración del 2026-10-24**: `.\gradlew.bat
 testDebugUnitTest assembleDebug` BUILD SUCCESSFUL (22 pruebas, 0 fallas; 22 s con el daemon caliente
 tras el ajuste del WebView en `MapaScreen.kt`), APK debug de **15 846 448 bytes (15,1 MiB)**.
+**Mapa nativo del 2026-11-04**: `.\gradlew.bat testDebugUnitTest assembleDebug -Psimpac.apiUrl=...
+-Psimpac.webUrl=... -Psimpac.stadiaKey=...` BUILD SUCCESSFUL (**39 pruebas JVM**, 0 fallas:
+`DominioTest` 16, `ModelosTest` 6, `GeoJsonTest` 7, `CaucesTest` 10; 1 min con el daemon frío), APK
+debug de **16 636 171 bytes (15,9 MiB)**, probado en el emulador Pixel_7a (ver CP-48 en
+`docs/guia-medicion.md`).
 
 Para instalar en un teléfono: *Opciones de desarrollador > Depuración USB*, conectarlo y
 `adb install -r app/build/outputs/apk/debug/app-debug.apk`. Con el emulador encendido, lo mismo.
@@ -264,10 +328,9 @@ Qué revisar al cambiar de dominio:
   únicamente hacia `10.0.2.2`, `localhost` y `127.0.0.1`. Railway (`*.up.railway.app`) y Vercel
   (`*.vercel.app`) sirven https con certificados públicos, así que no hay nada que agregar. Supabase
   va siempre por https.
-- **Mapa (WebView)**: la geolocalización se concede solo al origen de la WEB configurada
-  (`ui/mapa/MapaScreen.kt` calcula el origen con `origenDe(conf.webUrl)`, nunca con un valor fijo), y
-  los enlaces a otros orígenes se abren en el navegador. El WebView no permite contenido mixto, así
-  que la web en Vercel debe cargar todo por https (Supabase, los tiles de Stadia Maps y la API).
+- **Mapa nativo**: no carga la web. Los tiles van por https a `tiles.stadiamaps.com` (o a OSM sin
+  llave) y los datos a Supabase; la dirección de la WEB solo se usa para abrir `/cuenta` y
+  `/comunidad` en el navegador del teléfono. La llave de Stadia se da con `-Psimpac.stadiaKey=...`.
 - **CORS de la API**: la app llama a `GET /api/snapshot` con OkHttp (sin origen, no le afecta CORS).
   La web hoy no llama a la API (lee Supabase directo), pero `SIMPAC_CORS_ORIGENES` del servicio `api`
   lleva igual el dominio de Vercel por si alguna página empieza a usar `/api/snapshot`.
@@ -328,10 +391,8 @@ Google Play exige que el AAB vaya firmado con una llave propia (la "upload key")
 
 ## Límites y pendientes
 
-- El mapa es la web en un WebView: en el emulador por software ya se pinta (arreglo del 24-10, ver
-  "Emulador sin ventana"); **falta probarlo en un teléfono real**. Una vez el botón atrás dentro del WebView volvió a Inicio en vez de
-  retroceder tras abrir `/cuenta` (revisar `canGoBack` en `onPageFinished`). La sesión de la web
-  (Supabase Auth) no se comparte con la app.
+- El mapa es nativo desde el 04-11-2026 (ver "Mapa nativo"); **falta probarlo en un teléfono real**
+  y con la llave de Stadia en un release. La sesión de la web (Supabase Auth) no se comparte con la app.
 - El departamento por GPS se decide con la estación de SENAMHI más cercana (como la web) y, si esa
   consulta falla, con la capital más cercana (aproximado en zonas de frontera como Jaén).
 - Los chips de ríos salen de `rio_cauce_senal` (ríos con trazo de ANA); el Mashcón vigilado
@@ -342,8 +403,7 @@ Google Play exige que el AAB vaya firmado con una llave propia (la "upload key")
   app no tiene iOS.
 - `security-crypto` 1.1.0 (`EncryptedSharedPreferences`, `MasterKey`) está marcado como obsoleto por
   AndroidX y compila con avisos; se cambia cuando publiquen el reemplazo.
-- El `WebView` del Mapa (`ui/mapa/MapaScreen.kt`) lleva `LayoutParams(MATCH_PARENT, MATCH_PARENT)` a
-  propósito: el `ViewGroup` de `AndroidView` le ponía `WRAP_CONTENT` y con ese alto Chromium resuelve
-  `100vh` y `height: 100%` como 0, así que la web cargaba entera pero se veía en blanco (arreglado el
-  24-10-2026). La app anterior con Capacitor se retiró del repo ese mismo día; esta la reemplaza en el
-  teléfono por tener el mismo `applicationId`.
+- El `MapView` de osmdroid (`ui/mapa/MapaScreen.kt`) lleva `LayoutParams(MATCH_PARENT, MATCH_PARENT)`
+  explícitos, como antes el WebView: el `ViewGroup` de `AndroidView` pone `WRAP_CONTENT` si la vista no
+  trae parámetros. La app anterior con Capacitor se retiró del repo el 24-10-2026; esta la reemplaza en
+  el teléfono por tener el mismo `applicationId`.

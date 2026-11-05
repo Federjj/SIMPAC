@@ -38,6 +38,7 @@ import pe.simpac.app.dominio.Departamentos
 import pe.simpac.app.dominio.Nivel
 import pe.simpac.app.dominio.Pronostico
 import pe.simpac.app.dominio.Tiempo
+import pe.simpac.app.ui.EncuadreMapa
 import pe.simpac.app.ui.componentes.AvisoDato
 import pe.simpac.app.ui.componentes.BotonesEmergencia
 import pe.simpac.app.ui.componentes.Cargando
@@ -51,7 +52,7 @@ import pe.simpac.app.ui.componentes.Seccion
 
 /** Pantalla Inicio con su ViewModel (la parte sin estado es InicioContenido, que prueba el androidTest). */
 @Composable
-fun InicioScreen(irAlertas: () -> Unit, irAcudir: () -> Unit, vm: InicioViewModel = viewModel()) {
+fun InicioScreen(irAlertas: () -> Unit, irAcudir: () -> Unit, irMapa: (EncuadreMapa) -> Unit = {}, vm: InicioViewModel = viewModel()) {
     val estado by vm.estado.collectAsStateWithLifecycle()
     val pedirPermiso = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { r ->
         vm.gpsDecidido(r[Manifest.permission.ACCESS_FINE_LOCATION] == true || r[Manifest.permission.ACCESS_COARSE_LOCATION] == true)
@@ -64,6 +65,10 @@ fun InicioScreen(irAlertas: () -> Unit, irAcudir: () -> Unit, vm: InicioViewMode
         onElegirDepartamento = { vm.elegirDepartamento(it) },
         irAlertas = irAlertas,
         irAcudir = irAcudir,
+        verRioEnMapa = {
+            val rio = estado.rioDestacado ?: estado.rios.firstOrNull()
+            irMapa(EncuadreMapa(rio?.rioAna, estado.centroLat, estado.centroLon))
+        },
     )
 }
 
@@ -76,6 +81,7 @@ fun InicioContenido(
     onElegirDepartamento: (String) -> Unit,
     irAlertas: () -> Unit,
     irAcudir: () -> Unit,
+    verRioEnMapa: () -> Unit = {},
 ) {
     when {
         estado.explicarGps -> ExplicacionGps(onUsarGps, onSinGps)
@@ -93,7 +99,7 @@ fun InicioContenido(
             }
             Semaforo(estado, onElegirDepartamento)
             TarjetaTitular(estado)
-            ChipsZona(estado, irAlertas)
+            ChipsZona(estado, irAlertas, verRioEnMapa)
             ContextoNino(estado)
             PronosticoTresDias(estado)
             BotonesEmergencia()
@@ -163,7 +169,7 @@ private fun TarjetaTitular(estado: EstadoInicio) {
 }
 
 @Composable
-private fun ChipsZona(estado: EstadoInicio, irAlertas: () -> Unit) {
+private fun ChipsZona(estado: EstadoInicio, irAlertas: () -> Unit, verRioEnMapa: () -> Unit) {
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         if (estado.alertasLeidas) {
             val oficiales = Alertas.cuantasOficiales(estado.alertasZona)
@@ -183,6 +189,9 @@ private fun ChipsZona(estado: EstadoInicio, irAlertas: () -> Unit) {
     }
     if (estado.alertasLeidas && estado.alertasZona.isNotEmpty()) {
         TextButton(onClick = irAlertas) { Text("Ver las alertas de ${estado.departamento}") }
+    }
+    if (estado.rios.isNotEmpty()) {
+        TextButton(onClick = verRioEnMapa) { Text("Ver el río en el mapa") }
     }
 }
 
