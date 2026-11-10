@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">SIMPAC</string>
+    <string name="app_name">SIFEC</string>
     <string name="canal_alertas_nombre">Alertas de tu zona</string>
     <string name="canal_alertas_descripcion">Avisos oficiales de nivel alerta o emergencia en el departamento que elegiste.</string>
 </resources>

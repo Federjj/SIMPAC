@@ -11,11 +11,11 @@ import {
   getPuntosAcudir,
   masCercanos,
   notaFuente,
-  telHref,
   telefonos,
   textoDistancia,
   tituloTipo,
 } from "@/lib/acudir";
+import TelefonoCopiable from "@/components/TelefonoCopiable";
 import { cn } from "@/lib/utils";
 
 // "A dónde acudir" cerca de un punto: el establecimiento de salud, la comisaría y la compañía de
@@ -38,9 +38,7 @@ function LineaEmergencia() {
       {lista.map((e, i) => (
         <span key={e.numero}>
           {i > 0 && <span className="text-muted-foreground"> · </span>}
-          <a href={telHref(e.numero)} className="underline decoration-dotted underline-offset-2" title={e.nota ? `${e.servicio}. ${e.nota}` : e.servicio}>
-            {e.numero}
-          </a>{" "}
+          <TelefonoCopiable numero={e.numero} titulo={`${e.nota ? `${e.servicio}. ${e.nota}` : e.servicio} (tocar para copiar)`} />{" "}
           <span className="font-normal">{CORTO[e.numero]}</span>
         </span>
       ))}
@@ -64,9 +62,7 @@ function Numeros({ compacto }) {
             {telefonos(e.numero).map((t, i) => (
               <span key={t}>
                 {i > 0 && <br />}
-                <a href={telHref(t)} className="underline decoration-dotted underline-offset-2">
-                  {t}
-                </a>
+                <TelefonoCopiable numero={t} />
               </span>
             ))}
           </span>
@@ -103,10 +99,7 @@ function Tarjeta({ p, onVerEnMapa, compacto }) {
         <p className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
           {tels.length ? (
             tels.slice(0, 2).map((t) => (
-              <a key={t} href={telHref(t)} className="inline-flex items-center gap-1 font-medium underline underline-offset-2">
-                <Phone className="h-3 w-3" />
-                {t}
-              </a>
+              <TelefonoCopiable key={t} numero={t} className="font-medium" />
             ))
           ) : (
             <span className="text-muted-foreground">Sin teléfono en la fuente</span>

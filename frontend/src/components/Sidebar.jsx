@@ -11,12 +11,13 @@ import {
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import TelefonoCopiable from "@/components/TelefonoCopiable";
 import { cn } from "@/lib/utils";
 import { NIVEL } from "@/lib/nivel";
 import { horaPeru, horasDesde } from "@/lib/tiempo";
 import { useSesion } from "@/hooks/useSesion";
 
-export const SUBTITULO_SIFEC = "SIFEC · Sistema Inteligente de Acceso a Información del Fenómeno El Niño";
+export const SUBTITULO_SIFEC = "Sistema Inteligente de Acceso a Información del Fenómeno El Niño";
 
 const NAV = [
   { to: "/", label: "Mapa", Icon: Map, end: true },
@@ -54,7 +55,7 @@ export default function Sidebar({
   const nv = NIVEL[nivel];
   const { conSesion, nombre, cargando } = useSesion();
   return (
-    <aside className="hidden md:flex w-72 flex-none flex-col h-screen border-r border-border bg-background">
+    <aside className="hidden md:flex w-72 flex-none flex-col h-screen overflow-hidden border-r border-border bg-background">
       {/* Marca */}
       <div className="px-5 pt-5 pb-4">
         <div className="flex items-center gap-2">
@@ -63,25 +64,14 @@ export default function Sidebar({
           </div>
           <div>
             <div className="text-lg font-bold leading-none tracking-tight">
-              SIM<span className="text-primary">PAC</span>
+              SI<span className="text-primary">FEC</span>
             </div>
             <div className="text-xs text-muted-foreground mt-1">
-              Ríos, lluvia y El Niño · Perú
+              Ríos, lluvia y El Niño - Perú
             </div>
           </div>
         </div>
         <p className="mt-2 text-[0.62rem] leading-snug text-muted-foreground">{SUBTITULO_SIFEC}</p>
-      </div>
-
-      {/* Estado en la zona del usuario */}
-      <div className={cn("mx-4 mb-3 rounded-xl border px-4 py-3 flex items-center gap-3", nv.border, nv.softbg)}>
-        <span className={cn("h-2.5 w-2.5 rotate-45 rounded-[2px]", nv.dot)} />
-        <div className="leading-tight">
-          <div className="text-[0.68rem] uppercase tracking-wider text-muted-foreground">
-            Estado en {depto}
-          </div>
-          <div className={cn("text-sm font-semibold", nv.text)}>{etiqueta ?? nv.label}</div>
-        </div>
       </div>
 
       {/* Navegacion */}
@@ -118,7 +108,7 @@ export default function Sidebar({
       </nav>
 
       {/* Pie: contexto El Niño en palabras (datos reales) */}
-      <div className="mt-auto border-t border-border p-4">
+      <div className="mt-auto min-h-0 overflow-y-auto overscroll-contain border-t border-border p-4">
         <div className="mb-3 flex items-center gap-2 text-[0.68rem] uppercase tracking-widest text-muted-foreground">
           {sinConexion ? (
             <>
@@ -157,7 +147,10 @@ export default function Sidebar({
           </Button>
         </div>
         <p className="my-3 text-xs text-muted-foreground">
-          Emergencias: <span className="font-semibold text-nivel-alerta">105 (Policía) · 116 (Bomberos)</span>
+          Emergencias:{" "}
+          <span className="font-semibold text-nivel-alerta">
+            <TelefonoCopiable numero="105" /> (Policía) · <TelefonoCopiable numero="116" /> (Bomberos)
+          </span>
         </p>
         {conSesion ? (
           <Button asChild variant="outline" className="w-full">
