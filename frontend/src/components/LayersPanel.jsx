@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { ChevronDown, ChevronUp } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import Glifo from "@/components/Glifo";
 import InsigniaCapa from "@/components/InsigniaCapa";
@@ -89,12 +90,15 @@ function Capa({ layer, on, nueva, opcion, nota, destacada, onToggle, onOpcion })
   const leyenda = typeof legend === "function" ? legend(opcion ?? opciones?.defecto) : legend;
   const ref = useRef(null);
   const [anillo, setAnillo] = useState(false);
+  const [abierta, setAbierta] = useState(false); // descripción (nota, leyenda y fuente) desplegada
+  const hayDescripcion = Boolean(textoNota) || leyenda.length > 0 || Boolean(fuente);
   // la capa que se acaba de prender desde otro lado (p. ej. el panel El Niño) se trae a la vista
   // y se marca un momento; `destacada` es un contador (0 = no)
   useEffect(() => {
     if (!destacada) return;
     ref.current?.scrollIntoView({ block: "start", behavior: "smooth" });
     setAnillo(true);
+    setAbierta(true);
     const t = setTimeout(() => setAnillo(false), 2500);
     return () => clearTimeout(t);
   }, [destacada]);
@@ -113,6 +117,17 @@ function Capa({ layer, on, nueva, opcion, nota, destacada, onToggle, onOpcion })
         </span>
         <Switch className="ml-auto shrink-0" checked={on} onCheckedChange={() => onToggle(id)} />
       </label>
+      {on && hayDescripcion && (
+        <button
+          type="button"
+          onClick={() => setAbierta((a) => !a)}
+          aria-expanded={abierta}
+          className="ml-9 mt-0.5 inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
+        >
+          {abierta ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+          {abierta ? "Ocultar descripción" : "Ver descripción"}
+        </button>
+      )}
       {on && (
         <div className="mb-2 ml-9 mt-0.5 flex flex-col gap-1.5">
           {opciones && (
@@ -129,14 +144,15 @@ function Capa({ layer, on, nueva, opcion, nota, destacada, onToggle, onOpcion })
               ))}
             </select>
           )}
-          {textoNota && <div className="text-xs text-foreground">{textoNota}</div>}
-          {leyenda.map((item) => (
-            <div key={item.label} className="flex items-center gap-2 text-xs text-muted-foreground">
-              <Muestra {...item} />
-              {item.label}
-            </div>
-          ))}
-          {fuente && <div className="text-[0.66rem] leading-snug text-muted-foreground">{fuente}</div>}
+          {abierta && textoNota && <div className="text-xs text-foreground">{textoNota}</div>}
+          {abierta &&
+            leyenda.map((item) => (
+              <div key={item.label} className="flex items-center gap-2 text-xs text-muted-foreground">
+                <Muestra {...item} />
+                {item.label}
+              </div>
+            ))}
+          {abierta && fuente && <div className="text-[0.66rem] leading-snug text-muted-foreground">{fuente}</div>}
         </div>
       )}
     </div>

@@ -282,9 +282,9 @@ export default function ElNinoPanel({ enfen, mar, icen, icenTmp, onVerEvento, on
         role="dialog"
         aria-modal="true"
         aria-labelledby="elnino-titulo"
-        className="w-full max-w-2xl rounded-2xl border border-border bg-card shadow-2xl"
+        className="flex max-h-[min(85vh,44rem)] w-full max-w-2xl flex-col overflow-hidden rounded-2xl border border-border bg-card shadow-2xl"
       >
-        <header className="flex items-start gap-3 border-b border-border px-4 py-3">
+        <header className="flex shrink-0 items-start gap-3 border-b border-border px-4 py-3">
           <div
             className="grid h-9 w-9 shrink-0 place-items-center rounded-lg text-white"
             style={{ background: ENFEN_HEX[enfen?.corto] ?? "#9CA3AF" }}
@@ -302,7 +302,7 @@ export default function ElNinoPanel({ enfen, mar, icen, icenTmp, onVerEvento, on
           </Button>
         </header>
 
-        <div className="space-y-5 px-4 py-4">
+        <div className="min-h-0 flex-1 space-y-5 overflow-y-auto overscroll-contain px-4 py-4">
           <div className="space-y-2">
             <h3 className="text-[0.68rem] font-semibold uppercase tracking-widest text-muted-foreground">
               Sistema de alerta del ENFEN
