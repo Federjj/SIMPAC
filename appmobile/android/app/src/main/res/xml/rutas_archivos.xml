@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Rutas que el FileProvider puede compartir: solo la carpeta temporal de las fotos de los reportes -->
+<paths>
+    <cache-path name="fotos" path="fotos/" />
+</paths>

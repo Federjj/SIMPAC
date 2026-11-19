@@ -370,7 +370,7 @@ la parte de la web, en [`frontend/README.md`](frontend/README.md).
 | `api` | Railway, desde el repo de GitHub | `backend/Dockerfile` + los ajustes de `railway.api.json` escritos en Settings (uvicorn en el puerto `PORT` que asigna Railway, healthcheck en `/health`, reinicio si falla) y un dominio público `https://<nombre>.up.railway.app` |
 | `worker` | Railway, mismo repo y Dockerfile | los ajustes de `railway.worker.json` en Settings (`celery ... worker --beat --concurrency 2`, sin puerto ni dominio) y la variable `INSTALAR_MAPAS=1`, que el Dockerfile recibe como *build arg* |
 | Web | [Vercel](https://vercel.com) (o Netlify), carpeta `frontend/` | `npm run build` -> `dist/`; variables `VITE_SUPABASE_URL`, `VITE_SUPABASE_PUBLISHABLE_KEY` y la llave de Stadia Maps |
-| App Android | el APK o Play | en Cuenta > Ajustes se escriben la dirección de la API (Railway) y de la web (Vercel) |
+| App Android | el APK o Play | las direcciones de la API (Railway) y de la web (Vercel) van fijas en el APK (`-Psimpac.apiUrl` y `-Psimpac.webUrl` al compilar); no se cambian desde la app |
 
 En resumen: en Railway se crea un proyecto desde `github.com/Federjj/SIMPAC`, se agrega un Redis y
 dos servicios del mismo repo (`api` y `worker`), cada uno con sus ajustes en Settings (Dockerfile
@@ -422,9 +422,10 @@ Para que la app **reciba notificaciones** hace falta `appmobile/android/app/goog
 que se descarga de la consola de Firebase del proyecto `appsimpac` (no va al repo; sin él la app
 compila igual y el interruptor dice que las notificaciones no están configuradas). Para que el
 **worker las envíe** hace falta la cuenta de servicio de Firebase en `FIREBASE_CREDENCIALES_ARCHIVO`
-del `.env` (ver "Configuración"). En la app, Cuenta > Ajustes permite cambiar las direcciones de la API
-y de la web (por defecto `http://10.0.2.2:8000` y `http://10.0.2.2:8080`, que desde el emulador son el
-Docker de tu PC; en un teléfono real, la IP de la PC o el dominio).
+del `.env` (ver "Configuración"). Las direcciones de la API y de la web van fijas en el APK: se dan al
+compilar con `-Psimpac.apiUrl` y `-Psimpac.webUrl` (sin propiedades, el build debug usa
+`http://10.0.2.2:8000` y `http://10.0.2.2:8080`, que desde el emulador son el Docker de tu PC) y no se
+pueden cambiar desde la app.
 
 **App anterior (Capacitor), retirada el 2026-10-24**: entre el 14-10 y el 24-10-2026 la app fue la misma
 web empaquetada con [Capacitor](https://capacitorjs.com/) en `frontend/android/`. La app Kotlin la
@@ -441,6 +442,23 @@ o, si no existe, de las variables de entorno `SIMPAC_KEYSTORE_FILE`, `SIMPAC_KEY
 `SIMPAC_KEY_ALIAS` y `SIMPAC_KEY_PASSWORD`; sin ninguna de las dos el release se compila sin firmar.
 Antes de cada publicación subir `versionCode` y `versionName` en ese mismo archivo. Identificador de la
 app: `pe.simpac.app`; `versionCode 2`; Android mínimo 8.0 (API 26), `targetSdk` 36.
+
+## Descargar la app
+
+La web tiene la página **`/app`** ("SIMPAC en tu celular", enlace "Descargar la app" en la barra
+lateral y tarjeta "Lleva SIMPAC en tu celular" en Cuenta) con el botón **Descargar para Android
+(APK)**, que apunta al enlace estable de la última publicación del repo:
+`https://github.com/Federjj/SIMPAC/releases/latest/download/SIMPAC.apk`. La página explica qué trae la
+app, los requisitos (Android 8 o más nuevo, unos 17 MB), los 4 pasos de instalación (descargar, abrir el
+archivo, permitir que el navegador instale apps de origen desconocido, instalar), que todavía no está
+en Play Store y que la firma el equipo del proyecto, la nota de privacidad (solo pide ubicación para tu
+zona; notificaciones opcionales) y un botón "Copiar enlace" para pasarlo por WhatsApp. No consulta nada
+en vivo: si aún no hay publicación, el enlace responde 404 y la página se ve igual.
+
+Para que el enlace funcione hay que **publicar un release en GitHub** con el APK firmado adjunto con el
+nombre exacto `SIMPAC.apk` (`.\gradlew.bat assembleRelease` con la llave propia, ver "Firma para
+publicar"; renombrar `app-release.apk`). `releases/latest` siempre redirige a la última publicación que
+no esté marcada como pre-release, así que cada versión nueva basta con subirla con ese nombre.
 
 ## Problemas comunes
 

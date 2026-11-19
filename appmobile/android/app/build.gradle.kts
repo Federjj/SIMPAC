@@ -192,6 +192,8 @@ dependencies {
     implementation(libs.play.services.location)
     // Mapa nativo de la pestana Mapa (tiles de Stadia Maps u OSM, polilineas, poligonos y marcadores)
     implementation(libs.osmdroid.android)
+    // Fotos de los reportes ciudadanos (pestana Comunidad) desde la URL publica del bucket "reportes"
+    implementation(libs.coil.compose)
 
     // La dependencia de FCM va siempre; sin google-services.json FirebaseApp no se inicializa y
     // la app lo detecta (push/PushSimpac.kt).

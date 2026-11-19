@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
-import { LogOut, MailCheck, Pencil, UserRound } from "lucide-react";
+import { LogOut, MailCheck, Pencil, Smartphone, UserRound } from "lucide-react";
 import PanelPagina from "@/components/PanelPagina";
+import { BotonDescargarApk } from "@/pages/DescargarApp";
 import CitySelector from "@/components/CitySelector";
 import { Cargando, ErrorCarga, Mensaje } from "@/components/EstadoCarga";
 import { SUBTITULO_SIFEC } from "@/components/Sidebar";
@@ -38,7 +39,30 @@ export default function Cuenta() {
       {cargando && <Cargando texto="Revisando tu sesión…" />}
       {!cargando && recuperacion && <NuevaContrasena />}
       {!cargando && !recuperacion && (conSesion ? <Perfil /> : <Acceso />)}
+      {!cargando && !recuperacion && <TarjetaApp />}
     </PanelPagina>
+  );
+}
+
+// Tarjeta "Lleva SIMPAC en tu celular": el mismo botón de descarga del APK que la página /app.
+function TarjetaApp() {
+  return (
+    <section className="mt-6 rounded-xl border border-border bg-card p-4" aria-labelledby="tarjeta-app">
+      <h2 id="tarjeta-app" className="flex items-center gap-2 text-base font-semibold">
+        <Smartphone className="h-5 w-5 text-primary" />
+        Lleva SIMPAC en tu celular
+      </h2>
+      <p className="mt-1 text-sm text-muted-foreground">
+        La app Android te avisa con una notificación cuando tu departamento entra en alerta o emergencia oficial, aunque
+        esté cerrada. Android 8 o más nuevo; todavía no está en Play Store.
+      </p>
+      <BotonDescargarApk className="mt-3" />
+      <p className="mt-2 text-xs text-muted-foreground">
+        <Link to="/app" className="underline">
+          Cómo instalarla y qué permisos pide
+        </Link>
+      </p>
+    </section>
   );
 }
 

@@ -5,8 +5,10 @@ import android.graphics.Bitmap
 import android.graphics.BitmapShader
 import android.graphics.Canvas
 import android.graphics.Color
+import android.graphics.LinearGradient
 import android.graphics.Paint
 import android.graphics.Path
+import android.graphics.RadialGradient
 import android.graphics.RectF
 import android.graphics.Shader
 import android.graphics.drawable.BitmapDrawable
@@ -173,6 +175,208 @@ object IconosMapa {
             }
             c.restore()
         }
+    }
+
+    // ---- pronostico por localidad (map/iconos.js: sol, sol_nube, nube, tendencia, lluvia, tormenta, nieve) ----
+
+    /** Nube de tres circulos y un rectangulo (viewBox 32), con degradado blanco a gris azulado (u oscuro para la tormenta). */
+    private fun nube(c: Canvas, dy: Float, oscura: Boolean = false) {
+        val p = Paint(Paint.ANTI_ALIAS_FLAG)
+        p.shader = LinearGradient(0f, 4f + dy, 0f, 25f + dy,
+            if (oscura) 0xFFA9B6C8.toInt() else Color.WHITE, if (oscura) 0xFF5B6B82.toInt() else 0xFFB4C1D3.toInt(), Shader.TileMode.CLAMP)
+        val sombra = paint(0x50000000)
+        c.save(); c.translate(0f, dy)
+        // sombra suave debajo
+        c.save(); c.translate(0f, 0.9f)
+        c.drawCircle(10f, 19f, 6f, sombra); c.drawCircle(17f, 13.5f, 7.5f, sombra); c.drawCircle(23.5f, 19.5f, 5.5f, sombra); c.drawRect(RectF(10f, 17f, 23.5f, 25f), sombra)
+        c.restore()
+        c.drawCircle(10f, 19f, 6f, p); c.drawCircle(17f, 13.5f, 7.5f, p); c.drawCircle(23.5f, 19.5f, 5.5f, p); c.drawRect(RectF(10f, 17f, 23.5f, 25f), p)
+        c.restore()
+    }
+
+    private fun gotita(c: Canvas, x: Float, y: Float, k: Float = 1f) {
+        val p = Paint(Paint.ANTI_ALIAS_FLAG)
+        p.shader = LinearGradient(0f, -3.6f, 0f, 3.2f, 0xFF6CCBFF.toInt(), 0xFF1673D9.toInt(), Shader.TileMode.CLAMP)
+        c.save(); c.translate(x, y); c.scale(k, k)
+        c.drawPath(Path().apply {
+            moveTo(0f, -3.6f); cubicTo(0f, -3.6f, -2.3f, -0.8f, -2.3f, 0.9f)
+            arcTo(RectF(-2.3f, -1.4f, 2.3f, 3.2f), 180f, -180f)
+            cubicTo(2.3f, -0.8f, 0f, -3.6f, 0f, -3.6f); close()
+        }, p)
+        c.restore()
+    }
+
+    private fun sol(c: Canvas, cx: Float, cy: Float, r: Float) {
+        val rayos = paint(0xFFF7B32B.toInt(), Paint.Style.STROKE, 2f)
+        for (i in 0 until 8) {
+            val a = i * Math.PI / 4
+            c.drawLine(cx + (Math.cos(a) * (r + 2.2)).toFloat(), cy + (Math.sin(a) * (r + 2.2)).toFloat(),
+                cx + (Math.cos(a) * (r + 4.3)).toFloat(), cy + (Math.sin(a) * (r + 4.3)).toFloat(), rayos)
+        }
+        val p = Paint(Paint.ANTI_ALIAS_FLAG)
+        p.shader = RadialGradient(cx - r * 0.2f, cy - r * 0.3f, r * 1.4f, intArrayOf(0xFFFFE9A3.toInt(), 0xFFFFC53D.toInt(), 0xFFF59E0B.toInt()), floatArrayOf(0f, 0.55f, 1f), Shader.TileMode.CLAMP)
+        c.drawCircle(cx, cy, r, p)
+    }
+
+    private fun copito(c: Canvas, cx: Float, cy: Float, r: Float = 2.6f) {
+        val p = paint(0xFF2F95E8.toInt(), Paint.Style.STROKE, 1.6f)
+        for (a in listOf(90.0, 30.0, 150.0)) {
+            val dx = (Math.cos(Math.toRadians(a)) * r).toFloat(); val dy = (Math.sin(Math.toRadians(a)) * r).toFloat()
+            c.drawLine(cx - dx, cy - dy, cx + dx, cy + dy, p)
+        }
+    }
+
+    private fun rayoGrande(c: Canvas) {
+        // el rayo de la web (M17.6 15.5 11.8 23.4h4.4l-2.4 7.1 7.6-9.7h-4.7l3-5.3z) centrado y un 12 % mas grande, subido
+        val p = Path().apply { moveTo(17.6f, 15.5f); lineTo(11.8f, 23.4f); lineTo(16.2f, 23.4f); lineTo(13.8f, 30.5f); lineTo(21.4f, 20.8f); lineTo(16.7f, 20.8f); lineTo(19.7f, 15.5f); close() }
+        val m = android.graphics.Matrix()
+        m.postTranslate(-16.4f, -17.4f); m.postScale(1.12f, 1.12f); m.postTranslate(16.4f - 0.4f, 17.4f - 1.2f)
+        p.transform(m)
+        val rel = Paint(Paint.ANTI_ALIAS_FLAG)
+        rel.shader = LinearGradient(0f, 14f, 0f, 30f, 0xFFFFE066.toInt(), 0xFFF59E0B.toInt(), Shader.TileMode.CLAMP)
+        c.drawPath(p, paint(Color.WHITE, Paint.Style.STROKE, 1.3f))
+        c.drawPath(p, rel)
+    }
+
+    /** Glifo del tiempo del pronostico (cuadro de 32): el mismo dibujo que map/iconos.js, sin SVG. */
+    private fun glifoTiempo(c: Canvas, glifo: String) {
+        when (glifo) {
+            "sol" -> sol(c, 16f, 16f, 7f)
+            "nube" -> nube(c, -1.5f)
+            "tendencia" -> { nube(c, -3.5f); gotita(c, 16f, 27.2f, 1.05f) }
+            "lluvia" -> { nube(c, -3.5f); gotita(c, 10.5f, 26.6f); gotita(c, 16.5f, 28.4f); gotita(c, 22.5f, 26.6f) }
+            "tormenta" -> { nube(c, -5f, oscura = true); rayoGrande(c) }
+            "nieve" -> { nube(c, -3.5f); copito(c, 10.5f, 27.3f); copito(c, 16.5f, 28.6f); copito(c, 22.5f, 27.3f) }
+            else -> { // sol_nube
+                sol(c, 12.5f, 12.5f, 6.4f)
+                c.save(); c.translate(9.5f, 8.5f); c.scale(0.7f, 0.7f); nube(c, 0f); c.restore()
+            }
+        }
+    }
+
+    /**
+     * Disco de una localidad del pronostico: blanco con el glifo del tiempo; borde punteado gris si
+     * SENAMHI dice "tendencia a" (posible); tu localidad con aro negro (punteado si es posible). Los
+     * secos son algo mas chicos (web: .loc-seco 24 px frente a 28 px).
+     */
+    fun discoLocalidad(res: Resources, glifo: String, posible: Boolean, tuya: Boolean, seco: Boolean): BitmapDrawable =
+        cache.getOrPut("loc:$glifo:$posible:$tuya:$seco") {
+            val t = if (tuya) 36f else if (seco) 26f else 30f
+            bitmap(res, t + 4f) { c, s ->
+                val cx = s / 2
+                val r = t / 2 * (s / (t + 4f))
+                c.drawCircle(cx, cx + dp(res, 1f), r, paint(0x40000000))   // sombra
+                c.drawCircle(cx, cx, r, paint(Color.WHITE))
+                if (tuya || posible) {
+                    val borde = paint(if (tuya) 0xFF0F172A.toInt() else 0xFF475569.toInt(), Paint.Style.STROKE, dp(res, if (tuya) 3f else 2f))
+                    if (posible) borde.pathEffect = android.graphics.DashPathEffect(floatArrayOf(dp(res, 3f), dp(res, 2.5f)), 0f)
+                    c.drawCircle(cx, cx, r - dp(res, if (tuya) 1.5f else 1f), borde)
+                }
+                val lado = s * (if (seco) 0.56f else 0.64f)
+                val k = lado / 32f
+                c.save(); c.translate((s - lado) / 2, (s - lado) / 2); c.scale(k, k)
+                glifoTiempo(c, glifo)
+                c.restore()
+            }
+        }
+
+    /** Punto chico de una localidad (vista pais): del color de su tono, borde blanco; tu localidad con aro negro. */
+    fun puntoLocalidad(res: Resources, color: Long, tuya: Boolean): BitmapDrawable = cache.getOrPut("locpunto:$color:$tuya") {
+        bitmap(res, if (tuya) 14f else 11f) { c, s ->
+            c.drawCircle(s / 2, s / 2, s / 2, paint(if (tuya) 0xFF0F172A.toInt() else Color.WHITE))
+            c.drawCircle(s / 2, s / 2, s / 2 - dp(res, if (tuya) 2.5f else 1.5f), paint(color.toInt()))
+        }
+    }
+
+    /** Glifo suelto para la leyenda del pronostico (fondo transparente). */
+    fun glifoLeyenda(res: Resources, glifo: String): BitmapDrawable = cache.getOrPut("gl:$glifo") {
+        bitmap(res, 24f) { c, s -> val k = s / 32f; c.scale(k, k); glifoTiempo(c, glifo) }
+    }
+
+    // ---- lluvia de la ultima hora ----
+
+    /** Circulo de una estacion con lluvia: tamano y color por mm; borde amarillo grueso si paso la referencia. */
+    fun discoLluvia(res: Resources, color: Long, radioDp: Float, pasa: Boolean, conLluvia: Boolean): BitmapDrawable =
+        cache.getOrPut("lluvia:$color:$radioDp:$pasa:$conLluvia") {
+            val borde = if (pasa) 3f else 1f
+            bitmap(res, (radioDp + borde) * 2 + 2f) { c, s ->
+                val cx = s / 2
+                c.drawCircle(cx, cx, dp(res, radioDp + borde), paint(if (pasa) pe.simpac.app.dominio.Lluvia.BORDE_REFERENCIA.toInt() else Color.WHITE))
+                c.drawCircle(cx, cx, dp(res, radioDp), paint((color.toInt() and 0x00FFFFFF) or (if (conLluvia) 0xE6000000.toInt() else 0x80000000.toInt())))
+            }
+        }
+
+    // ---- desbordes pasados: rombo con el ano ----
+
+    /** Rombo pizarra de 24 dp con el ano corto en blanco y, si agrupa varios, una pastilla "x2". */
+    fun rombo(res: Resources, anio: String, n: Int): BitmapDrawable = cache.getOrPut("rombo:$anio:$n") {
+        bitmap(res, 38f) { c, s ->
+            val cx = s / 2; val cy = s / 2
+            val h = dp(res, 10.5f)   // media diagonal del rombo de 21 dp
+            val p = Path().apply { moveTo(cx, cy - h); lineTo(cx + h, cy); lineTo(cx, cy + h); lineTo(cx - h, cy); close() }
+            c.drawPath(p, paint(0x40000000))
+            c.drawPath(p, paint(pe.simpac.app.dominio.Incidentes.COLOR_ROMBO.toInt()))
+            c.drawPath(p, paint(Color.WHITE, Paint.Style.STROKE, dp(res, 1.5f)))
+            val texto = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.WHITE; textSize = dp(res, 10f); textAlign = Paint.Align.CENTER; typeface = android.graphics.Typeface.DEFAULT_BOLD }
+            c.drawText(anio, cx, cy + dp(res, 3.5f), texto)
+            if (n > 1) {
+                val tx = cx + dp(res, 11f); val ty = cy - dp(res, 10f)
+                val etiqueta = "×$n"
+                val tp = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.WHITE; textSize = dp(res, 9f); textAlign = Paint.Align.CENTER; typeface = android.graphics.Typeface.DEFAULT_BOLD }
+                val ancho = tp.measureText(etiqueta) + dp(res, 6f)
+                c.drawRoundRect(RectF(tx - ancho / 2, ty - dp(res, 7f), tx + ancho / 2, ty + dp(res, 7f)), dp(res, 7f), dp(res, 7f), paint(0xFF0F172A.toInt()))
+                c.drawText(etiqueta, tx, ty + dp(res, 3.2f), tp)
+            }
+        }
+    }
+
+    // ---- reportes de la comunidad: gota (pin) del color del tipo con glifo blanco (map/markers.js SVG) ----
+
+    private fun glifoReporte(c: Canvas, tipo: String) {
+        val blanco = paint(Color.WHITE, Paint.Style.STROKE, 2f)
+        val relleno = paint(Color.WHITE)
+        when (tipo) {
+            "inundacion" -> c.drawPath(Path().apply { moveTo(12f, 22f); cubicTo(16f, 22f, 19f, 19f, 19f, 15f); cubicTo(19f, 10f, 12f, 2f, 12f, 2f); cubicTo(12f, 2f, 5f, 10f, 5f, 15f); cubicTo(5f, 19f, 8f, 22f, 12f, 22f); close() }, relleno)
+            "huayco" -> c.drawPath(Path().apply { moveTo(3f, 20f); lineTo(21f, 20f); lineTo(14f, 6f); lineTo(10f, 13f); lineTo(7f, 10f); close() }, relleno)
+            "lluvia_intensa" -> {
+                c.drawPath(Path().apply { moveTo(18f, 15f); cubicTo(20.5f, 15f, 22f, 13f, 22f, 11f); cubicTo(22f, 9f, 20.5f, 7.3f, 18f, 7.1f); cubicTo(17f, 4f, 14.5f, 2f, 11.5f, 2f); cubicTo(8f, 2f, 5f, 5f, 5f, 8.5f); cubicTo(5f, 10f, 5.5f, 11.5f, 6f, 13f) }, blanco)
+                c.drawLine(8f, 19f, 8f, 21f, blanco); c.drawLine(12f, 18f, 12f, 21f, blanco); c.drawLine(16f, 17f, 16f, 19f, blanco)
+            }
+            "via_bloqueada" -> { c.drawLine(4f, 19f, 20f, 5f, blanco); c.drawLine(4f, 5f, 20f, 19f, blanco) }
+            "atasco" -> {
+                c.drawPath(Path().apply { moveTo(5f, 17f); lineTo(19f, 17f); lineTo(19f, 13f); lineTo(17f, 8f); lineTo(7f, 8f); lineTo(5f, 13f); close() }, blanco)
+                c.drawCircle(8f, 17f, 1.5f, relleno); c.drawCircle(16f, 17f, 1.5f, relleno)
+            }
+            "bache" -> { c.drawOval(RectF(4f, 10f, 20f, 18f), blanco); c.drawPath(Path().apply { moveTo(8f, 13f); lineTo(10f, 14f); lineTo(13f, 12f); lineTo(16f, 14f) }, blanco) }
+            "accidente" -> { c.drawPath(Path().apply { moveTo(12f, 3f); lineTo(2f, 20f); lineTo(22f, 20f); close() }, blanco); c.drawLine(12f, 10f, 12f, 14f, blanco); c.drawCircle(12f, 17f, 0.9f, relleno) }
+            else -> { c.drawLine(12f, 5f, 12f, 14f, blanco); c.drawCircle(12f, 18f, 1f, relleno) }
+        }
+    }
+
+    /** Pin (gota) de un reporte: color del tipo, glifo blanco, punta abajo; la opacidad va en el marcador. */
+    fun pinReporte(res: Resources, tipo: String, color: Long): BitmapDrawable = cache.getOrPut("rep:$tipo:$color") {
+        val ancho = 30f; val alto = 40f
+        val px = dp(res, ancho).toInt(); val py = dp(res, alto).toInt()
+        val bmp = Bitmap.createBitmap(px, py, Bitmap.Config.ARGB_8888)
+        val c = Canvas(bmp)
+        val w = px.toFloat(); val r = w / 2 - dp(res, 1f)
+        val cx = w / 2; val cy = r + dp(res, 1f)
+        val gota = Path().apply {
+            addCircle(cx, cy, r, Path.Direction.CW)
+            moveTo(cx - r * 0.62f, cy + r * 0.78f); lineTo(cx, py - dp(res, 1f)); lineTo(cx + r * 0.62f, cy + r * 0.78f); close()
+        }
+        c.drawPath(gota, paint(Color.WHITE))
+        val interior = Path().apply {
+            addCircle(cx, cy, r - dp(res, 1.5f), Path.Direction.CW)
+            moveTo(cx - r * 0.55f, cy + r * 0.75f); lineTo(cx, py - dp(res, 3f)); lineTo(cx + r * 0.55f, cy + r * 0.75f); close()
+        }
+        c.drawPath(interior, paint(color.toInt()))
+        val lado = r * 1.25f
+        val k = lado / 24f
+        c.save(); c.translate(cx - lado / 2, cy - lado / 2); c.scale(k, k)
+        glifoReporte(c, tipo)
+        c.restore()
+        BitmapDrawable(res, bmp)
     }
 
     /** Rayado a 45 grados de una zona bajo_2m: franjas del tono oscuro del nivel sobre blanco tenue (como simpac-rayado-*). */

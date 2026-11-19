@@ -407,6 +407,7 @@ zona, la posición, el panorama, los ríos vigilados e `irAlMapa` / `verRioEnMap
   propio (`GraficoSerie`, con texto resumen para lectores de pantalla), último / máximo / mínimo,
   tabla de las 120 lecturas más nuevas (botón para todas) y **CSV** (`;`, UTF-8 con BOM,
   `simpac_rio_mashcon_7d.csv`). Si no hay lecturas en el rango dice desde cuándo hay datos.
+- **Descargar la app** (`/app`, `pages/DescargarApp.jsx`): ver "Descargar la app".
 - **Navegación**: `Sidebar` (desde `md`) y `BarraInferior` (más angosto que `md`: 5 pestañas de
   56 px con `safe-area-inset-bottom`, contador de alertas en Alertas y el nombre de la persona en
   Cuenta) usan `NavLink` con `aria-current`. El botón flotante "Reportar" (desde `lg`) se retira
@@ -827,6 +828,23 @@ las dependencias `@capacitor/*`, la rama nativa de `hooks/useGeolocation.js` (ah
 `navigator.geolocation`, que el WebView de la app Kotlin atiende con el GPS del sistema) y la condición
 `window.Capacitor` de `src/pwa.js`. Requisitos, firma, publicación en Play y emulador sin ventana de la
 app actual (Kotlin) en **`appmobile/README.md`**.
+
+## Descargar la app
+Desde el 19-11-2026 la web ofrece el APK de la app Android (HU-32): página **`/app`** ("SIMPAC en tu
+celular", `pages/DescargarApp.jsx`, lazy como las demás), acceso **"Descargar la app"** (ícono
+`Smartphone`) bajo "Iniciar sesión" en `Sidebar` (la barra inferior del celular conserva sus 5 pestañas;
+en el celular se llega desde Cuenta) y tarjeta **"Lleva SIMPAC en tu celular"** al pie de `/cuenta`, con
+y sin sesión. El botón **"Descargar para Android (APK)"** (`BotonDescargarApk`, exportado por la
+página) es un `<a href>` a `URL_APK` =
+`https://github.com/Federjj/SIMPAC/releases/latest/download/SIMPAC.apk` (enlace estable a la última
+publicación de GitHub) con `rel="noopener"`, sin `target="_blank"` y sin el atributo `download`
+(cross-origin, el navegador lo ignora). La página dice qué es la app (nativa, mapa, alertas de tu zona y
+notificaciones al entrar en alerta o emergencia), tamaño aproximado (17 MB), requisitos (Android 8 o
+más nuevo), los 4 pasos de instalación, que todavía no está en Play Store y la firma el equipo del
+proyecto, la nota de privacidad (los tres permisos del manifest: internet, ubicación y notificaciones),
+"Copiar enlace" (`navigator.clipboard`; si falla muestra el enlace para copiarlo a mano) y "Ver el
+código en GitHub". No consulta nada en vivo: sin release el enlace da 404 pero la página se ve igual.
+Verificado el 19-11-2026 en escritorio y en 375x812.
 
 ## Despliegue en Vercel
 Desde el 04-11-2026 la web se puede publicar en **Vercel** sin Docker: `frontend/vercel.json` repite

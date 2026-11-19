@@ -10,7 +10,7 @@ import java.io.IOException
 import java.util.concurrent.TimeUnit
 
 /** Error de una consulta con el mensaje en lenguaje claro para la pantalla. */
-class ErrorConsulta(mensaje: String, causa: Throwable? = null) : IOException(mensaje, causa)
+open class ErrorConsulta(mensaje: String, causa: Throwable? = null) : IOException(mensaje, causa)
 
 /** Cliente HTTP unico de la app (OkHttp): solo GET, tiempos cortos, TLS siempre verificado. */
 object Http {

@@ -45,7 +45,7 @@ class InicioScreenTest {
     private fun montar(estado: EstadoInicio) {
         regla.setContent {
             SimpacTheme {
-                InicioContenido(estado = estado, onReintentar = {}, onUsarGps = {}, onSinGps = {}, onElegirDepartamento = {}, irAlertas = {}, irAcudir = {})
+                InicioContenido(estado = estado, onReintentar = {}, onUsarGps = {}, onSinGps = {}, onElegirDepartamento = {}, irAlertas = {})
             }
         }
     }

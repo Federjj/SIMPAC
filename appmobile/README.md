@@ -5,8 +5,10 @@ backlog) que vive en **`appmobile/android/`**. Lee los mismos datos oficiales qu
 la publishable key y la API de solo lectura de FastAPI), muestra el semáforo de tu zona con su titular
 en lenguaje claro, las alertas vigentes, a dónde acudir cerca de ti, un **mapa nativo** (osmdroid,
 sin WebView) con los avisos de SENAMHI, los ríos del país con su estado, las zonas que podrían
-inundarse, las estaciones de SENAMHI y los puntos de "A dónde acudir", y recibe **notificaciones push
-por Firebase Cloud Messaging (FCM)** cuando tu departamento entra en alerta o emergencia.
+inundarse, las estaciones de SENAMHI y los puntos de "A dónde acudir", tiene la **comunidad nativa**
+(reportes ciudadanos con foto, votos y comentarios) con **cuentas de Supabase Auth dentro de la app**
+(HU-17, HU-18 y HU-19 en Android, 19-11-2026), y recibe **notificaciones push por Firebase Cloud
+Messaging (FCM)** cuando tu departamento entra en alerta o emergencia.
 
 Reemplaza a la app anterior hecha con Capacitor (la web empaquetada): tiene el mismo `applicationId`
 (`pe.simpac.app`), así que instalarla sobre la otra la sustituye. El proyecto de Capacitor se retiró del
@@ -16,11 +18,11 @@ repo el 24-10-2026.
 
 | Pestaña | Qué muestra | De dónde sale |
 |---|---|---|
-| **Inicio** | Semáforo grande del departamento (elegido o detectado por GPS), `titular_corto` y detalle con "Generado el <hora>" y origen (reglas o modelo), chips con cuántas alertas oficiales hay y el río con señales, estado El Niño del ENFEN, pronóstico de 3 días de la localidad más cercana, botones "Llamar 105" y "Llamar 116", fuentes con hora y el pie "Información referencial..." | `titular_zona`, `alerta_actual`, `rio_cauce_mapa` + `rio_cauce_senal`, `pronostico_vigente` (caja alrededor de la posición), `estacion` (para saber el departamento por GPS) y `GET /api/snapshot` (contexto ENFEN) |
+| **Inicio** | Semáforo grande del departamento (elegido o detectado por GPS), `titular_corto` y detalle con "Generado el <hora>" y origen (reglas o modelo), chips con cuántas alertas oficiales hay y el río con señales, estado El Niño del ENFEN, pronóstico de 3 días de la localidad más cercana, botones "Llamar 105" y "Llamar 116", la sección **"A dónde acudir"** (antes era una pestaña: los 3 puntos más cercanos, salud 24 h si está a menos de 15 km o el más cercano, comisaría y bomberos, en 30 km alrededor de la posición, con distancia en línea recta, teléfono, "Cómo llegar", fuente y fecha, y los números 105, 116, 115 y 106), la tarjeta "Comunidad" con el botón **"Reportar"** (lleva al formulario de reporte), fuentes con hora y el pie "Información referencial..." | `titular_zona`, `alerta_actual`, `rio_cauce_mapa` + `rio_cauce_senal`, `pronostico_vigente` (caja alrededor de la posición), `estacion` (para saber el departamento por GPS), `punto_acudir` y `GET /api/snapshot` (contexto ENFEN) |
 | **Alertas** | Lista ordenada emergencia > alerta > aviso, oficiales primero; la "Lluvia medida" va aparte y marcada como no oficial; filtro "Mi zona / Todo el país"; cada tarjeta con color + etiqueta, referencia, zona, detalle, hora y fuente; vacío amable con la hora de la revisión | `alerta_actual` |
 | **Mapa** | Mapa **nativo** con osmdroid (ver "Mapa nativo"): chip arriba con el nivel de tu zona, 5 capas con interruptor (avisos de SENAMHI, ríos, zonas que podrían inundarse, estaciones de SENAMHI, a dónde acudir), nombres de los ríos desde zoom 11, punto azul de tu ubicación y botón "centrar"; al tocar un área, un río, una zona o un punto se abre una hoja inferior de Material 3 en lenguaje claro con su fuente y hora; "Ver el aviso oficial" y "Ver el aviso de SENAMHI" abren el navegador. Solo la barra inferior de la app: no hay barras duplicadas | `aviso_vigente`, `caudal_actual`, `rio_vigilado_mapa`, `rio_zona_mapa`, `rio_senal`, `rio_cauce_mapa` (`cauce_lejos` y `cauce`), `rio_cauce_senal`, `rio_cauce_zona_mapa`, `estacion`, `punto_acudir`, `titular_zona`; tiles de Stadia Maps (o de OSM sin llave) |
-| **Acudir** | Números de emergencia (105, 116, 115, 106 con su salvedad) y los 3 puntos más cercanos (salud 24 h si está a menos de 15 km o el más cercano, comisaría, bomberos) en una caja de 30 km alrededor de la posición (GPS o centro del departamento), con distancia en línea recta, teléfono (abre el marcador), "Cómo llegar" (`geo:`), fuente y fecha del dato | `punto_acudir` |
-| **Cuenta** | Explica que las cuentas se manejan en la web (la sesión no se comparte); "Abrir mi cuenta en la web" y "Comunidad" abren `<WEB>/cuenta` y `<WEB>/comunidad` en el **navegador del teléfono** (`ACTION_VIEW`); Ajustes: departamento, direcciones de la API y la WEB, interruptor de notificaciones por zona; "Acerca de" con fuentes y licencias | DataStore (ajustes) y FCM |
+| **Comunidad** | Reportes de vecinos vigentes (12 h) ordenados por confianza y cercanía, cada uno con el glifo y color de su tipo, descripción, foto, "hace X", distancia, estado según la comunidad y vencimiento, votos a favor / en contra (con sesión) y "Ver en el mapa"; "Reportar incidente" (formulario con GPS real, tipo, subtipo del atasco, descripción, foto por cámara o galería); detalle con comentarios y caja para comentar (con sesión). Sin sesión se consulta todo y se invita a entrar para reportar, votar y comentar (ver "Comunidad y cuentas") | `report`, `comentario`, `voto`, bucket `reportes` (Storage) |
+| **Cuenta** | **Nativa** (Supabase Auth por correo y contraseña): pestañas Entrar / Crear cuenta, "Olvidé mi contraseña" y la pantalla "Revisa tu correo"; con sesión: nombre, correo, reputación del perfil, "Mis reportes" (vigentes y vencidos, con estado y votos) y cerrar sesión. Debajo siguen Ajustes (departamento e interruptor de notificaciones por zona) y "Acerca de" con fuentes y licencias. Las direcciones de la API y la web no se pueden cambiar desde la app: vienen fijas del build (`-Psimpac.apiUrl` y `-Psimpac.webUrl`) | GoTrue (`/auth/v1`), `perfil`, `rpc mis_reportes`, DataStore (ajustes) y FCM |
 
 Estados cubiertos: cargando, error con "Reintentar", **dato desactualizado** (el titular lleva más
 de 3 h sin revisarse: franja amarilla) y **sin conexión** (cada consulta guarda su última respuesta
@@ -84,6 +86,89 @@ hardware. Ese emulador tiene además `/data` casi lleno (392 MB libres): `instal
 tiles y osmdroid anota `SQLITE_READONLY_DBMOVED` en logcat, sin romper el mapa. **Falta probarlo en un
 teléfono real.**
 
+## Comunidad y cuentas (HU-17, HU-18, HU-19 en Android)
+
+Desde el 19-11-2026 la app no manda a la web para reportar ni para entrar: replica **exactamente** las
+reglas y textos de `frontend/README.md` ("Comunidad" y "Cuentas y sesión"), `lib/comunidad.js`,
+`lib/sesion.js`, `lib/queries.js`, `lib/reportTypes.js` y las páginas `Comunidad.jsx`,
+`ReporteNuevo.jsx`, `ReporteDetalle.jsx` y `Cuenta.jsx`. La BD sigue decidiendo lo que no debe decidir
+el cliente (autor, confianza, estado, vencimiento, límites por hora, foto solo del bucket propio).
+
+**Sesión (`data/AuthSupabase.kt`, `data/Sesion.kt`).** GoTrue por REST con la publishable key:
+`POST /auth/v1/signup?redirect_to=<WEB>/cuenta` (`{email, password, data: {nombre}}`; el trigger
+`crear_perfil` copia el nombre al perfil), `POST /auth/v1/token?grant_type=password`,
+`POST /auth/v1/token?grant_type=refresh_token`, `POST /auth/v1/recover?redirect_to=<WEB>/cuenta`,
+`POST /auth/v1/logout` y `GET /auth/v1/user`. La sesión (access token, refresh token, vencimiento, id,
+correo y nombre) vive **solo en `AlmacenSeguro`** (EncryptedSharedPreferences con llave del Keystore;
+excluida de las copias de seguridad) y se refresca sola cuando faltan menos de 60 s para vencer; si
+Auth rechaza el refresh token la sesión se borra y la pantalla vuelve a "Entra para...". `Sesion.estado`
+es un `StateFlow` (`Cargando`, `SinSesion`, `ConSesion`) que observan todas las pantallas. Con la
+**confirmación por correo** activa, crear la cuenta no abre sesión: la app muestra "Revisa tu correo"
+(si el correo ya existía, Auth devuelve un usuario sin identidades y el texto lo dice sin revelar
+cuentas); el enlace del correo abre **la web** (`<WEB>/cuenta`, la dirección fija del build) y
+después la persona entra en la app con su correo y contraseña. Lo mismo con "Olvidé mi contraseña": la
+contraseña nueva se elige en la web. **Pendiente:** `<WEB>/cuenta` debe estar en Supabase Auth > URL
+Configuration > Redirect URLs (como ya se pedía para la web). Los errores de Auth se traducen con
+`Comunidad.mensajeAuth` (credenciales, correo sin confirmar, cuenta existente, contraseña corta, límite
+de correos, enlace vencido, sin red), igual que `mensajeAuth` de `lib/comunidad.js`.
+
+**Escrituras (`data/ComunidadSupabase.kt`, expuestas por `Repositorio`).** Todas con `apikey` y
+`Authorization: Bearer <access_token>`:
+- `crearReporte`: `POST /rest/v1/report?select=<columnas>` con `Prefer: return=representation` y la
+  fila `{tipo, subtipo, descripcion, foto_url, geom}` donde `geom` es el EWKT del GPS
+  (`SRID=4326;POINT(lon lat)`); nada más (autor, estado, confianza, likes, expira_en los pone la BD).
+  Máximo 5 por hora (trigger `report_limite`).
+- `votar`: `POST /rest/v1/voto?on_conflict=report_id,autor` con `Prefer:
+  resolution=merge-duplicates,return=minimal` y `{report_id, valor: 1 | -1}`; tocar el mismo voto lo
+  quita (`DELETE /rest/v1/voto?report_id=eq.<id>`). No al propio ni a uno vencido (lo dice la BD).
+  Tras votar la app vuelve a pedir el reporte: los contadores los recalcula la BD.
+- `comentar`: `POST /rest/v1/comentario` con `{report_id, texto}` (1 a 500 letras; 20 por hora).
+- `subirFoto`: la foto (cámara con `TakePicture` + `FileProvider` en `cacheDir/fotos`, o galería con
+  `PickVisualMedia`) se **reduce a 1280 px de lado y JPEG al 85 %** (`ui/comunidad/Fotos.kt`,
+  respetando la orientación EXIF y sin copiar metadatos) y va por `POST
+  /storage/v1/object/reportes/<uid>/<ms>-<aleatorio>.jpg` (`Content-Type: image/jpeg`, `x-upsert:
+  false`); `foto_url` es la URL pública de ese objeto, la única que admite `report_foto_url_check`.
+- `misReportes`: `POST /rest/v1/rpc/mis_reportes` (la única forma de ver los propios, también
+  vencidos). `perfilPropio`: `GET /rest/v1/perfil?select=id,nombre,reputacion`. `misVotos`: `GET
+  /rest/v1/voto?select=report_id,valor&report_id=in.(...)`.
+- Errores de PostgREST y Storage traducidos con `Comunidad.mensajeErrorBD` (límite por hora, propio
+  reporte, fuera del Perú, sesión vencida, sin permiso, foto pesada o de otro tipo, reporte vencido).
+
+**Lecturas públicas (sin cuenta).** `Repositorio.reportesVigentes(caja)` pide `report` con columnas
+explícitas (nunca `autor`) dentro de una caja (la pestaña Comunidad usa la del Perú; el mapa, su
+vista); `reporte(id)` y `comentarios(reportId)`. La lista se ordena en `dominio/Comunidad.kt` con el
+mismo criterio que la web: confianza (0 a 1) menos un castigo por lejanía (50 km restan 1, tope a 100
+km) y, en empate, el más nuevo primero; distancias desde el GPS o desde la capital del departamento
+elegido ("Distancias desde ...").
+
+**Reglas de la pantalla de reporte.** Solo con sesión y con la **posición GPS real** (sin pin manual):
+sin permiso explica que no se puede reportar sin ubicación y ofrece dar el permiso; fuera del Perú no
+deja enviar. Chips de tipo con glifo y color (`inundacion`, `huayco`, `lluvia_intensa`,
+`via_bloqueada`, `atasco` con leve / moderado / detenido, `bache`, `accidente`, `otro`), descripción
+de hasta 500 letras con contador, foto opcional, el aviso fijo **"Es un reporte comunitario, no
+oficial. Para emergencias llama al 105 o 116."**, estados "Subiendo la foto..." / "Enviando..." y, al
+terminar, abre el detalle del reporte creado. La app nunca pide más que correo y nombre, no muestra
+autores ("Vecino" en los comentarios) y repite el texto fijo "Para consultar no hace falta cuenta.
+Solo se pide para reportar, votar y comentar".
+
+**Navegación.** Pestañas Inicio, Alertas, Mapa, Comunidad y Cuenta; rutas `comunidad/nuevo` y
+`comunidad/{id}` dentro de la pestaña Comunidad (`ui/Navegacion.kt Rutas`). `EstadoCompartido.abrirReporte`
+la pone `AppSimpac` y la usa el mapa al tocar el pin de un reporte. "Ver en el mapa" encuadra el punto
+del reporte en la pestaña Mapa. La notificación sigue abriendo la pestaña que dice su ruta
+(`/alertas`, `/cuenta`, `/comunidad`; `/acudir` ahora abre Inicio).
+
+**Permisos nuevos.** `CAMERA` (se pide solo al tocar "Tomar foto"; `uses-feature camera.any` con
+`required=false`: la app se instala sin cámara) y el `FileProvider` `${applicationId}.archivos` con
+`res/xml/rutas_archivos.xml` (solo `cacheDir/fotos`). Dependencia nueva: Coil 2.7.0 (`coil-compose`,
+Apache 2.0) para las fotos.
+
+**Pruebas JVM (`app/src/test/ComunidadTest.kt`).** Sin red, con un transporte simulado
+(`TransporteHttp`): cuerpos JSON y cabeceras de signup, token, refresh, recover, logout, crear
+reporte, votar, quitar voto, comentar, foto, rpc y perfil; parseo de la respuesta de Auth y la ida y
+vuelta por el almacén; registro con confirmación y con correo repetido; traducción de errores de la BD
+y de Auth; orden por confianza y distancia; textos de distancia y vencimiento; validaciones del
+reporte, de la cuenta y del comentario.
+
 ## Estructura
 
 ```
@@ -97,8 +182,9 @@ appmobile/android/
                                        y simpac.webUrl; obligatorias y por https en release), firma,
                                        google-services SOLO si existe app/google-services.json
   app/google-services.json             (NO versionado) credenciales de Firebase, ver mas abajo
-  app/src/main/AndroidManifest.xml     permisos INTERNET, ubicacion en primer plano, POST_NOTIFICATIONS;
-                                       MainActivity, ServicioMensajes (FCM), canal/icono por defecto
+  app/src/main/AndroidManifest.xml     permisos INTERNET, ubicacion en primer plano, POST_NOTIFICATIONS,
+                                       CAMERA (opcional); MainActivity, ServicioMensajes (FCM),
+                                       FileProvider de las fotos, canal/icono por defecto
   app/src/main/res/                    icono adaptable de la gota (el mismo de la app anterior), icono
                                        de notificacion, red_release.xml / red_debug.xml (https; http solo
                                        para 10.0.2.2/localhost en release, libre en debug)
@@ -110,14 +196,20 @@ appmobile/android/
                                        FCM), Geo (haversine, caja), Tiempo ("hace X", hora de Peru),
                                        Alertas (orden y oficialidad), Acudir, Pronostico, Rios,
                                        GeoJson (parser), Cauces (estado de los rios y zonas como la web),
-                                       Paleta (colores del mapa), AvisosMapa (avisos de hoy y sus textos)
+                                       Paleta (colores del mapa), AvisosMapa (avisos de hoy y sus textos),
+                                       Comunidad (orden, validaciones y errores claros de la comunidad)
     data/                              Modelos (kotlinx.serialization), Http (OkHttp: Supabase REST y
-                                       API), CacheDisco (ultima respuesta por consulta), Ajustes
-                                       (DataStore), AlmacenSeguro (EncryptedSharedPreferences para el
-                                       token de FCM), Repositorio (todas las consultas)
+                                       API), Transporte (peticiones de escritura, simulables en pruebas),
+                                       CacheDisco (ultima respuesta por consulta), Ajustes (DataStore),
+                                       AlmacenSeguro (EncryptedSharedPreferences: token de FCM y sesion),
+                                       AuthSupabase (GoTrue REST), Sesion (estado de la sesion),
+                                       ComunidadSupabase (escrituras con sesion), Repositorio (consultas)
     push/                              PushSimpac (temas "pais" y "zona_<slug>"), ServicioMensajes
     ubicacion/                         una lectura de ubicacion en primer plano (fused o LocationManager)
-    ui/                                Navegacion (barra de 5), tema, componentes y las pantallas
+    ui/                                Navegacion (barra de 5 y rutas de comunidad), tema, componentes y
+                                       las pantallas: inicio (con la seccion de acudir), alertas, mapa,
+                                       comunidad (lista, reporte nuevo, detalle, fotos), cuenta
+                                       (sesion nativa y ajustes), acudir (seccion reutilizable)
                                        inicio/, alertas/, mapa/, acudir/, cuenta/ con sus ViewModel;
                                        ui/mapa/: MapaViewModel (datos y vista), GestorMapa (osmdroid:
                                        tiles, overlays, toques), IconosMapa (dibujos con Canvas),
@@ -131,13 +223,13 @@ datos). El `build.gradle.kts` las toma de las variables de entorno `SIMPAC_SUPAB
 `SIMPAC_SUPABASE_KEY`, si no de `frontend/.env` y si no de `frontend/.env.example`; así ningún
 archivo de este proyecto lleva una clave escrita.
 
-Direcciones configurables (Cuenta > Ajustes): la app trae de fábrica las que le dio Gradle al
-compilar (`BuildConfig.API_URL` y `BuildConfig.WEB_URL`, propiedades `simpac.apiUrl` y
-`simpac.webUrl`; ver "Direcciones de producción"). En debug sin propiedades son API
-`http://10.0.2.2:8000` y WEB `http://10.0.2.2:8080`, que desde el emulador son el Docker de la PC. En
-un teléfono real poner la IP de la PC (solo en la compilación debug, que permite http) o el dominio
-real con https (el release solo permite http hacia 10.0.2.2 y localhost: `res/xml/red_release.xml`).
-"Restablecer" vuelve a las direcciones de fábrica de esa compilación.
+Direcciones de la API y la web: fijas, las que le dio Gradle al compilar (`BuildConfig.API_URL` y
+`BuildConfig.WEB_URL`, propiedades `simpac.apiUrl` y `simpac.webUrl`; ver "Direcciones de
+producción"); no se pueden cambiar desde la app. En debug sin propiedades son API
+`http://10.0.2.2:8000` y WEB `http://10.0.2.2:8080`, que desde el emulador son el Docker de la PC. Para
+probar en un teléfono contra la PC, compilar en debug con `-Psimpac.apiUrl=http://<IP de la PC>:8000`
+(solo debug permite http); el release exige https (y solo permite http hacia 10.0.2.2 y localhost:
+`res/xml/red_release.xml`).
 
 ## Requisitos
 
@@ -164,7 +256,7 @@ Desde `appmobile/android/`:
 | Comando | Qué hace |
 |---|---|
 | `.\gradlew.bat assembleDebug` | APK de prueba firmado con la llave de depuración: `app/build/outputs/apk/debug/app-debug.apk`. Con `-Psimpac.stadiaKey=<llave>` el mapa usa Stadia Maps; sin ella, OSM (solo para desarrollar) |
-| `.\gradlew.bat testDebugUnitTest` | Pruebas JVM (`app/src/test`): parseo de las respuestas, orden de alertas, distancia, slug del tema, "hace X", regla de "a dónde acudir", pronóstico y ríos. Informe en `app/build/reports/tests/testDebugUnitTest/index.html` |
+| `.\gradlew.bat testDebugUnitTest` | Pruebas JVM (`app/src/test`): parseo de las respuestas, orden de alertas, distancia, slug del tema, "hace X", regla de "a dónde acudir", pronóstico, ríos, GeoJSON y cauces, y la comunidad (peticiones de Auth y de escritura sin red, errores claros, orden y validaciones). Informe en `app/build/reports/tests/testDebugUnitTest/index.html` |
 | `.\gradlew.bat connectedDebugAndroidTest` | Prueba de Compose UI (`app/src/androidTest/InicioScreenTest.kt`) en el emulador o teléfono conectado |
 | `.\gradlew.bat bundleRelease -Psimpac.apiUrl=... -Psimpac.webUrl=...` | AAB para Play Console: `app/build/outputs/bundle/release/app-release.aab` (firmado si hay keystore). Sin las dos propiedades el build se detiene con un mensaje claro (ver "Direcciones de producción") |
 | `.\gradlew.bat assembleRelease -Psimpac.apiUrl=... -Psimpac.webUrl=...` | APK release firmado para repartir fuera de la tienda (misma regla) |
@@ -299,11 +391,11 @@ propagaba la suscripción) y al tocarla la app abrió la pestaña Alertas. Detal
 
 ## Direcciones de producción
 
-La app lleva "de fábrica" la dirección de la API (FastAPI en Railway) y de la web (Vercel o Netlify);
-la persona puede cambiarlas en Cuenta > Ajustes y "Restablecer" vuelve a las de fábrica. Se dan al
-compilar como propiedades de Gradle (`simpac.apiUrl` y `simpac.webUrl`), que `app/build.gradle.kts`
-expone como `BuildConfig.API_URL` y `BuildConfig.WEB_URL` (`data/Ajustes.kt` las usa como
-predeterminadas):
+La app lleva fijas la dirección de la API (FastAPI en Railway) y de la web (Vercel); no se pueden
+cambiar desde la app (los campos de Cuenta > Ajustes se retiraron el 19-11-2026 para dejarla lista
+para usuarios finales). Se dan al compilar como propiedades de Gradle (`simpac.apiUrl` y
+`simpac.webUrl`), que `app/build.gradle.kts` expone como `BuildConfig.API_URL` y
+`BuildConfig.WEB_URL` (`data/Ajustes.kt` las expone en `AjustesApp.apiUrl` / `webUrl`):
 
 | Variante | Sin propiedades | Con propiedades |
 |---|---|---|
@@ -392,7 +484,14 @@ Google Play exige que el AAB vaya firmado con una llave propia (la "upload key")
 ## Límites y pendientes
 
 - El mapa es nativo desde el 04-11-2026 (ver "Mapa nativo"); **falta probarlo en un teléfono real**
-  y con la llave de Stadia en un release. La sesión de la web (Supabase Auth) no se comparte con la app.
+  y con la llave de Stadia en un release.
+- Cuentas y comunidad nativas desde el 19-11-2026 (ver "Comunidad y cuentas"). La sesión de la app
+  es propia (no se comparte con el navegador). **Pendiente:** registrar `<WEB>/cuenta` en Supabase
+  Auth > Redirect URLs y probar con una cuenta real el recorrido completo (crear cuenta, confirmar en
+  la web, entrar en la app, reportar con foto, votar y comentar): en el emulador se verificaron los
+  formularios con datos inválidos, la lista pública y el formulario sin sesión. La contraseña nueva
+  (enlace de "Olvidé mi contraseña") se elige en la web, no en la app. El chat por departamento sigue
+  solo en la web.
 - El departamento por GPS se decide con la estación de SENAMHI más cercana (como la web) y, si esa
   consulta falla, con la capital más cercana (aproximado en zonas de frontera como Jaén).
 - Los chips de ríos salen de `rio_cauce_senal` (ríos con trazo de ANA); el Mashcón vigilado

@@ -39,6 +39,7 @@ import pe.simpac.app.dominio.Nivel
 import pe.simpac.app.dominio.Pronostico
 import pe.simpac.app.dominio.Tiempo
 import pe.simpac.app.ui.EncuadreMapa
+import pe.simpac.app.ui.acudir.AcudirResumen
 import pe.simpac.app.ui.componentes.AvisoDato
 import pe.simpac.app.ui.componentes.BotonesEmergencia
 import pe.simpac.app.ui.componentes.Cargando
@@ -52,7 +53,7 @@ import pe.simpac.app.ui.componentes.Seccion
 
 /** Pantalla Inicio con su ViewModel (la parte sin estado es InicioContenido, que prueba el androidTest). */
 @Composable
-fun InicioScreen(irAlertas: () -> Unit, irAcudir: () -> Unit, irMapa: (EncuadreMapa) -> Unit = {}, vm: InicioViewModel = viewModel()) {
+fun InicioScreen(irAlertas: () -> Unit, irReportar: () -> Unit, irMapa: (EncuadreMapa) -> Unit = {}, vm: InicioViewModel = viewModel()) {
     val estado by vm.estado.collectAsStateWithLifecycle()
     val pedirPermiso = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { r ->
         vm.gpsDecidido(r[Manifest.permission.ACCESS_FINE_LOCATION] == true || r[Manifest.permission.ACCESS_COARSE_LOCATION] == true)
@@ -64,7 +65,8 @@ fun InicioScreen(irAlertas: () -> Unit, irAcudir: () -> Unit, irMapa: (EncuadreM
         onSinGps = { vm.gpsDecidido(false) },
         onElegirDepartamento = { vm.elegirDepartamento(it) },
         irAlertas = irAlertas,
-        irAcudir = irAcudir,
+        irReportar = irReportar,
+        seccionAcudir = { AcudirResumen() },
         verRioEnMapa = {
             val rio = estado.rioDestacado ?: estado.rios.firstOrNull()
             irMapa(EncuadreMapa(rio?.rioAna, estado.centroLat, estado.centroLon))
@@ -80,7 +82,8 @@ fun InicioContenido(
     onSinGps: () -> Unit,
     onElegirDepartamento: (String) -> Unit,
     irAlertas: () -> Unit,
-    irAcudir: () -> Unit,
+    irReportar: () -> Unit = {},
+    seccionAcudir: @Composable () -> Unit = {},   // "A donde acudir" con su propio ViewModel (ui/acudir)
     verRioEnMapa: () -> Unit = {},
 ) {
     when {
@@ -103,7 +106,12 @@ fun InicioContenido(
             ContextoNino(estado)
             PronosticoTresDias(estado)
             BotonesEmergencia()
-            TextButton(onClick = irAcudir) { Text("A dónde acudir cerca de ti") }
+            seccionAcudir()
+            Seccion("Comunidad") {
+                Text("¿Ves una inundación, un huayco, una vía bloqueada o un atasco? Repórtalo desde donde estás: dura 12 horas y la comunidad lo vota.", style = MaterialTheme.typography.bodyMedium)
+                Spacer(Modifier.height(8.dp))
+                Button(onClick = irReportar) { Text("Reportar") }
+            }
             Fuentes(estado)
             PieReferencial()
             Spacer(Modifier.height(8.dp))

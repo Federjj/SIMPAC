@@ -22,6 +22,9 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.SegmentedButton
+import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.SmallFloatingActionButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -35,6 +38,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
@@ -49,15 +53,18 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import kotlinx.coroutines.launch
 import org.osmdroid.util.GeoPoint
 import org.osmdroid.views.MapView
+import pe.simpac.app.dominio.DiaMapa
+import pe.simpac.app.dominio.Lluvia
 import pe.simpac.app.ubicacion.Posicion
 import pe.simpac.app.ubicacion.Ubicacion
 import pe.simpac.app.ui.EstadoCompartido
 import pe.simpac.app.ui.componentes.ErrorReintentar
 
 /**
- * Pestana Mapa: mapa nativo (osmdroid) con las capas de SIMPAC. Arriba el chip con el nivel de tu
- * zona, abajo la barra de capas; al tocar algo, una hoja inferior de Material 3 en lenguaje claro.
- * Solo existe la barra inferior de la app: nada de barras duplicadas.
+ * Pestana Mapa: mapa nativo (osmdroid) con las capas de SIMPAC. Arriba, el selector de dia (Hoy /
+ * Manana / Pasado, que mueve avisos y pronostico) y el chip con el nivel de tu zona; abajo la barra de
+ * capas; al tocar algo, una hoja inferior de Material 3 en lenguaje claro. Solo existe la barra
+ * inferior de la app: nada de barras duplicadas.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -77,7 +84,15 @@ fun MapaScreen(compartido: EstadoCompartido, vm: MapaViewModel = viewModel()) {
         val mapa = MapView(contexto).apply {
             layoutParams = ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
         }
-        GestorMapa(mapa, alTocar = { seleccion = it }, alCambiarVista = { caja, zoom -> vm.vistaCambio(caja, zoom) })
+        GestorMapa(
+            mapa,
+            alTocar = { sel ->
+                // un pin de reporte abre el detalle de Comunidad si la app lo ofrece; si no, la hoja del mapa
+                val abrir = compartido.abrirReporte
+                if (sel is Seleccion.Reporte && abrir != null) abrir(sel.reporte.id) else seleccion = sel
+            },
+            alCambiarVista = { caja, zoom -> vm.vistaCambio(caja, zoom) },
+        )
     }
 
     // onResume/onPause siguen al ciclo de vida de la pestana. El LifecycleOwner puede cambiar sin que
@@ -96,7 +111,7 @@ fun MapaScreen(compartido: EstadoCompartido, vm: MapaViewModel = viewModel()) {
     }
     // onDetach libera tiles y capas y deja el MapView inservible: solo al salir de verdad de la pestana
     DisposableEffect(Unit) {
-        onDispose { gestor.mapa.onDetach() }
+        onDispose { gestor.soltar() }
     }
 
     // centro inicial: tu ubicacion o la ciudad elegida, zoom 13 (una vez por centro distinto)
@@ -115,9 +130,29 @@ fun MapaScreen(compartido: EstadoCompartido, vm: MapaViewModel = viewModel()) {
     LaunchedEffect(estado.cauceFino) { gestor.mostrarFinos(estado.cauceFino) }
     LaunchedEffect(estado.estacionesRio) { gestor.mostrarEstacionesRio(estado.estacionesRio) }
     LaunchedEffect(estado.zonas) { gestor.mostrarZonas(estado.zonas) }
+    LaunchedEffect(estado.franjas) { gestor.mostrarFranjas(estado.franjas) }
     LaunchedEffect(estado.estaciones) { gestor.mostrarEstaciones(estado.estaciones) }
     LaunchedEffect(estado.acudir) { gestor.mostrarAcudir(estado.acudir) }
     LaunchedEffect(estado.ubicacion) { gestor.mostrarUbicacion(estado.ubicacion) }
+    // capas nuevas: el pronostico sigue al dia elegido; el nowcasting solo se ve con "Hoy"
+    LaunchedEffect(estado.pronostico, estado.dia, estado.localidadTuya) {
+        gestor.mostrarPronostico(estado.pronostico, estado.dia.fechaIso(), estado.localidadTuya)
+    }
+    LaunchedEffect(estado.dia) { gestor.nowcastSoloHoy(estado.dia == DiaMapa.HOY) }
+    LaunchedEffect(estado.nowcast) { gestor.mostrarNowcast(estado.nowcast) }
+    LaunchedEffect(estado.lluviaAhora) { gestor.mostrarLluviaAhora(estado.lluviaAhora) }
+    LaunchedEffect(estado.capas, estado.lluviaObsOpcion, estado.lluviaObsDia) {
+        val c = if (Capa.LLUVIA_OBSERVADA in estado.capas) Lluvia.observada(estado.lluviaObsOpcion) else null
+        // el dia procesado es la clave de la cache de imagenes: un dia nuevo, imagenes nuevas
+        gestor.mostrarLluviaObservada(c, estado.lluviaObsDia)
+    }
+    LaunchedEffect(estado.capas, estado.sateliteHora, estado.errores[Capa.SATELITE]) {
+        val con = Capa.SATELITE in estado.capas && estado.errores[Capa.SATELITE] == null
+        gestor.mostrarSatelite(if (con) estado.sateliteHora ?: "default" else null)
+    }
+    LaunchedEffect(estado.fen, estado.capas.contains(Capa.FEN)) { gestor.mostrarFen(if (Capa.FEN in estado.capas) estado.fen else null) }
+    LaunchedEffect(estado.incidentes, estado.riosVigiladosNombres) { gestor.mostrarIncidentes(estado.incidentes, estado.riosVigiladosNombres) }
+    LaunchedEffect(estado.reportes) { gestor.mostrarReportes(estado.reportes) }
 
     // "Ver el rio en el mapa" desde Inicio: encuadra tu punto y el cauce cuando los rios ya cargaron
     LaunchedEffect(encuadre, estado.cargando) {
@@ -131,17 +166,42 @@ fun MapaScreen(compartido: EstadoCompartido, vm: MapaViewModel = viewModel()) {
     }
 
     Column(Modifier.fillMaxSize()) {
-        Box(Modifier.weight(1f).fillMaxWidth()) {
-            AndroidView(modifier = Modifier.fillMaxSize(), factory = { gestor.mapa })
+        // selector de dia: mueve a la vez los avisos de SENAMHI (por su fecha) y el pronostico por localidad
+        SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface).padding(horizontal = 12.dp, vertical = 4.dp)) {
+            DiaMapa.entries.forEachIndexed { i, dia ->
+                SegmentedButton(
+                    selected = estado.dia == dia,
+                    onClick = { vm.elegirDia(dia) },
+                    shape = SegmentedButtonDefaults.itemShape(index = i, count = DiaMapa.entries.size),
+                    label = { Text(dia.etiqueta, maxLines = 1) },
+                )
+            }
+        }
+        // clipToBounds: osmdroid pinta en todo el canvas y, sin recorte, se encimaba al selector de dia
+        Box(Modifier.weight(1f).fillMaxWidth().clipToBounds()) {
+            AndroidView(modifier = Modifier.fillMaxSize().clipToBounds(), factory = { gestor.mapa })
 
-            // chip con el nivel de tu zona (texto + color)
-            estado.chip?.let { chip ->
-                Row(
-                    Modifier.align(Alignment.TopCenter).padding(top = 10.dp)
-                        .background(Color(chip.nivel.fondo), RoundedCornerShape(999.dp)).padding(horizontal = 14.dp, vertical = 7.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Text(chip.texto, color = Color(chip.nivel.textoSobreFondo), fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyMedium)
+            Column(Modifier.align(Alignment.TopCenter).padding(top = 10.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                // chip con el nivel de tu zona (texto + color)
+                estado.chip?.let { chip ->
+                    Row(
+                        Modifier.background(Color(chip.nivel.fondo), RoundedCornerShape(999.dp)).padding(horizontal = 14.dp, vertical = 7.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(chip.texto, color = Color(chip.nivel.textoSobreFondo), fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyMedium)
+                    }
+                }
+                if (estado.deCache) {
+                    Text("Sin conexión: se muestra lo último guardado", Modifier.background(Color(0xFFFFEDD5), RoundedCornerShape(8.dp)).padding(horizontal = 8.dp, vertical = 4.dp), color = Color(0xFF9A3412), style = MaterialTheme.typography.bodySmall)
+                }
+                // chip del nowcasting: que se ve (o por que no se ve nada)
+                estado.chipNowcast?.let { texto ->
+                    Text(texto, Modifier.padding(horizontal = 40.dp).background(Color(0xEEEFF6FF), RoundedCornerShape(8.dp)).padding(horizontal = 8.dp, vertical = 4.dp),
+                        color = Color(0xFF1E3A8A), style = MaterialTheme.typography.bodySmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                }
+                if (Capa.LLUVIA_OBSERVADA in estado.capas && estado.lluviaObsSinServidor) {
+                    Text(Lluvia.SIN_SERVIDOR, Modifier.padding(horizontal = 40.dp).background(Color(0xFFFFEDD5), RoundedCornerShape(8.dp)).padding(horizontal = 8.dp, vertical = 4.dp),
+                        color = Color(0xFF9A3412), style = MaterialTheme.typography.bodySmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
                 }
             }
             if (estado.cargando) {
@@ -154,10 +214,6 @@ fun MapaScreen(compartido: EstadoCompartido, vm: MapaViewModel = viewModel()) {
                 Box(Modifier.align(Alignment.Center).background(Color(0xEEFFFFFF), RoundedCornerShape(12.dp))) {
                     ErrorReintentar(mensaje, onReintentar = { vm.cargar() })
                 }
-            }
-            if (estado.deCache) {
-                Text("Sin conexión: se muestra lo último guardado", Modifier.align(Alignment.TopCenter).padding(top = 56.dp)
-                    .background(Color(0xFFFFEDD5), RoundedCornerShape(8.dp)).padding(horizontal = 8.dp, vertical = 4.dp), color = Color(0xFF9A3412), style = MaterialTheme.typography.bodySmall)
             }
 
             SmallFloatingActionButton(
@@ -175,10 +231,13 @@ fun MapaScreen(compartido: EstadoCompartido, vm: MapaViewModel = viewModel()) {
                 modifier = Modifier.align(Alignment.BottomEnd).padding(end = 12.dp, bottom = 30.dp),
             ) { Icon(Icons.Filled.LocationOn, contentDescription = "Centrar en tu ubicación") }
 
-            // atribucion visible abajo
-            // una sola linea, chica, como la atribucion corta del celular en la web
+            // atribucion visible abajo: una sola linea, chica, como la atribucion corta del celular en la web
+            val extra = listOfNotNull(
+                if (Capa.SATELITE in estado.capas) "NASA GIBS" else null,
+                if (Capa.LLUVIA_OBSERVADA in estado.capas || Capa.LLUVIA_AHORA in estado.capas || Capa.NOWCAST in estado.capas) "SENAMHI (IDESEP)" else null,
+            )
             Text(
-                OsmdroidSimpac.atribucion,
+                OsmdroidSimpac.atribucion + extra.joinToString("") { ", $it" },
                 Modifier.align(Alignment.BottomStart).fillMaxWidth().background(Color(0xCCFFFFFF)).padding(horizontal = 6.dp, vertical = 1.dp),
                 style = MaterialTheme.typography.labelSmall, color = Color(0xFF334155), maxLines = 1, overflow = TextOverflow.Ellipsis,
             )
@@ -194,7 +253,7 @@ fun MapaScreen(compartido: EstadoCompartido, vm: MapaViewModel = viewModel()) {
                 Text(" Capas", style = MaterialTheme.typography.labelLarge)
             }
             Capa.entries.forEach { capa ->
-                FilterChip(selected = capa in estado.capas, onClick = { vm.alternarCapa(capa) }, label = { Text(capa.etiqueta) })
+                FilterChip(selected = capa in estado.capas, onClick = { vm.alternarCapa(capa) }, label = { Text(capa.corta) })
             }
         }
     }
@@ -204,7 +263,15 @@ fun MapaScreen(compartido: EstadoCompartido, vm: MapaViewModel = viewModel()) {
     }
     if (hojaCapas) {
         ModalBottomSheet(onDismissRequest = { hojaCapas = false }) {
-            HojaCapas(estado.capas, alternar = { vm.alternarCapa(it) }, fuentes = estado.fuentes + estado.avisosParciales)
+            HojaCapas(
+                estado,
+                AccionesCapas(
+                    alternar = { vm.alternarCapa(it) },
+                    elegirHorizonte = { vm.elegirHorizonteNowcast(it) },
+                    elegirLluviaObservada = { vm.elegirLluviaObservada(it) },
+                    elegirFen = { vm.elegirFen(it) },
+                ),
+            )
         }
     }
 }

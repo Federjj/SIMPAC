@@ -9,9 +9,13 @@
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <!-- Notificaciones push (Android 13+ pide permiso en tiempo de ejecucion) -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- Foto opcional de un reporte ciudadano con la camara (se pide al tocar "Tomar foto"; la galeria no necesita permiso) -->
+    <uses-permission android:name="android.permission.CAMERA" />
 
     <!-- El GPS no es obligatorio: sin el se elige el departamento a mano -->
     <uses-feature android:name="android.hardware.location.gps" android:required="false" />
+    <!-- La camara tampoco: sin ella la foto del reporte sale de la galeria o no va -->
+    <uses-feature android:name="android.hardware.camera.any" android:required="false" />
 
     <application
         android:name=".SimpacApp"
@@ -35,6 +39,17 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!-- Archivo temporal de la foto tomada con la camara (cacheDir/fotos), compartido con la app de camara -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.archivos"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/rutas_archivos" />
+        </provider>
 
         <!-- Push de Firebase: muestra la notificacion en el canal "alertas" y abre la app en Alertas -->
         <service

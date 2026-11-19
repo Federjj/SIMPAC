@@ -8,6 +8,7 @@ import {
   LogIn,
   Radio,
   BarChart3,
+  Smartphone,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -54,7 +55,9 @@ export default function Sidebar({
   const nv = NIVEL[nivel];
   const { conSesion, nombre, cargando } = useSesion();
   return (
-    <aside className="hidden md:flex w-72 flex-none flex-col h-screen border-r border-border bg-background">
+    // overflow-y-auto: en pantallas bajas (menos de ~880 px) el pie no entra y la barra se desplaza en
+    // vez de cortar "Iniciar sesión" y "Descargar la app".
+    <aside className="hidden md:flex w-72 flex-none flex-col h-screen overflow-y-auto border-r border-border bg-background">
       {/* Marca */}
       <div className="px-5 pt-5 pb-4">
         <div className="flex items-center gap-2">
@@ -174,6 +177,19 @@ export default function Sidebar({
             </Link>
           </Button>
         )}
+        {/* Acceso a la página /app (descargar el APK de la app Android) */}
+        <NavLink
+          to="/app"
+          className={({ isActive }) =>
+            cn(
+              "mt-1.5 flex w-full items-center justify-center gap-2 rounded-md px-3 py-1.5 text-sm font-medium transition-colors",
+              isActive ? "bg-accent text-foreground" : "text-muted-foreground hover:bg-accent hover:text-foreground"
+            )
+          }
+        >
+          <Smartphone className="h-4 w-4" />
+          Descargar la app
+        </NavLink>
       </div>
     </aside>
   );

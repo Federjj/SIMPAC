@@ -2252,7 +2252,8 @@ FCM, firma, Play Console) está en `appmobile/README.md`; aquí el contrato con 
   red falla, se muestra con la franja "Sin conexión" y la hora; el titular con más de 3 h sin
   `revisado_en` lleva franja "desactualizado"; sin titular el semáforo dice "Sin datos" (nunca "Normal"
   por algo no medido). Direcciones por defecto: API `http://10.0.2.2:8000` y WEB `http://10.0.2.2:8080`
-  (el Docker de la PC visto desde el emulador), editables en Cuenta > Ajustes (DataStore).
+  (el Docker de la PC visto desde el emulador); fijas en el APK (`-Psimpac.apiUrl` y `-Psimpac.webUrl`
+  al compilar), no se cambian desde la app.
 - **Pantallas** (`ui/`, barra inferior de 5): Inicio (semáforo con color + etiqueta, `titular_corto` y
   detalle con "Generado el ... por reglas de SIMPAC con datos oficiales", chips "N alertas oficiales" y
   "Río X: estado en estación (valor)", ENFEN, pronóstico de 3 días, Llamar 105 / 116, fuentes con hora,
@@ -2309,7 +2310,7 @@ navegador.
 | `api` | Railway, desde el repo de GitHub, `backend/Dockerfile`; ajustes en Settings (referencia versionada: `railway.api.json`) | uvicorn en `$PORT` (lo inyecta Railway), healthcheck `/health`, reinicio *On failure* | dominio público `https://<nombre>.up.railway.app` |
 | `worker` | Railway, mismo repo y Dockerfile; ajustes en Settings (referencia: `railway.worker.json`), variable `INSTALAR_MAPAS=1` (llega al `ARG` como *build arg*) | `celery -A backend.celery_app worker --beat --loglevel=info --concurrency 2`, reinicio *Always* | sin puerto ni dominio |
 | web | Vercel (o Netlify), carpeta `frontend/` | `npm run build` -> `dist/`, sitio estático (`frontend/vercel.json`, `frontend/netlify.toml`) | dominio `https://<proyecto>.vercel.app` |
-| app Android | APK o Play (`appmobile/README.md`) | — | Cuenta > Ajustes: API = dominio de Railway, Web = dominio de Vercel |
+| app Android | APK o Play (`appmobile/README.md`) | `gradlew assembleRelease -Psimpac.apiUrl=<Railway> -Psimpac.webUrl=<Vercel>` | direcciones fijas en el APK: API = dominio de Railway, Web = dominio de Vercel |
 
 **Quién habla con quién.** La web lee Supabase directo con la llave pública y **no llama a la API**
 (`frontend/src` no usa `/api/snapshot`): CORS en la API importa solo si algún día la usa, por eso
@@ -2472,9 +2473,9 @@ cambios de `backend/`.
 `frontend/.env.example`); `frontend/vercel.json` trae las rutas de la SPA y las cabeceras; Netlify, lo
 mismo con `frontend/netlify.toml`. Después: el dominio de Vercel en `SIMPAC_CORS_ORIGENES` de la API y en
 las *Redirect URLs* de Supabase Auth (`https://<proyecto>.vercel.app/cuenta`; `frontend/README.md`,
-"Cuentas y sesión", y el pendiente de §10); en la app Android, Cuenta > Ajustes con los dos dominios (o
-los valores por defecto de `appmobile/android/app/src/main/java/pe/simpac/app/data/Ajustes.kt` antes del
-release, que solo acepta `https`). El detalle de la web está en `frontend/README.md`.
+"Cuentas y sesión", y el pendiente de §10); en la app Android, los dos dominios se dan al compilar
+(`-Psimpac.apiUrl` y `-Psimpac.webUrl`, que `app/build.gradle.kts` pone en `BuildConfig`; el release
+solo acepta `https`) y no se cambian desde la app. El detalle de la web está en `frontend/README.md`.
 
 ---
 

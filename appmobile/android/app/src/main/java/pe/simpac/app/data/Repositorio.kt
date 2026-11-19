@@ -245,4 +245,166 @@ class Repositorio(
     )
 
     suspend fun limpiarCache() = cache.limpiar()
+
+    // ---- comunidad (reportes ciudadanos) y cuenta ----
+
+    /**
+     * Escrituras con sesion (crear reporte, votar, comentar, foto, mis reportes, perfil). Lo pone el
+     * Contenedor (SimpacApp) al arrancar; null si la app no tiene Supabase configurado.
+     */
+    var comunidad: ComunidadSupabase? = null
+    private fun comunidadOFalla(): ComunidadSupabase = comunidad ?: throw ErrorConsulta("Falta la dirección o la llave pública de Supabase")
+
+    /**
+     * Reportes vigentes dentro de la caja (la RLS solo entrega los que no vencieron; sin la columna
+     * autor). Los mas nuevos primero; el orden por confianza y cercania lo hace dominio/Comunidad.kt.
+     * La pestana Comunidad pide Comunidad.CAJA_PERU; el mapa, su vista. Siempre va a la red; la copia
+     * en disco solo sirve sin conexion (deCache = true).
+     */
+    suspend fun reportesVigentes(caja: Caja): Resultado<List<ReporteVigente>> = consultar(
+        "reportes:${caja.oeste},${caja.sur},${caja.este},${caja.norte}",
+        { supabase.get("report", mapOf(
+            "select" to ComunidadSupabase.COLS_REPORTE,
+            "lat" to "gte.${caja.sur}", "and" to "(lat.lte.${caja.norte},lon.gte.${caja.oeste},lon.lte.${caja.este})",
+            "order" to "creado_en.desc", "limit" to "500")) },
+        { lista<ReporteVigente>(it) },
+    )
+
+    /** Un reporte por id; null si no existe o ya vencio (la RLS no lo entrega). */
+    suspend fun reporte(id: String): Resultado<ReporteVigente?> = consultar(
+        "reporte:$id",
+        { supabase.get("report", mapOf("select" to ComunidadSupabase.COLS_REPORTE, "id" to "eq.$id", "limit" to "1")) },
+        { lista<ReporteVigente>(it).firstOrNull() },
+    )
+
+    /** Comentarios de un reporte (lectura publica, sin autor), del mas viejo al mas nuevo. */
+    suspend fun comentarios(reportId: String): Resultado<List<ComentarioReporte>> = consultar(
+        "comentarios:$reportId",
+        { supabase.get("comentario", mapOf(
+            "select" to ComunidadSupabase.COLS_COMENTARIO, "report_id" to "eq.$reportId", "order" to "creado_en", "limit" to "200")) },
+        { lista<ComentarioReporte>(it) },
+    )
+
+    suspend fun misReportes(): List<ReporteVigente> = comunidadOFalla().misReportes()
+
+    suspend fun crearReporte(tipo: String, subtipo: String?, descripcion: String?, fotoUrl: String?, lat: Double, lon: Double): ReporteVigente =
+        comunidadOFalla().crearReporte(tipo, subtipo, descripcion, fotoUrl, lat, lon)
+
+    /** valor 1 o -1; null quita el voto. */
+    suspend fun votar(reportId: String, valor: Int?) = comunidadOFalla().votar(reportId, valor)
+
+    suspend fun comentar(reportId: String, texto: String): ComentarioReporte = comunidadOFalla().comentar(reportId, texto)
+
+    /** Sube un JPEG (ya reducido a 1280 px) al bucket "reportes" en la carpeta del uid; devuelve la URL publica. */
+    suspend fun subirFoto(jpeg: ByteArray, uid: String): String = comunidadOFalla().subirFoto(jpeg, uid)
+
+    suspend fun perfilPropio(): PerfilPropio? = comunidadOFalla().perfil()
+
+    suspend fun misVotos(ids: List<String>): Map<String, Int> = comunidadOFalla().misVotos(ids)
+
+    // ---- capas del mapa nativo que faltaban frente a la web (ui/mapa) ----
+
+    /** Pronostico de todas las localidades (hoy, manana y pasado; ~700 filas) para la capa del mapa; 30 min. */
+    suspend fun pronosticoMapa(): Resultado<List<PronosticoLocalidad>> = consultarConPlazo(
+        "pronostico_mapa", 30 * 60_000L,
+        { supabase.get("pronostico_vigente", mapOf(
+            "select" to "codigo,nombre,departamento,lat,lon,fecha,emision,tmax,tmin,texto,tipo,posible,por,lluvia_segura,granizo,intensidad,momento,cielo,url",
+            "order" to "codigo,fecha", "limit" to "3000")) },
+        { lista<PronosticoLocalidad>(it) },
+    )
+
+    /** Estado del nowcasting por horizonte (nowcast_estado). Siempre a la red: si falla, el error se muestra. */
+    suspend fun nowcastEstado(): Resultado<List<NowcastEstado>> = consultar(
+        "nowcast_estado",
+        { supabase.get("nowcast_estado", mapOf(
+            "select" to "horizonte_min,fichero,emision,valido_desde,valido_hasta,manchas,ts_captura,vence_en,vigente", "limit" to "10")) },
+        { lista<NowcastEstado>(it) },
+    )
+
+    /** Manchas vigentes de un horizonte (nowcast_vigente, 0 | 60 | 120 min); vacio si SENAMHI no publica hace mas de 30 min. */
+    suspend fun nowcastVigente(horizonteMin: Int): Resultado<List<NowcastMancha>> = consultar(
+        "nowcast_vigente:$horizonteMin",
+        { supabase.get("nowcast_vigente", mapOf(
+            "select" to "horizonte_min,nivel,emision,valido_desde,valido_hasta,geojson", "horizonte_min" to "eq.$horizonteMin", "limit" to "10")) },
+        { lista<NowcastMancha>(it) },
+    )
+
+    /** Lluvia de la ultima hora en las estaciones automaticas de SENAMHI (lluvia_senamhi_actual; 5 min). */
+    suspend fun lluviaAhora(): Resultado<List<LluviaSenamhiActual>> = consultarConPlazo(
+        "lluvia_ahora", TTL_AVISOS_MS,
+        { supabase.get("lluvia_senamhi_actual", mapOf(
+            "select" to "clave,nombre,departamento,provincia,distrito,pp_1h,umbral_1h,pp_6h,umbral_6h,medido_en,lat,lon", "limit" to "2000")) },
+        { lista<LluviaSenamhiActual>(it) },
+    )
+
+    /** Desbordes y danos pasados de los rios vigilados (rio_incidente), del mas nuevo al mas viejo; 60 min. */
+    suspend fun incidentesRio(): Resultado<List<RioIncidente>> = consultarConPlazo(
+        "incidentes_rio", 60 * 60_000L,
+        { supabase.get("rio_incidente", mapOf(
+            "select" to "id,rio,fecha,fecha_texto,tipo,titulo,lugar,detalle,precision,precision_texto,caudal_m3s,fuente_tipo,fuente,fuente_url,otras_fuentes,lat,lon",
+            "order" to "fecha.desc.nullslast", "limit" to "500")) },
+        { lista<RioIncidente>(it) },
+    )
+
+    /** Mapa de un evento El Nino y un trimestre (tabla mapa, variable FEN; ~750 KB); un dia en disco (no cambia). */
+    suspend fun mapaFen(periodo: String, trimestre: String): Resultado<MapaFen?> = consultarConPlazo(
+        "fen:$periodo|$trimestre", 24 * 60 * 60_000L,
+        { supabase.get("mapa", mapOf(
+            "select" to "titulo,periodo,trimestre,meses,fuente,geojson", "variable" to "eq.FEN",
+            "periodo" to "eq.$periodo", "trimestre" to "eq.$trimestre", "limit" to "1")) },
+        { lista<MapaFen>(it).firstOrNull() },
+    )
+
+    /** Franja de atencion referencial de un rio del pais (rio_cauce_mapa.franja); 10 min. */
+    suspend fun franjaRio(rioAna: String): Resultado<RioCauceFranja?> = consultarConPlazo(
+        "franja:$rioAna", TTL_RIOS_MS,
+        { supabase.get("rio_cauce_mapa", mapOf("select" to "rio_ana,ancho_m,franja", "rio_ana" to "eq.$rioAna", "limit" to "1")) },
+        { lista<RioCauceFranja>(it).firstOrNull() },
+    )
+
+    /** Latido de una ingesta (p. ej. lluvia_nacional: trae las fechas de las capas WMS de SENAMHI); 10 min. */
+    suspend fun latido(servicio: String): Resultado<Latido?> = consultarConPlazo(
+        "latido:$servicio", TTL_RIOS_MS,
+        { supabase.get("latido", mapOf("select" to "servicio,ts,resumen", "servicio" to "eq.$servicio", "limit" to "1")) },
+        { lista<Latido>(it).firstOrNull() },
+    )
+
+    /**
+     * Hora del dato mas reciente de la lluvia por satelite (NASA GIBS, IMERG 30 min), como la web: un
+     * HEAD a "default" trae Layer-Time-Actual, pero a veces anuncia un paso que aun no publico (404):
+     * se confirma con otro HEAD y, si falta, se retrocede de a 30 min hasta 6 veces. null si no hay
+     * hora confirmada (la capa usa "default"). Lanza ErrorConsulta si GIBS no responde.
+     */
+    suspend fun horaSatelite(): String? = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+        val base = pe.simpac.app.dominio.Lluvia.GIBS
+        val matriz = pe.simpac.app.dominio.Lluvia.GIBS_MATRIZ
+        val celda = "5/16/9"   // una celda (z/y/x) sobre el Peru
+        fun head(url: String): okhttp3.Response = Http.cliente.newCall(
+            okhttp3.Request.Builder().url(url).head().header("User-Agent", "SIMPAC-Android").build(),
+        ).execute()
+        val anunciada: Long = try {
+            head("$base/default/$matriz/$celda.png").use { r ->
+                if (!r.isSuccessful) throw ErrorConsulta("GIBS respondió ${r.code}")
+                pe.simpac.app.dominio.Tiempo.parsearMs(r.header("Layer-Time-Actual")) ?: return@withContext null
+            }
+        } catch (e: java.io.IOException) {
+            throw if (e is ErrorConsulta) e else ErrorConsulta("No se pudo conectar con gibs.earthdata.nasa.gov", e)
+        }
+        for (i in 0 until 6) {
+            val ms = anunciada - i * 30 * 60_000L
+            val hora = java.time.Instant.ofEpochMilli(ms).toString().replace(".000Z", "Z")
+            val existe = try { head("$base/$hora/$matriz/$celda.png").use { it.isSuccessful } } catch (_: java.io.IOException) { false }
+            if (existe) return@withContext hora
+        }
+        null
+    }
+
+    /** GET de prueba de una imagen WMS de SENAMHI (una celda del pais): false si el servidor no responde. */
+    suspend fun pruebaWms(url: String): Boolean = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+        try {
+            Http.cliente.newCall(okhttp3.Request.Builder().url(url).get().header("User-Agent", "SIMPAC-Android").build()).execute().use { r ->
+                r.isSuccessful && (r.header("Content-Type") ?: "").startsWith("image/")
+            }
+        } catch (_: java.io.IOException) { false }
+    }
 }

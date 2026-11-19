@@ -34,4 +34,12 @@ class AlmacenSeguro(contexto: Context) {
     var tokenFcm: String?
         get() = prefs?.getString(TOKEN_FCM, null)
         set(valor) { prefs?.edit()?.apply { if (valor == null) remove(TOKEN_FCM) else putString(TOKEN_FCM, valor) }?.apply() }
+
+    /**
+     * Sesion de Supabase Auth (access token, refresh token, vencimiento, id, correo y nombre) como JSON
+     * (data/Sesion.kt la arma y la lee). Solo vive aqui, cifrada; nunca en DataStore ni en la cache.
+     */
+    var sesionJson: String?
+        get() = prefs?.getString("sesion_auth", null)
+        set(valor) { prefs?.edit()?.apply { if (valor == null) remove("sesion_auth") else putString("sesion_auth", valor) }?.apply() }
 }

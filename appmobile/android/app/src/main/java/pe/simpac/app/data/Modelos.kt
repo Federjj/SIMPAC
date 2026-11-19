@@ -365,3 +365,170 @@ data class EstacionSenamhi(
     val lat: Double? = null,
     val lon: Double? = null,
 )
+
+// ---------------------------------------------------------------------------
+// Comunidad (reportes ciudadanos, comentarios, perfil). Lectura publica sin la columna autor
+// (frontend/README.md "Comunidad"); las escrituras van con la sesion (data/ComunidadSupabase.kt).
+// ---------------------------------------------------------------------------
+
+/** report: un reporte vigente (la RLS solo entrega los que no vencieron) con lo que calcula la BD. */
+@Serializable
+data class ReporteVigente(
+    val id: String,
+    val tipo: String = "otro",
+    val subtipo: String? = null,
+    val descripcion: String? = null,
+    val foto_url: String? = null,
+    val likes: Int = 0,
+    val dislikes: Int = 0,
+    val confianza: Double? = null,       // (likes+1)/(likes+dislikes+2), 0 a 1
+    val estado: String? = null,          // sin_confirmar, confirmado, descartado
+    val expira_en: String? = null,
+    val creado_en: String? = null,
+    val lat: Double? = null,
+    val lon: Double? = null,
+)
+
+/** comentario: un comentario de un reporte (sin autor, por privacidad). */
+@Serializable
+data class ComentarioReporte(
+    val id: String,
+    val report_id: String? = null,
+    val texto: String = "",
+    val creado_en: String? = null,
+)
+
+/** perfil: lo propio (la RLS solo entrega la fila del dueno): nombre para mostrar y reputacion. */
+@Serializable
+data class PerfilPropio(
+    val id: String,
+    val nombre: String? = null,
+    val reputacion: Int = 0,
+)
+
+/** voto: un voto propio sobre un reporte (la RLS solo entrega los propios). */
+@Serializable
+data class VotoPropio(
+    val report_id: String,
+    val valor: Int = 0,
+)
+
+// ---------------------------------------------------------------------------
+// Capas del mapa nativo que faltaban frente a la web (ui/mapa): pronostico por localidad, nowcasting,
+// lluvia de la ultima hora, El Nino pasados, desbordes del Mashcon, franja de atencion y latido.
+// ---------------------------------------------------------------------------
+
+/** pronostico_vigente completa (con por y granizo) para la capa del mapa: un dia de una localidad. */
+@Serializable
+data class PronosticoLocalidad(
+    val codigo: String,
+    val nombre: String? = null,
+    val departamento: String? = null,
+    val lat: Double? = null,
+    val lon: Double? = null,
+    val fecha: String? = null,
+    val emision: String? = null,
+    val tmax: Int? = null,
+    val tmin: Int? = null,
+    val texto: String? = null,
+    val tipo: String? = null,            // lluvia, tormenta, nieve, sin_lluvia
+    val posible: Boolean = false,
+    val por: String? = null,             // texto, icono, texto+icono (de donde salio la clasificacion)
+    val lluvia_segura: Boolean = false,
+    val granizo: Boolean = false,
+    val intensidad: String? = null,
+    val momento: String? = null,
+    val cielo: String? = null,
+    val url: String? = null,
+)
+
+/** nowcast_estado: el ultimo producto de nowcasting por horizonte (0 ahora, 60, 120 min). */
+@Serializable
+data class NowcastEstado(
+    val horizonte_min: Int,
+    val fichero: String? = null,
+    val emision: String? = null,
+    val valido_desde: String? = null,
+    val valido_hasta: String? = null,
+    val manchas: Int = 0,
+    val ts_captura: String? = null,
+    val vence_en: String? = null,        // emision + 30 min
+    val vigente: Boolean = false,
+)
+
+/** nowcast_vigente: la union de las manchas de un nivel (1 moderada, 2 fuerte, 3 extrema) de un horizonte. */
+@Serializable
+data class NowcastMancha(
+    val horizonte_min: Int,
+    val nivel: Int,
+    val emision: String? = null,
+    val valido_desde: String? = null,
+    val valido_hasta: String? = null,
+    val geojson: JsonElement? = null,
+)
+
+/** lluvia_senamhi_actual: lluvia de la ultima hora (y 6 h) de una estacion automatica de SENAMHI, de las ultimas 3 h. */
+@Serializable
+data class LluviaSenamhiActual(
+    val clave: String,
+    val nombre: String? = null,
+    val departamento: String? = null,
+    val provincia: String? = null,
+    val distrito: String? = null,
+    val pp_1h: Double? = null,
+    val umbral_1h: Double? = null,
+    val pp_6h: Double? = null,
+    val umbral_6h: Double? = null,
+    val medido_en: String? = null,
+    val lat: Double? = null,
+    val lon: Double? = null,
+)
+
+/** rio_incidente: un desborde, erosion, puente caido o crecida documentados de un rio vigilado, con su fuente. */
+@Serializable
+data class RioIncidente(
+    val id: String,
+    val rio: String = "",
+    val fecha: String? = null,
+    val fecha_texto: String? = null,
+    val tipo: String? = null,            // desborde, erosion, puente, infraestructura, crecida
+    val titulo: String = "",
+    val lugar: String? = null,
+    val detalle: String? = null,
+    val precision: String? = null,
+    val precision_texto: String? = null,
+    val caudal_m3s: Double? = null,
+    val fuente_tipo: String? = null,
+    val fuente: String? = null,
+    val fuente_url: String? = null,
+    val otras_fuentes: JsonElement? = null,   // [{fuente, url}]
+    val lat: Double? = null,
+    val lon: Double? = null,
+)
+
+/** mapa (variable FEN): el mapa de un evento El Nino y un trimestre, con su FeatureCollection. */
+@Serializable
+data class MapaFen(
+    val titulo: String? = null,
+    val periodo: String? = null,
+    val trimestre: String? = null,
+    val meses: String? = null,           // "diciembre de 1997 a febrero de 1998"
+    val fuente: String? = null,
+    val geojson: JsonElement? = null,
+)
+
+/** rio_cauce_mapa (solo franja): la franja de atencion referencial de un rio del pais. */
+@Serializable
+data class RioCauceFranja(
+    val rio_ana: String,
+    val ancho_m: Int? = null,
+    val franja: JsonElement? = null,
+)
+
+/** latido: cuando corrio cada ingesta y su resumen (el de lluvia_nacional trae las fechas de las capas WMS). */
+@Serializable
+data class Latido(
+    val servicio: String,
+    val ts: String? = null,
+    val resumen: JsonElement? = null,
+)

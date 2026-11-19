@@ -33,17 +33,6 @@ class AjustesViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    fun guardarDirecciones(api: String, web: String) {
-        viewModelScope.launch {
-            ajustes.guardarApiUrl(api)
-            ajustes.guardarWebUrl(web)
-            contenedor.repositorio.limpiarCache()
-            _mensaje.value = "Direcciones guardadas."
-        }
-    }
-
-    fun restablecerDirecciones() = guardarDirecciones(pe.simpac.app.data.Ajustes.API_POR_DEFECTO, pe.simpac.app.data.Ajustes.WEB_POR_DEFECTO)
-
     fun cambiarNotificaciones(activar: Boolean) {
         viewModelScope.launch {
             if (!pushDisponible) { _mensaje.value = "Notificaciones no configuradas en esta instalación."; return@launch }

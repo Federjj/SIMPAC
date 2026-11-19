@@ -22,6 +22,8 @@ googleServices = "4.4.3"
 junit = "4.13.2"
 # Mapa nativo: osmdroid (tiles y overlays en una View; version estable actual en Maven Central)
 osmdroid = "6.1.20"
+# Fotos de los reportes ciudadanos desde la URL publica del bucket (Coil 2, usa el OkHttp de la app)
+coil = "2.7.0"
 
 [libraries]
 androidx-core-ktx = { module = "androidx.core:core-ktx", version.ref = "androidxCore" }
@@ -55,6 +57,7 @@ firebase-bom = { module = "com.google.firebase:firebase-bom", version.ref = "fir
 firebase-messaging = { module = "com.google.firebase:firebase-messaging" }
 junit = { module = "junit:junit", version.ref = "junit" }
 osmdroid-android = { module = "org.osmdroid:osmdroid-android", version.ref = "osmdroid" }
+coil-compose = { module = "io.coil-kt:coil-compose", version.ref = "coil" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "androidGradlePlugin" }

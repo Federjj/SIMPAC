@@ -29,6 +29,7 @@ const ReporteDetalle = lazy(() => import("@/pages/ReporteDetalle"));
 const Chat = lazy(() => import("@/pages/Chat"));
 const Cuenta = lazy(() => import("@/pages/Cuenta"));
 const Historico = lazy(() => import("@/pages/Historico"));
+const DescargarApp = lazy(() => import("@/pages/DescargarApp"));
 
 // true mientras la pantalla es más angosta que el corte lg de Tailwind (1024 px): ahí la página
 // tapa el mapa entero. Desde lg van lado a lado y el mapa sigue usable.
@@ -252,6 +253,7 @@ function Marco() {
                       <Route path="/chat" element={<Chat />} />
                       <Route path="/cuenta/*" element={<Cuenta />} />
                       <Route path="/historico" element={<Historico />} />
+                      <Route path="/app" element={<DescargarApp />} />
                       <Route path="*" element={<NoEncontrada />} />
                     </Routes>
                   </Suspense>

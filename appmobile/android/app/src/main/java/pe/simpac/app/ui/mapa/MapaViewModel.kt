@@ -14,17 +14,26 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 import pe.simpac.app.SimpacApp
 import pe.simpac.app.data.AvisoHidro
 import pe.simpac.app.data.AvisoVigente
 import pe.simpac.app.data.CaudalActual
 import pe.simpac.app.data.EstacionSenamhi
+import pe.simpac.app.data.LluviaSenamhiActual
+import pe.simpac.app.data.NowcastEstado
+import pe.simpac.app.data.NowcastMancha
+import pe.simpac.app.data.PronosticoLocalidad
 import pe.simpac.app.data.PuntoAcudir
+import pe.simpac.app.data.ReporteVigente
 import pe.simpac.app.data.Resultado
 import pe.simpac.app.data.RioCauceSenal
 import pe.simpac.app.data.RioCauceZonaMapa
+import pe.simpac.app.data.RioIncidente
 import pe.simpac.app.data.RioSenal
 import pe.simpac.app.data.RioVigiladoMapa
 import pe.simpac.app.data.RioZonaMapa
@@ -33,29 +42,79 @@ import pe.simpac.app.dominio.Caja
 import pe.simpac.app.dominio.Cauces
 import pe.simpac.app.dominio.Coord
 import pe.simpac.app.dominio.Departamentos
+import pe.simpac.app.dominio.DiaMapa
 import pe.simpac.app.dominio.EstadoCauce
 import pe.simpac.app.dominio.EstadoCauceRio
 import pe.simpac.app.dominio.EstadoRio
 import pe.simpac.app.dominio.EstadoZona
+import pe.simpac.app.dominio.Fen
 import pe.simpac.app.dominio.GeoJson
 import pe.simpac.app.dominio.Geometria
+import pe.simpac.app.dominio.Incidentes
+import pe.simpac.app.dominio.Lluvia
 import pe.simpac.app.dominio.Nivel
 import pe.simpac.app.dominio.NivelZona
+import pe.simpac.app.dominio.Nowcast
+import pe.simpac.app.dominio.PronosticoMapa
 import pe.simpac.app.dominio.TextoRio
 import pe.simpac.app.dominio.Tiempo
 import pe.simpac.app.ubicacion.Posicion
 import pe.simpac.app.ubicacion.Ubicacion
 
-/** Las capas del mapa, con la clave que se guarda en Ajustes y desde que zoom se dibujan. */
-enum class Capa(val clave: String, val etiqueta: String, val desdeZoom: Double) {
-    AVISOS("avisos", "Avisos de SENAMHI", 0.0),
-    RIOS("rios", "Ríos", 0.0),
-    ZONAS("zonas", "Zonas que podrían inundarse", Cauces.ZONAS_DESDE.toDouble()),
-    ESTACIONES("estaciones", "Estaciones de SENAMHI", Cauces.ESTACIONES_DESDE.toDouble()),
-    ACUDIR("acudir", "A dónde acudir", Cauces.ACUDIR_DESDE.toDouble());
+/** Los grupos del panel de capas, en el orden de la web (map/layers/index.js GRUPOS). */
+object GruposCapa {
+    const val ALERTAS = "Alertas y avisos"
+    const val PRONOSTICO = "Pronóstico"
+    const val LLUVIA = "Lluvia"
+    const val RIOS = "Ríos y estaciones"
+    const val NINO = "El Niño"
+    const val COMUNIDAD = "Comunidad"
+    const val ACUDIR = "A dónde acudir"
+    val ORDEN = listOf(ALERTAS, PRONOSTICO, LLUVIA, RIOS, NINO, COMUNIDAD, ACUDIR)
+}
+
+/**
+ * Las capas del mapa, con la clave que se guarda en Ajustes, su grupo, desde que zoom se dibujan y si
+ * arrancan encendidas (como la web). `nuevaV2`: capas que no existian en la primera version de la app;
+ * si Ajustes guardo capas sin la marca "v2", las de fabrica se encienden una vez.
+ */
+enum class Capa(
+    val clave: String, val etiqueta: String, val corta: String, val grupo: String, val desdeZoom: Double,
+    val deFabrica: Boolean, val insignia: String? = null, val nuevaV2: Boolean = false,
+) {
+    AVISOS("avisos", "Avisos de SENAMHI (lluvia, calor, frío, viento)", "Avisos", GruposCapa.ALERTAS, 0.0, true, "Oficial"),
+    ZONAS("zonas", "Zonas que un río podría afectar", "Zonas", GruposCapa.ALERTAS, Cauces.ZONAS_DESDE.toDouble(), true),
+    PRONOSTICO("pronostico", "Pronóstico por localidad (SENAMHI)", "Pronóstico", GruposCapa.PRONOSTICO, 0.0, true, "Oficial", nuevaV2 = true),
+    NOWCAST("nowcast", "Lluvia en las próximas 2 horas", "Próximas 2 h", GruposCapa.PRONOSTICO, 0.0, false, "Experimental", nuevaV2 = true),
+    LLUVIA_AHORA("lluvia_ahora", "Lluvia de la última hora (estaciones)", "Lloviendo ahora", GruposCapa.LLUVIA, 0.0, false, nuevaV2 = true),
+    LLUVIA_OBSERVADA("lluvia_observada", "Lluvia de ayer / de la semana", "Lluvia ayer", GruposCapa.LLUVIA, 0.0, false, nuevaV2 = true),
+    SATELITE("satelite", "Lluvia por satélite (NASA)", "Satélite", GruposCapa.LLUVIA, 0.0, false, nuevaV2 = true),
+    RIOS("rios", "Ríos", "Ríos", GruposCapa.RIOS, 0.0, true),
+    DESBORDES("desbordes", "Desbordes y daños pasados", "Desbordes", GruposCapa.RIOS, Incidentes.DESDE_ZOOM, true, nuevaV2 = true),
+    ESTACIONES("estaciones", "Estaciones SENAMHI", "Estaciones", GruposCapa.RIOS, Cauces.ESTACIONES_DESDE.toDouble(), false),
+    FEN("fen", "Eventos El Niño pasados", "El Niño", GruposCapa.NINO, 0.0, false, nuevaV2 = true),
+    REPORTES("reportes", "Reportes ciudadanos", "Reportes", GruposCapa.COMUNIDAD, 0.0, true, nuevaV2 = true),
+    ACUDIR("acudir", "Salud, comisarías y bomberos", "Acudir", GruposCapa.ACUDIR, Cauces.ACUDIR_DESDE.toDouble(), false);
 
     companion object {
-        fun desdeClaves(claves: Set<String>): Set<Capa> = entries.filter { it.clave in claves }.toSet()
+        const val MARCA_V2 = "v2"
+        const val PREFIJO_OPCION = "op:"
+
+        /** Capas encendidas a partir de lo guardado; sin la marca v2 se suman las nuevas de fabrica. */
+        fun desdeClaves(claves: Set<String>): Set<Capa> {
+            val capas = entries.filter { it.clave in claves }.toMutableSet()
+            if (MARCA_V2 !in claves) capas += entries.filter { it.nuevaV2 && it.deFabrica }
+            return capas
+        }
+
+        /** Opciones guardadas junto a las capas ("op:fen=1997-1998|DEF"). */
+        fun opcionesDesdeClaves(claves: Set<String>): Map<String, String> =
+            claves.filter { it.startsWith(PREFIJO_OPCION) && it.contains("=") }
+                .associate { it.removePrefix(PREFIJO_OPCION).substringBefore("=") to it.substringAfter("=") }
+
+        /** Lo que se guarda en Ajustes: claves de las capas, opciones y la marca v2 (sin comas: Ajustes las separa por coma). */
+        fun aClaves(capas: Set<Capa>, opciones: Map<String, String>): Set<String> =
+            capas.map { it.clave }.toSet() + opciones.map { (k, v) -> "$PREFIJO_OPCION$k=${v.replace(",", "")}" } + MARCA_V2
     }
 }
 
@@ -128,6 +187,21 @@ data class EstacionRioDibujo(
     val fuenteTrazo: String?,
 )
 
+/** La franja de atencion referencial de un rio del pais en alerta o emergencia (rio_cauce_mapa.franja). */
+data class FranjaDibujo(val rio: RioDibujo, val anchoM: Int?, val poligonos: Geometria.Poligonos, val caja: Caja)
+
+/** Una mancha del nowcasting (un nivel) con su geometria. */
+data class ManchaDibujo(val nivel: Int, val mancha: NowcastMancha, val poligonos: Geometria.Poligonos, val caja: Caja)
+
+/** El nowcasting del horizonte elegido: estado, manchas y la nota (fresco, vacio, viejo, error). */
+data class NowcastDibujo(val horizonte: Int, val estado: NowcastEstado?, val manchas: List<ManchaDibujo>, val nota: Nowcast.Nota, val obtenidoEn: Long)
+
+/** Una estacion con lluvia de la ultima hora, con su intensidad y si paso la referencia. */
+data class LluviaDibujo(val e: LluviaSenamhiActual, val intensidad: String, val ref: Lluvia.Referencia)
+
+/** El mapa de un evento El Nino y un trimestre, con sus poligonos listos. */
+data class FenDibujo(val opcion: String, val periodo: String?, val trimestre: String?, val meses: String?, val poligonos: List<Fen.PoligonoFen>, val nota: String)
+
 data class ChipNivel(val nivel: Nivel, val texto: String)
 
 /** Todo lo que pinta la pestana Mapa. */
@@ -140,6 +214,8 @@ data class EstadoMapa(
     val ubicacion: Posicion? = null,
     val chip: ChipNivel? = null,
     val departamento: String = Departamentos.POR_DEFECTO.nombre,
+    val dia: DiaMapa = DiaMapa.HOY,
+    val avisosTodos: List<AvisoDibujo> = emptyList(),   // todos los vigentes; `avisos` son los del dia elegido
     val avisos: List<AvisoDibujo> = emptyList(),
     val rios: List<RioDibujo> = emptyList(),
     val mashcon: MashconDibujo? = null,
@@ -155,12 +231,58 @@ data class EstadoMapa(
     val obtenidoAvisosEn: Long? = null,
     val obtenidoAcudirEn: Long? = null,
     val obtenidoEstacionesEn: Long? = null,
-)
+    // capas nuevas
+    val pronostico: List<PronosticoLocalidad> = emptyList(),
+    val localidadTuya: String? = null,
+    val obtenidoPronosticoEn: Long? = null,
+    val nowcastHorizonte: Int = Nowcast.DEFECTO,
+    val nowcast: NowcastDibujo? = null,
+    val lluviaAhora: List<LluviaDibujo> = emptyList(),
+    val obtenidoLluviaEn: Long? = null,
+    val lluviaObsOpcion: String = "ayer",
+    val lluviaObsNota: String? = null,
+    val lluviaObsDia: String? = null,              // dia procesado por SENAMHI (clave de la cache de imagenes)
+    val lluviaObsSinServidor: Boolean = false,
+    val sateliteHora: String? = null,
+    val sateliteNota: String? = null,
+    val fenOpcion: String = Fen.DEFECTO,
+    val fen: FenDibujo? = null,
+    val fenCargando: Boolean = false,
+    val incidentes: List<RioIncidente> = emptyList(),
+    val obtenidoIncidentesEn: Long? = null,
+    val riosVigiladosNombres: Map<String, String> = emptyMap(),
+    val reportes: List<ReporteVigente> = emptyList(),
+    val obtenidoReportesEn: Long? = null,
+    val franjas: List<FranjaDibujo> = emptyList(),
+    val errores: Map<Capa, String> = emptyMap(),          // "No se pudo cargar ..." por capa
+) {
+    /** Lo que la hoja "Capas" dice bajo cada interruptor (la nota de render() de la web). */
+    fun nota(capa: Capa): String? {
+        errores[capa]?.let { return it }
+        return when (capa) {
+            Capa.AVISOS -> if (avisosTodos.isEmpty() && cargando) null else PronosticoMapa.notaAvisos(avisos.map { it.aviso }, dia)
+            Capa.PRONOSTICO -> if (pronostico.isEmpty()) null else PronosticoMapa.nota(pronostico, dia.fechaIso())
+            Capa.NOWCAST -> if (dia != DiaMapa.HOY) "El nowcasting solo vale para hoy: elige \"Hoy\" arriba del mapa para verlo." else nowcast?.nota?.texto
+            Capa.LLUVIA_AHORA -> if (obtenidoLluviaEn == null) null else Lluvia.nota(lluviaAhora.map { it.e })
+            Capa.LLUVIA_OBSERVADA -> if (lluviaObsSinServidor) Lluvia.SIN_SERVIDOR else lluviaObsNota
+            Capa.SATELITE -> sateliteNota
+            Capa.FEN -> if (fenCargando) "Leyendo el mapa del evento..." else fen?.nota
+            Capa.DESBORDES -> if (obtenidoIncidentesEn == null) null else Incidentes.nota(incidentes, riosVigiladosNombres)
+            Capa.ZONAS -> if (franjas.isEmpty()) null else "Franja de atención referencial en ${franjas.size} ${if (franjas.size == 1) "río" else "ríos"} en alerta o emergencia: ${Cauces.lista(franjas.map { it.rio.nombre }, 3)} (desde zoom ${Cauces.DETALLE_DESDE})."
+            Capa.REPORTES -> if (obtenidoReportesEn == null) null else if (reportes.isEmpty()) "No hay reportes vigentes de la comunidad a la vista." else "${reportes.size} ${if (reportes.size == 1) "reporte vigente" else "reportes vigentes"} de la comunidad a la vista (leídos ${Tiempo.horaCorta(obtenidoReportesEn)})."
+            else -> null
+        }
+    }
+
+    /** Chip corto sobre el mapa del nowcasting (solo con la capa prendida y "Hoy"). */
+    val chipNowcast: String? get() = if (Capa.NOWCAST in capas && dia == DiaMapa.HOY) nowcast?.nota?.corto else null
+}
 
 /**
  * ViewModel del mapa nativo: baja los datos (Supabase), los convierte a geometria fuera del hilo
- * principal y sigue la vista (zonas, trazo fino, estaciones y puntos de acudir solo para lo que se ve).
- * Al salir de la pestana el ViewModel se limpia y con el todas sus corrutinas.
+ * principal y sigue la vista (zonas, trazo fino, estaciones, puntos de acudir y reportes solo para lo
+ * que se ve). Las capas apagadas no piden nada; al prenderlas se pide lo suyo una vez (y el
+ * nowcasting cada 2 min mientras siga prendida). Al salir de la pestana el ViewModel se limpia.
  */
 class MapaViewModel(app: Application) : AndroidViewModel(app) {
     private val contenedor = (app as SimpacApp).contenedor
@@ -173,13 +295,28 @@ class MapaViewModel(app: Application) : AndroidViewModel(app) {
     private var trabajoVista: Job? = null
     private val zonasPedidas = mutableSetOf<String>()
     private val finosPedidos = mutableSetOf<String>()
+    private val franjasPedidas = mutableSetOf<String>()
     private var ultimaCajaAcudir: Caja? = null
     private var ultimaCajaEstaciones: Caja? = null
+    private var ultimaCajaReportes: Caja? = null
+    private var reportesPedidosEn = 0L
     private var estadosPais: Map<String, EstadoRio> = emptyMap()
     private var nombresPais: Map<String, String> = emptyMap()
     private var cajasPais: Map<String, Caja> = emptyMap()
 
     private var trabajoCarga: Job? = null
+    private var trabajoNowcast: Job? = null
+    private var trabajoFen: Job? = null
+    private var trabajoSatelite: Job? = null
+    private var pronosticoPedido = false
+    private var lluviaPedida = false
+    private var incidentesPedidos = false
+    private var opciones: Map<String, String> = emptyMap()
+
+    private companion object {
+        const val REPORTES_CADA_MS = 2 * 60_000L
+        const val NOWCAST_CADA_MS = 2 * 60_000L
+    }
 
     init {
         cargar()
@@ -200,23 +337,276 @@ class MapaViewModel(app: Application) : AndroidViewModel(app) {
             val departamento = posicion?.let { runCatching { repo.departamentoDe(it.lat, it.lon) }.getOrNull() } ?: conf.departamento
             val depto = Departamentos.porNombre(departamento) ?: Departamentos.POR_DEFECTO
             val centro = posicion ?: Posicion(depto.lat, depto.lon)
+            opciones = Capa.opcionesDesdeClaves(conf.capasMapa)
+            val capas = Capa.desdeClaves(conf.capasMapa)
             _estado.update {
-                it.copy(capas = Capa.desdeClaves(conf.capasMapa), centro = centro, ubicacion = posicion, departamento = departamento, zoomInicial = 13.0)
+                it.copy(
+                    capas = capas, centro = centro, ubicacion = posicion, departamento = departamento, zoomInicial = 13.0,
+                    nowcastHorizonte = opciones["nowcast"]?.toIntOrNull()?.takeIf { h -> Nowcast.HORIZONTES.any { x -> x.minutos == h } } ?: Nowcast.DEFECTO,
+                    lluviaObsOpcion = Lluvia.observada(opciones["lluviaobs"]).clave,
+                    fenOpcion = Fen.normalizar(opciones["fen"]),
+                )
             }
             val base = withContext(Dispatchers.IO) { armar(departamento) }
             _estado.update { actual ->
-                base.copy(capas = actual.capas, centro = actual.centro, ubicacion = actual.ubicacion, departamento = actual.departamento,
+                val delDia = PronosticoMapa.avisosDelDia(base.avisosTodos.map { it.aviso }, actual.dia).toSet()
+                base.copy(
+                    capas = actual.capas, centro = actual.centro, ubicacion = actual.ubicacion, departamento = actual.departamento,
                     zoomInicial = actual.zoomInicial, estaciones = actual.estaciones, acudir = actual.acudir,
-                    obtenidoAcudirEn = actual.obtenidoAcudirEn, obtenidoEstacionesEn = actual.obtenidoEstacionesEn)
+                    obtenidoAcudirEn = actual.obtenidoAcudirEn, obtenidoEstacionesEn = actual.obtenidoEstacionesEn,
+                    dia = actual.dia, avisos = base.avisosTodos.filter { a -> a.aviso in delDia },
+                    nowcastHorizonte = actual.nowcastHorizonte, nowcast = actual.nowcast, pronostico = actual.pronostico,
+                    obtenidoPronosticoEn = actual.obtenidoPronosticoEn, lluviaAhora = actual.lluviaAhora, obtenidoLluviaEn = actual.obtenidoLluviaEn,
+                    lluviaObsOpcion = actual.lluviaObsOpcion, lluviaObsNota = actual.lluviaObsNota, lluviaObsSinServidor = actual.lluviaObsSinServidor,
+                    sateliteHora = actual.sateliteHora, sateliteNota = actual.sateliteNota, fenOpcion = actual.fenOpcion, fen = actual.fen,
+                    fenCargando = actual.fenCargando, incidentes = actual.incidentes, obtenidoIncidentesEn = actual.obtenidoIncidentesEn,
+                    reportes = actual.reportes, obtenidoReportesEn = actual.obtenidoReportesEn, errores = actual.errores,
+                    localidadTuya = actual.pronostico.takeIf { it.isNotEmpty() }?.let { p -> PronosticoMapa.localidadCercana(p, centro.lat, centro.lon) },
+                )
+            }
+            cargarCapasActivas()
+        }
+    }
+
+    /** Pide una vez lo que necesitan las capas prendidas que no dependen de la vista. */
+    private fun cargarCapasActivas() {
+        val capas = _estado.value.capas
+        if (Capa.PRONOSTICO in capas) pedirPronostico()
+        if (Capa.NOWCAST in capas) seguirNowcast()
+        if (Capa.LLUVIA_AHORA in capas) pedirLluviaAhora()
+        if (Capa.LLUVIA_OBSERVADA in capas) pedirLluviaObservada()
+        if (Capa.SATELITE in capas) pedirSatelite()
+        if (Capa.FEN in capas) pedirFen()
+        if (Capa.DESBORDES in capas) pedirIncidentes()
+        if (Capa.ZONAS in capas) pedirFranjas()
+    }
+
+    private fun guardarCapas() {
+        val e = _estado.value
+        val ops = mapOf("nowcast" to e.nowcastHorizonte.toString(), "lluviaobs" to e.lluviaObsOpcion, "fen" to e.fenOpcion)
+        opciones = ops
+        viewModelScope.launch { ajustes.guardarCapasMapa(Capa.aClaves(e.capas, ops)) }
+    }
+
+    /** Apaga o prende una capa y lo recuerda en Ajustes; al prender, pide lo suyo (si aun no esta). */
+    fun alternarCapa(capa: Capa) {
+        val prende = capa !in _estado.value.capas
+        val nuevas = _estado.value.capas.let { if (prende) it + capa else it - capa }
+        _estado.update { it.copy(capas = nuevas) }
+        guardarCapas()
+        if (prende) when (capa) {
+            Capa.PRONOSTICO -> pedirPronostico()
+            Capa.NOWCAST -> seguirNowcast()
+            Capa.LLUVIA_AHORA -> pedirLluviaAhora()
+            Capa.LLUVIA_OBSERVADA -> pedirLluviaObservada()
+            Capa.SATELITE -> pedirSatelite()
+            Capa.FEN -> pedirFen()
+            Capa.DESBORDES -> pedirIncidentes()
+            Capa.ZONAS -> pedirFranjas()
+            else -> {}
+        } else when (capa) {
+            Capa.NOWCAST -> { trabajoNowcast?.cancel(); trabajoNowcast = null }
+            Capa.FEN -> { trabajoFen?.cancel(); trabajoFen = null; _estado.update { it.copy(fenCargando = false) } }
+            Capa.SATELITE -> { trabajoSatelite?.cancel(); trabajoSatelite = null }
+            else -> {}
+        }
+    }
+
+    /** El selector Hoy / Manana / Pasado: mueve a la vez los avisos (por su fecha) y el pronostico. */
+    fun elegirDia(dia: DiaMapa) {
+        _estado.update { e ->
+            val delDia = PronosticoMapa.avisosDelDia(e.avisosTodos.map { it.aviso }, dia).toSet()
+            e.copy(dia = dia, avisos = e.avisosTodos.filter { it.aviso in delDia })
+        }
+    }
+
+    fun elegirHorizonteNowcast(min: Int) {
+        if (min == _estado.value.nowcastHorizonte) return
+        _estado.update { it.copy(nowcastHorizonte = min, nowcast = null) }
+        guardarCapas()
+        if (Capa.NOWCAST in _estado.value.capas) seguirNowcast()
+    }
+
+    fun elegirLluviaObservada(clave: String) {
+        val c = Lluvia.observada(clave)
+        if (c.clave == _estado.value.lluviaObsOpcion) return
+        _estado.update { it.copy(lluviaObsOpcion = c.clave, lluviaObsNota = null, lluviaObsSinServidor = false) }
+        guardarCapas()
+        if (Capa.LLUVIA_OBSERVADA in _estado.value.capas) pedirLluviaObservada()
+    }
+
+    fun elegirFen(valor: String) {
+        val v = Fen.normalizar(valor)
+        if (v == _estado.value.fenOpcion) return
+        _estado.update { it.copy(fenOpcion = v, fen = null) }
+        guardarCapas()
+        if (Capa.FEN in _estado.value.capas) pedirFen()
+    }
+
+    private fun conError(capa: Capa, texto: String?) = _estado.update { e -> e.copy(errores = if (texto == null) e.errores - capa else e.errores + (capa to texto)) }
+
+    // ---- pronostico por localidad ----
+    private fun pedirPronostico() {
+        if (pronosticoPedido) return
+        pronosticoPedido = true
+        viewModelScope.launch {
+            try {
+                val r = withContext(Dispatchers.IO) { repo.pronosticoMapa() }
+                val filas = r.dato.filter { it.lat != null && it.lon != null && it.fecha != null }
+                _estado.update { e ->
+                    val c = e.centro
+                    e.copy(pronostico = filas, obtenidoPronosticoEn = r.obtenidoEn, localidadTuya = c?.let { PronosticoMapa.localidadCercana(filas, it.lat, it.lon) })
+                }
+                conError(Capa.PRONOSTICO, null)
+            } catch (ex: Exception) {
+                pronosticoPedido = false
+                conError(Capa.PRONOSTICO, "No se pudo cargar el pronóstico por localidad (${ex.message}).")
             }
         }
     }
 
-    /** Apaga o prende una capa y lo recuerda en Ajustes. */
-    fun alternarCapa(capa: Capa) {
-        val nuevas = _estado.value.capas.let { if (capa in it) it - capa else it + capa }
-        _estado.update { it.copy(capas = nuevas) }
-        viewModelScope.launch { ajustes.guardarCapasMapa(nuevas.map { it.clave }.toSet()) }
+    // ---- nowcasting (cada 2 min mientras la capa este prendida) ----
+    private fun seguirNowcast() {
+        trabajoNowcast?.cancel()
+        trabajoNowcast = viewModelScope.launch {
+            while (isActive) {
+                pedirNowcast()
+                delay(NOWCAST_CADA_MS)
+            }
+        }
+    }
+
+    private suspend fun pedirNowcast() {
+        val h = _estado.value.nowcastHorizonte
+        val rEstado = runCatching { withContext(Dispatchers.IO) { repo.nowcastEstado() } }
+        val rManchas = runCatching { withContext(Dispatchers.IO) { repo.nowcastVigente(h) } }
+        val ahora = System.currentTimeMillis()
+        val e = rEstado.getOrNull()?.dato?.firstOrNull { it.horizonte_min == h }
+        val manchas = rManchas.getOrNull()?.dato
+        val nota = Nowcast.nota(e, manchas?.size, h, ahora)
+        val dibujos = if (nota.estado == Nowcast.EstadoNota.FRESCO) withContext(Dispatchers.Default) {
+            (manchas ?: emptyList()).mapNotNull { m ->
+                val geo = GeoJson.parsear(m.geojson) as? Geometria.Poligonos ?: return@mapNotNull null
+                val caja = GeoJson.caja(geo) ?: return@mapNotNull null
+                ManchaDibujo(m.nivel, m, geo, caja)
+            }.sortedBy { it.nivel }
+        } else emptyList()
+        _estado.update { it.copy(nowcast = NowcastDibujo(h, e, dibujos, nota, ahora)) }
+    }
+
+    // ---- lluvia de la ultima hora ----
+    private fun pedirLluviaAhora() {
+        if (lluviaPedida && System.currentTimeMillis() - (_estado.value.obtenidoLluviaEn ?: 0L) < 5 * 60_000L) return
+        lluviaPedida = true
+        viewModelScope.launch {
+            try {
+                val r = withContext(Dispatchers.IO) { repo.lluviaAhora() }
+                val lista = withContext(Dispatchers.Default) {
+                    r.dato.filter { it.lat != null && it.lon != null && it.pp_1h != null }
+                        .map { LluviaDibujo(it, Lluvia.intensidad(it.pp_1h) ?: "sin lluvia", Lluvia.referencia(it)) }
+                        .sortedWith(compareBy<LluviaDibujo> { if (it.ref.pasa) 1 else 0 }.thenBy { it.e.pp_1h ?: 0.0 })
+                }
+                _estado.update { it.copy(lluviaAhora = lista, obtenidoLluviaEn = r.obtenidoEn) }
+                conError(Capa.LLUVIA_AHORA, null)
+            } catch (ex: Exception) {
+                lluviaPedida = false
+                conError(Capa.LLUVIA_AHORA, "No se pudo cargar la lluvia de las estaciones (${ex.message}).")
+            }
+        }
+    }
+
+    // ---- lluvia observada (WMS de SENAMHI): de que dias es (latido) y si el servidor responde ----
+    private fun pedirLluviaObservada() {
+        viewModelScope.launch {
+            val c = Lluvia.observada(_estado.value.lluviaObsOpcion)
+            val resumen = runCatching { withContext(Dispatchers.IO) { repo.latido("lluvia_nacional") } }.getOrNull()?.dato?.resumen as? JsonObject
+            fun campo(k: String) = (resumen?.get(k) as? JsonPrimitive)?.content?.takeIf { it != "null" }
+            val nota = Lluvia.notaObservada(c, campo("prec_1"), campo("prec_1_ac07d_desde"), campo("prec_1_ac07d"))
+            _estado.update { it.copy(lluviaObsNota = nota, lluviaObsDia = campo("prec_1"), lluviaObsSinServidor = false) }
+            // una imagen de prueba (el pais a zoom 5): si falla, la capa lo dice (como tileerror en la web)
+            val responde = repo.pruebaWms(FuenteWmsSenamhi.urlPrueba(c))
+            if (!responde) _estado.update { it.copy(lluviaObsSinServidor = true) }
+        }
+    }
+
+    // ---- lluvia por satelite (NASA GIBS): la hora del dato mas reciente ----
+    private fun pedirSatelite() {
+        trabajoSatelite?.cancel()
+        trabajoSatelite = viewModelScope.launch {
+            while (isActive) {
+                try {
+                    val hora = repo.horaSatelite()
+                    _estado.update { it.copy(sateliteHora = hora, sateliteNota = Lluvia.notaSatelite(hora, 13.0)) }
+                    conError(Capa.SATELITE, null)
+                } catch (ex: Exception) {
+                    _estado.update { it.copy(sateliteHora = null, sateliteNota = null) }
+                    conError(Capa.SATELITE, "No se pudo consultar las imágenes de NASA GIBS (${ex.message}).")
+                }
+                delay(30 * 60_000L)
+            }
+        }
+    }
+
+    /** La nota del satelite menciona el zoom ("aleja el mapa"): se recalcula al parar el mapa. */
+    fun zoomSatelite(zoom: Double) {
+        val e = _estado.value
+        if (Capa.SATELITE !in e.capas || e.errores.containsKey(Capa.SATELITE)) return
+        val nota = Lluvia.notaSatelite(e.sateliteHora, zoom)
+        if (nota != e.sateliteNota) _estado.update { it.copy(sateliteNota = nota) }
+    }
+
+    // ---- El Nino pasados ----
+    private fun pedirFen() {
+        trabajoFen?.cancel()
+        val opcion = _estado.value.fenOpcion
+        if (_estado.value.fen?.opcion == opcion) return
+        trabajoFen = viewModelScope.launch {
+            _estado.update { it.copy(fenCargando = true) }
+            try {
+                val (periodo, trimestre) = Fen.partir(opcion)
+                val r = withContext(Dispatchers.IO) { repo.mapaFen(periodo ?: "", trimestre ?: "") }
+                val m = r.dato
+                val poligonos = withContext(Dispatchers.Default) { Fen.poligonos(m?.geojson) }
+                val dibujo = if (m == null || poligonos.isEmpty()) FenDibujo(opcion, periodo, trimestre, null, emptyList(), "No hay mapa para ese evento y trimestre.")
+                else FenDibujo(opcion, m.periodo ?: periodo, m.trimestre ?: trimestre, m.meses, poligonos, Fen.nota(m.periodo ?: periodo, m.trimestre ?: trimestre, m.meses))
+                _estado.update { it.copy(fen = dibujo, fenCargando = false) }
+                conError(Capa.FEN, null)
+            } catch (ex: Exception) {
+                _estado.update { it.copy(fenCargando = false) }
+                conError(Capa.FEN, "No se pudo cargar el mapa del evento (${ex.message}).")
+            }
+        }
+    }
+
+    // ---- desbordes y danos pasados ----
+    private fun pedirIncidentes() {
+        if (incidentesPedidos) return
+        incidentesPedidos = true
+        viewModelScope.launch {
+            try {
+                val r = withContext(Dispatchers.IO) { repo.incidentesRio() }
+                _estado.update { it.copy(incidentes = r.dato, obtenidoIncidentesEn = r.obtenidoEn) }
+                conError(Capa.DESBORDES, null)
+            } catch (ex: Exception) {
+                incidentesPedidos = false
+                conError(Capa.DESBORDES, "No se pudieron cargar los desbordes pasados (${ex.message}).")
+            }
+        }
+    }
+
+    // ---- franja de atencion de los rios del pais en alerta o emergencia ----
+    private fun pedirFranjas() {
+        val fuertes = _estado.value.rios.filter { Cauces.esFuerte(it.estado) && it.rioAna !in franjasPedidas }
+        if (fuertes.isEmpty()) return
+        viewModelScope.launch {
+            for (r in fuertes) {
+                franjasPedidas += r.rioAna
+                val f = try { withContext(Dispatchers.IO) { repo.franjaRio(r.rioAna) }.dato } catch (_: Exception) { franjasPedidas -= r.rioAna; continue }
+                val geo = withContext(Dispatchers.Default) { GeoJson.parsear(f?.franja) as? Geometria.Poligonos } ?: continue
+                val caja = GeoJson.caja(geo) ?: continue
+                _estado.update { e -> e.copy(franjas = e.franjas.filter { it.rio.rioAna != r.rioAna } + FranjaDibujo(r, f?.ancho_m, geo, caja)) }
+            }
+        }
     }
 
     /** Vuelve a leer la ubicacion (boton "centrar"); null si no hay permiso o no responde. Fuera del Peru no se guarda. */
@@ -234,6 +624,7 @@ class MapaViewModel(app: Application) : AndroidViewModel(app) {
      */
     fun vistaCambio(caja: Caja, zoom: Double) {
         trabajoVista?.cancel()
+        zoomSatelite(zoom)
         trabajoVista = viewModelScope.launch {
             delay(250)
             val capas = _estado.value.capas
@@ -243,7 +634,24 @@ class MapaViewModel(app: Application) : AndroidViewModel(app) {
                 if (Capa.RIOS in capas && zoom >= Cauces.DETALLE_DESDE) launch { pedirFinos(caja) }
                 if (Capa.ESTACIONES in capas && zoom >= Cauces.ESTACIONES_DESDE) launch { pedirEstaciones(conMargen) }
                 if (Capa.ACUDIR in capas && zoom >= Cauces.ACUDIR_DESDE) launch { pedirAcudir(conMargen) }
+                if (Capa.REPORTES in capas) launch { pedirReportes(conMargen) }
             }
+        }
+    }
+
+    private suspend fun pedirReportes(caja: Caja) {
+        val redonda = GeoJson.cajaRedondeada(caja)
+        val ahora = System.currentTimeMillis()
+        if (redonda == ultimaCajaReportes && ahora - reportesPedidosEn < REPORTES_CADA_MS) return
+        ultimaCajaReportes = redonda
+        reportesPedidosEn = ahora
+        try {
+            val r = withContext(Dispatchers.IO) { repo.reportesVigentes(redonda) }
+            _estado.update { it.copy(reportes = r.dato.filter { x -> x.lat != null && x.lon != null }, obtenidoReportesEn = r.obtenidoEn) }
+            conError(Capa.REPORTES, null)
+        } catch (ex: Exception) {
+            ultimaCajaReportes = null
+            conError(Capa.REPORTES, "No se pudieron leer los reportes de la comunidad (${ex.message}).")
         }
     }
 
@@ -346,14 +754,17 @@ class MapaViewModel(app: Application) : AndroidViewModel(app) {
             ?: ChipNivel(Nivel.SIN_DATO, "Sin datos de $departamento")
 
         withContext(Dispatchers.Default) {
-            // avisos de hoy
-            val avisos = AvisosMapa.deHoy(rAvisos.getOrNull()?.dato ?: emptyList(), ahora).mapNotNull { a ->
+            // todos los avisos vigentes (de hoy a pasado manana); el dia elegido filtra al dibujar
+            val filasAvisos = rAvisos.getOrNull()?.dato ?: emptyList()
+            val avisosTodos = filasAvisos.filter { it.geojson != null && AvisosMapa.COLOR_NIVEL.containsKey(it.nivel) }.mapNotNull { a ->
                 val geo = GeoJson.parsear(a.geojson) as? Geometria.Poligonos ?: return@mapNotNull null
                 val caja = GeoJson.caja(geo) ?: return@mapNotNull null
                 val ancla = a.anclas.firstOrNull { it.mayor && it.lat != null && it.lon != null } ?: a.anclas.firstOrNull { it.lat != null && it.lon != null }
                 val centro = ancla?.let { Coord(it.lat!!, it.lon!!) } ?: GeoJson.centroideMayor(geo)
                 AvisoDibujo(a, geo, caja, centro, AvisosMapa.glifo(a))
             }
+            val deHoy = AvisosMapa.deHoy(filasAvisos, ahora).toSet()
+            val avisos = avisosTodos.filter { it.aviso in deHoy }
 
             val caudales = rCaudales.getOrNull()?.dato ?: emptyList()
             val vigilados = rVigilados.getOrNull()?.dato ?: emptyList()
@@ -426,11 +837,13 @@ class MapaViewModel(app: Application) : AndroidViewModel(app) {
             val deCache = listOfNotNull(rAvisos.getOrNull()?.deCache, rCaudales.getOrNull()?.deCache, rCauces.getOrNull()?.deCache).any { it }
 
             EstadoMapa(
-                cargando = false, chip = chip, avisos = avisos, rios = rios, mashcon = mashcon, estacionesRio = estacionesRio,
+                cargando = false, chip = chip, avisosTodos = avisosTodos, avisos = avisos, rios = rios, mashcon = mashcon, estacionesRio = estacionesRio,
                 zonas = zonasMashcon, fuentes = fuentes, avisosParciales = parciales, deCache = deCache,
                 obtenidoEn = listOfNotNull(rCaudales.getOrNull()?.obtenidoEn, rAvisos.getOrNull()?.obtenidoEn).minOrNull(),
                 obtenidoAvisosEn = rAvisos.getOrNull()?.obtenidoEn,
-            )
+                riosVigiladosNombres = vigilados.associate { it.id to (it.nombre ?: it.id) },
+                franjas = emptyList(),
+            ).also { franjasPedidas.clear(); zonasPedidas.clear(); finosPedidos.clear() }
         }
     }
 

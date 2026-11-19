@@ -863,6 +863,14 @@ estaciones evaluadas, 1 alerta real de 6 h en Cotahuasi, Arequipa)
       deprecación de `security-crypto` 1.1.0 cuando AndroidX publique el reemplazo.
 - [x] **Stadia Maps fuera de localhost**: la web en Vercel usa la API key de Stadia
       (`VITE_STADIA_API_KEY`); los tiles cargan en el dominio real (verificado el 2026-11-05).
+- [x] **Descarga de la app desde la web (HU-32, 19-11-2026)**: página `/app` "SIMPAC en tu celular"
+      (`frontend/src/pages/DescargarApp.jsx`) con el botón "Descargar para Android (APK)" al enlace
+      estable `github.com/Federjj/SIMPAC/releases/latest/download/SIMPAC.apk`, qué es la app, unos
+      17 MB, Android 8 o más nuevo, 4 pasos de instalación, aviso de que no está en Play Store y la
+      firma el equipo, nota de privacidad, "Copiar enlace" para WhatsApp y "Ver el código en GitHub";
+      acceso "Descargar la app" en la barra lateral y tarjeta "Lleva SIMPAC en tu celular" en Cuenta.
+      `npm test` y `npm run build` OK; verificada en escritorio y 375x812. **Falta publicar el release
+      en GitHub con `SIMPAC.apk` adjunto** (hasta entonces el enlace responde 404).
 
 **Despliegue en la nube (preparado el 04-11-2026; ejecutado el 05-11-2026)**
 - [x] **En producción**: web `https://simpac-v7nf.vercel.app` (Vercel, Root Directory `frontend`,
@@ -905,8 +913,8 @@ estaciones evaluadas, 1 alerta real de 6 h en Cotahuasi, Arequipa)
       restart). Migrar a Infrastructure as Code (`.railway/railway.ts`, `railway config migrate`, con la
       CLI y sesión iniciada) cuando el proyecto ya exista en Railway.
 - [ ] **Después de la API en Railway**: `SIMPAC_CORS_ORIGENES` con el dominio definitivo de Vercel (y el
-      propio si lo hay); en la app Android, Cuenta > Ajustes con `https://<api>.up.railway.app` y la web
-      de Vercel (o cambiar los valores por defecto de `data/Ajustes.kt` antes del release); Redirect
+      propio si lo hay); en la app Android, compilar con `-Psimpac.apiUrl=https://<api>.up.railway.app`
+      y `-Psimpac.webUrl` con la web de Vercel (las direcciones van fijas en el APK); Redirect
       URLs de Supabase Auth con el dominio de Vercel; región de Railway lo más cerca de São Paulo
       (`sa-east-1`, donde está el pooler de Supabase) si el plan lo permite.
 
