@@ -835,15 +835,22 @@ celular", `pages/DescargarApp.jsx`, lazy como las demás), acceso **"Descargar l
 `Smartphone`) bajo "Iniciar sesión" en `Sidebar` (la barra inferior del celular conserva sus 5 pestañas;
 en el celular se llega desde Cuenta) y tarjeta **"Lleva SIMPAC en tu celular"** al pie de `/cuenta`, con
 y sin sesión. El botón **"Descargar para Android (APK)"** (`BotonDescargarApk`, exportado por la
-página) es un `<a href>` a `URL_APK` =
-`https://github.com/Federjj/SIMPAC/releases/latest/download/SIMPAC.apk` (enlace estable a la última
-publicación de GitHub) con `rel="noopener"`, sin `target="_blank"` y sin el atributo `download`
-(cross-origin, el navegador lo ignora). La página dice qué es la app (nativa, mapa, alertas de tu zona y
-notificaciones al entrar en alerta o emergencia), tamaño aproximado (17 MB), requisitos (Android 8 o
+página) es un `<a href>` a `URL_APK` = `/descargas/SIMPAC.apk` con el atributo `download`: el APK
+está en `public/descargas/SIMPAC.apk` (Vite lo copia al build), es del mismo origen y Vercel lo sirve
+con `Content-Disposition: attachment` y `Cache-Control: no-cache` (la CDN lo cachea por despliegue y el
+navegador siempre revalida; reglas solo para esa ruta exacta en `vercel.json`, `netlify.toml` y
+`nginx.conf`, que además declara el tipo `.apk`), así que el navegador descarga sin abrir nada y
+siempre la versión desplegada. En iPhone y iPad (`esIos()`) el botón se reemplaza por un aviso. `enlaceApkAbsoluto()` arma la dirección completa para "Copiar enlace". `public/sw.js` deja
+pasar `/descargas/` sin tocarlo, solo guarda como cáscara respuestas HTML, lee el fallback solo de
+su propia caché y subió a `simpac-v2` para borrar la caché anterior (donde el SW viejo podía guardar
+el manifest o una descarga como `/index.html`). Para publicar una versión
+nueva basta con reemplazar el archivo y desplegar (unos 18 MB por versión en el historial de git). La página dice qué es la app (nativa, mapa, alertas de tu zona y
+notificaciones al entrar en alerta o emergencia), tamaño aproximado (unos 18 MB), requisitos (Android 8 o
 más nuevo), los 4 pasos de instalación, que todavía no está en Play Store y la firma el equipo del
-proyecto, la nota de privacidad (los tres permisos del manifest: internet, ubicación y notificaciones),
+proyecto, la nota de privacidad (internet, ubicación, notificaciones opcionales y cámara solo al adjuntar
+una foto a un reporte),
 "Copiar enlace" (`navigator.clipboard`; si falla muestra el enlace para copiarlo a mano) y "Ver el
-código en GitHub". No consulta nada en vivo: sin release el enlace da 404 pero la página se ve igual.
+código en GitHub". No consulta nada en vivo.
 Verificado el 19-11-2026 en escritorio y en 375x812.
 
 ## Despliegue en Vercel
@@ -855,8 +862,9 @@ que el orden no importa. Netlify es la alternativa equivalente (`frontend/netlif
 **Qué hace `vercel.json`** (sintaxis vigente de https://vercel.com/docs/project-configuration/vercel-json):
 - `framework: "vite"`, `buildCommand: "npm run build"`, `outputDirectory: "dist"` (valen aunque el
   panel diga otra cosa) y `trailingSlash: false` (`/alertas/` redirige 308 a `/alertas`).
-- **SPA**: `rewrites` manda a `/index.html` toda ruta que no empiece por `/assets/` ni `/iconos/` ni
-  sea `/sw.js` o `/manifest.webmanifest` (patrón `/:ruta((?!assets/|iconos/|sw\.js|manifest\.webmanifest).*)`).
+- **SPA**: `rewrites` manda a `/index.html` toda ruta que no empiece por `/assets/`, `/iconos/` ni
+  `/descargas/` ni sea `/sw.js` o `/manifest.webmanifest` (patrón
+  `/:ruta((?!assets/|iconos/|descargas/|sw\.js|manifest\.webmanifest).*)`).
   Vercel sirve primero los archivos que existen y recién después aplica el rewrite, así que
   `/assets/noexiste.js` responde 404 (nunca `index.html` con tipo de script), igual que en nginx.
 - **Cabeceras**: en `/(.*)` la misma `Content-Security-Policy` de `nginx.conf` (letra por letra; si se

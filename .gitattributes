@@ -1,0 +1,2 @@
+# Binarios: nunca convertir finales de linea ni mostrar diff de texto
+*.apk binary

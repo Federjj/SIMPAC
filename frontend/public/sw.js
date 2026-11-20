@@ -1,4 +1,4 @@
-/* Service worker de SIMPAC (lo registra src/pwa.js solo en producción y fuera de Capacitor).
+/* Service worker de SIMPAC (lo registra src/pwa.js solo en producción; la app Android nativa no lo usa).
    Guarda la cáscara de la app para que abra rápido y vuelva a abrir sin red:
      - /assets/ (JS y CSS con hash en el nombre): primero la caché; si no está, la red y se guarda;
      - index.html y el manifest: primero la red (así un despliegue nuevo se ve en la siguiente
@@ -6,7 +6,9 @@
    NUNCA guarda datos: las consultas a Supabase, los tiles del mapa y las imágenes de otros
    servidores van siempre a la red. Un dato viejo presentado como actual sería engañar: sin red, la
    app misma lo dice ("sin conexión"). */
-const VERSION = "simpac-v1";
+// v2 (19-11-2026): deja pasar /descargas/ (el APK) y solo guarda HTML como cáscara; al activarse borra
+// simpac-v1, donde el SW anterior pudo guardar el manifest o una descarga como /index.html.
+const VERSION = "simpac-v2";
 const CASCARA = ["/", "/index.html", "/manifest.webmanifest"];
 
 self.addEventListener("install", (e) => {
@@ -32,6 +34,7 @@ self.addEventListener("fetch", (e) => {
   if (request.method !== "GET") return;
   const url = new URL(request.url);
   if (url.origin !== self.location.origin) return; // Supabase, tiles, fuentes: solo red
+  if (url.pathname.startsWith("/descargas/")) return; // el APK de la app: descarga directa, nunca en caché
 
   if (url.pathname.startsWith("/assets/")) {
     // con hash en el nombre: lo que está en caché es lo correcto para siempre
@@ -53,10 +56,12 @@ self.addEventListener("fetch", (e) => {
     e.respondWith(
       fetch(request)
         .then((r) => {
-          if (r.ok) caches.open(VERSION).then((c) => c.put("/index.html", r.clone()));
+          // solo una respuesta HTML es la cáscara (una descarga navegada no lo es)
+          const tipo = r.headers.get("content-type") || "";
+          if (r.ok && tipo.includes("text/html")) caches.open(VERSION).then((c) => c.put("/index.html", r.clone()));
           return r;
         })
-        .catch(() => caches.match("/index.html"))
+        .catch(() => caches.open(VERSION).then((c) => c.match("/index.html")))
     );
   }
   // lo demás (íconos del manifest, etc.): red, como siempre

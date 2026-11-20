@@ -864,13 +864,15 @@ estaciones evaluadas, 1 alerta real de 6 h en Cotahuasi, Arequipa)
 - [x] **Stadia Maps fuera de localhost**: la web en Vercel usa la API key de Stadia
       (`VITE_STADIA_API_KEY`); los tiles cargan en el dominio real (verificado el 2026-11-05).
 - [x] **Descarga de la app desde la web (HU-32, 19-11-2026)**: página `/app` "SIMPAC en tu celular"
-      (`frontend/src/pages/DescargarApp.jsx`) con el botón "Descargar para Android (APK)" al enlace
-      estable `github.com/Federjj/SIMPAC/releases/latest/download/SIMPAC.apk`, qué es la app, unos
-      17 MB, Android 8 o más nuevo, 4 pasos de instalación, aviso de que no está en Play Store y la
+      (`frontend/src/pages/DescargarApp.jsx`) con el botón "Descargar para Android (APK)" que
+      descarga directo `/descargas/SIMPAC.apk` (el APK va en `frontend/public/descargas/`, servido
+      con `Content-Disposition: attachment`; desde la noche del 19-11 ya no depende de un release
+      de GitHub), qué es la app, unos 18 MB, Android 8 o más nuevo, 4 pasos de instalación, aviso de que no está en Play Store y la
       firma el equipo, nota de privacidad, "Copiar enlace" para WhatsApp y "Ver el código en GitHub";
       acceso "Descargar la app" en la barra lateral y tarjeta "Lleva SIMPAC en tu celular" en Cuenta.
-      `npm test` y `npm run build` OK; verificada en escritorio y 375x812. **Falta publicar el release
-      en GitHub con `SIMPAC.apk` adjunto** (hasta entonces el enlace responde 404).
+      `npm test` y `npm run build` OK; verificada en escritorio y 375x812. Para publicar una versión
+      nueva: reemplazar `frontend/public/descargas/SIMPAC.apk` y hacer push (README, "Descargar la
+      app"). El release de GitHub queda como alternativa opcional.
 - [x] **Pulido de la app Android (19-11-2026)**: kit común en `ui/componentes` (esqueletos con
       shimmer, estados vacío y de error, transiciones del NavHost, aparición escalonada, pulsado con
       escala, contadores animados, háptica, pull-to-refresh y snackbar global), splash screen

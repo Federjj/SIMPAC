@@ -5,26 +5,47 @@ import PanelPagina from "@/components/PanelPagina";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
-// Enlace estable a la última publicación de la app en GitHub: cada release lleva el archivo
-// `SIMPAC.apk` adjunto y GitHub redirige a la versión más nueva. Sin `download` (es otro dominio:
-// el navegador lo ignoraría) y sin `target=_blank` (la descarga no necesita otra pestaña).
-export const URL_APK = "https://github.com/Federjj/SIMPAC/releases/latest/download/SIMPAC.apk";
+// El APK vive en esta misma web: `public/descargas/SIMPAC.apk` (Vite lo copia tal cual al build y
+// Vercel lo sirve como archivo con `Content-Disposition: attachment`, ver vercel.json). Al ser el
+// mismo origen, el atributo `download` sí vale: el navegador descarga sin abrir nada. Para publicar
+// una versión nueva basta con reemplazar ese archivo y desplegar. `URL_APK` es relativa; para
+// compartir se arma la absoluta con `enlaceApkAbsoluto()`.
+export const URL_APK = "/descargas/SIMPAC.apk";
 export const URL_REPO = "https://github.com/Federjj/SIMPAC";
-export const TAMANO_APK = "unos 17 MB";
+export const TAMANO_APK = "unos 18 MB";
 export const ANDROID_MINIMO = "Android 8 o más nuevo";
 
+export function enlaceApkAbsoluto() {
+  if (typeof window === "undefined") return URL_APK;
+  return new URL(URL_APK, window.location.origin).toString();
+}
+
 const PASOS = [
-  "Toca \"Descargar para Android (APK)\" y espera a que termine la descarga (unos 17 MB).",
+  "Toca \"Descargar para Android (APK)\". Si Chrome avisa que el archivo puede dañar el dispositivo, toca \"Descargar de todas formas\" y espera a que termine (unos 18 MB).",
   "Abre el archivo SIMPAC.apk desde las notificaciones o desde la carpeta Descargas.",
   "Si el celular pregunta, permite que tu navegador instale apps de origen desconocido (solo esta vez).",
   "Toca Instalar y abre SIMPAC. Elige tu zona en Cuenta o deja que use tu ubicación.",
 ];
 
+// En iPhone y iPad el archivo no sirve de nada (Safari lo bajaría igual a Archivos): se avisa en vez
+// de descargar.
+export function esIos() {
+  if (typeof navigator === "undefined") return false;
+  return /iPhone|iPad|iPod/i.test(navigator.userAgent);
+}
+
 // Botón grande de descarga; lo usa esta página y la tarjeta de Cuenta.
 export function BotonDescargarApk({ className }) {
+  if (esIos()) {
+    return (
+      <div className={cn("rounded-lg border border-border bg-muted px-3 py-2 text-center text-sm", className)}>
+        La app es solo para Android. En iPhone y iPad usa esta misma web: funciona igual en el celular.
+      </div>
+    );
+  }
   return (
     <Button asChild size="lg" className={cn("h-12 w-full text-base", className)}>
-      <a href={URL_APK} rel="noopener">
+      <a href={URL_APK} download="SIMPAC.apk">
         <Download className="h-5 w-5" />
         Descargar para Android (APK)
       </a>
@@ -43,7 +64,7 @@ function CopiarEnlace() {
   }, [estado]);
   const copiar = async () => {
     try {
-      await navigator.clipboard.writeText(URL_APK);
+      await navigator.clipboard.writeText(enlaceApkAbsoluto());
       setEstado("copiado");
     } catch {
       setEstado("manual");
@@ -58,7 +79,7 @@ function CopiarEnlace() {
       <p className="mt-1.5 text-xs text-muted-foreground">Pégalo en WhatsApp para compartirlo con tu familia o tus vecinos.</p>
       {estado === "manual" && (
         <p className="mt-1 break-all rounded-md bg-muted px-2 py-1 text-xs" role="status">
-          No se pudo copiar solo. Selecciona y copia este enlace: {URL_APK}
+          No se pudo copiar solo. Selecciona y copia este enlace: {enlaceApkAbsoluto()}
         </p>
       )}
     </div>
@@ -74,9 +95,9 @@ function Punto({ Icon, children }) {
   );
 }
 
-// Página /app: qué es la app Android, el botón de descarga del APK, requisitos, pasos de
-// instalación, el aviso de que no está en Play Store y la nota de privacidad. No consulta nada en
-// vivo: si todavía no hay una publicación en GitHub, el enlace responde 404 pero la página se ve igual.
+// Página /app: qué es la app Android, el botón de descarga del APK (archivo de esta misma web),
+// requisitos, pasos de instalación, el aviso de que no está en Play Store y la nota de privacidad.
+// No consulta nada en vivo.
 export default function DescargarApp() {
   return (
     <PanelPagina titulo="SIMPAC en tu celular" subtitulo="App Android nativa, gratis">
@@ -103,7 +124,7 @@ export default function DescargarApp() {
           <div className="mt-4">
             <BotonDescargarApk />
             <p className="mt-2 text-center text-xs text-muted-foreground">
-              Archivo SIMPAC.apk, {TAMANO_APK} · {ANDROID_MINIMO} · descarga desde GitHub
+              Archivo SIMPAC.apk, {TAMANO_APK} · {ANDROID_MINIMO} · descarga directa desde esta web
             </p>
           </div>
         </section>
@@ -124,8 +145,9 @@ export default function DescargarApp() {
           <h2 className="text-sm font-semibold">Todavía no está en Play Store</h2>
           <p className="mt-1 text-muted-foreground">
             Por eso se instala desde este archivo y Android avisa que viene de "origen desconocido": es normal. La
-            versión que descargas la firma el equipo del proyecto SIMPAC y es la última publicada en GitHub. Si el
-            enlace no abre, la publicación todavía no está lista: vuelve a intentar más tarde.
+            versión que descargas la publica el equipo del proyecto en esta misma web y es siempre la más reciente.
+            Si ya tenías una versión anterior y la nueva no se instala encima, desinstala la anterior y vuelve a
+            instalar (tendrás que elegir tu zona de nuevo).
           </p>
         </section>
 
@@ -134,7 +156,8 @@ export default function DescargarApp() {
           <p className="mt-1 text-muted-foreground">
             La app solo pide tu ubicación para mostrar tu zona y los lugares cercanos a dónde acudir; puedes negarla y
             elegir tu ciudad a mano. Las notificaciones son opcionales: se prenden y se apagan en la pestaña Cuenta de la
-            app. Hoy la app solo declara tres permisos: internet, ubicación y notificaciones.
+            app. La app pide internet, ubicación (para tu zona y los lugares cercanos), notificaciones (opcionales) y
+            la cámara solo si decides adjuntar una foto a un reporte.
           </p>
         </section>
 

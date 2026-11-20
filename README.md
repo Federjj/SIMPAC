@@ -447,18 +447,32 @@ app: `pe.simpac.app`; `versionCode 2`; Android mínimo 8.0 (API 26), `targetSdk`
 
 La web tiene la página **`/app`** ("SIMPAC en tu celular", enlace "Descargar la app" en la barra
 lateral y tarjeta "Lleva SIMPAC en tu celular" en Cuenta) con el botón **Descargar para Android
-(APK)**, que apunta al enlace estable de la última publicación del repo:
-`https://github.com/Federjj/SIMPAC/releases/latest/download/SIMPAC.apk`. La página explica qué trae la
-app, los requisitos (Android 8 o más nuevo, unos 17 MB), los 4 pasos de instalación (descargar, abrir el
-archivo, permitir que el navegador instale apps de origen desconocido, instalar), que todavía no está
-en Play Store y que la firma el equipo del proyecto, la nota de privacidad (solo pide ubicación para tu
-zona; notificaciones opcionales) y un botón "Copiar enlace" para pasarlo por WhatsApp. No consulta nada
-en vivo: si aún no hay publicación, el enlace responde 404 y la página se ve igual.
+(APK)**, que descarga directo `https://simpac-v7nf.vercel.app/descargas/SIMPAC.apk`: el APK vive en el
+repo, en **`frontend/public/descargas/SIMPAC.apk`** (Vite lo copia tal cual al build y Vercel lo sirve
+como archivo con `Content-Disposition: attachment`; la CDN lo cachea por despliegue y el navegador
+siempre revalida con `no-cache`, ver `frontend/vercel.json`; igual en `netlify.toml` y `nginx.conf`),
+así que no depende de GitHub ni de un release. La página explica qué
+trae la app, los requisitos (Android 8 o más nuevo, unos 18 MB), los 4 pasos de instalación (descargar,
+abrir el archivo, permitir que el navegador instale apps de origen desconocido, instalar), que todavía
+no está en Play Store y que la publica el equipo del proyecto, la nota de privacidad (solo pide
+ubicación para tu zona y los lugares cercanos; notificaciones opcionales; cámara solo al adjuntar una
+foto a un reporte) y un botón "Copiar enlace" (copia la dirección absoluta) para pasarlo por WhatsApp.
+En iPhone y iPad el botón se reemplaza por un aviso (la app es solo para Android). No consulta nada en
+vivo.
 
-Para que el enlace funcione hay que **publicar un release en GitHub** con el APK firmado adjunto con el
-nombre exacto `SIMPAC.apk` (`.\gradlew.bat assembleRelease` con la llave propia, ver "Firma para
-publicar"; renombrar `app-release.apk`). `releases/latest` siempre redirige a la última publicación que
-no esté marcada como pre-release, así que cada versión nueva basta con subirla con ese nombre.
+**Publicar una versión nueva**: subir `versionCode` y `versionName`, compilar con la llave del proyecto
+(`.\gradlew.bat assembleRelease` con las `-P` de producción, ver "Firma para publicar"), copiar el APK
+sobre `frontend/public/descargas/SIMPAC.apk` (mismo nombre) y hacer push: Vercel despliega y el botón
+entrega la versión nueva (el service worker de la web nunca guarda `/descargas/`). **Ojo con la firma**:
+el APK publicado el 19-11-2026 está firmado con la llave de depuración (`assembleDebug`), que es de una
+sola PC; Android solo instala una actualización encima si lleva la misma firma, así que al pasar a la
+llave de release (o compilar en otra PC) quien ya tenga la app deberá desinstalarla una vez. Por eso
+conviene crear la llave del proyecto pronto y usar siempre la misma. Cada versión suma unos 18 MB al
+historial de git y cada descarga gasta 18 MB de los 100 GB mensuales del plan Hobby de Vercel (unas
+5.000 descargas al mes; al pasarse, Vercel pausa todo el sitio hasta el ciclo siguiente): si el uso crece,
+la alternativa es un release de GitHub con `SIMPAC.apk` adjunto y apuntar `URL_APK` en
+`frontend/src/pages/DescargarApp.jsx` a `https://github.com/Federjj/SIMPAC/releases/latest/download/SIMPAC.apk`
+(descarga directa igual: GitHub responde con `Content-Disposition: attachment`).
 
 ## Problemas comunes
 

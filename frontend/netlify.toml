@@ -50,3 +50,11 @@
   for = "/manifest.webmanifest"
   [headers.values]
     Cache-Control = "no-cache"
+
+# El APK de la app Android (public/descargas/SIMPAC.apk): descarga directa, siempre la versión actual.
+[[headers]]
+  for = "/descargas/SIMPAC.apk"
+  [headers.values]
+    Content-Type = "application/vnd.android.package-archive"
+    Content-Disposition = 'attachment; filename="SIMPAC.apk"'
+    Cache-Control = "no-cache"
