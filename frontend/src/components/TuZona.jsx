@@ -1,5 +1,6 @@
 import { Circle, LocateFixed, MapPin, Minus, OctagonAlert, Phone, TriangleAlert, Waves } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import TelefonoCopiable from "@/components/TelefonoCopiable";
 import { cn } from "@/lib/utils";
 import { useContador } from "@/hooks/useContador";
 import { ETIQUETA_NIVEL, PIE_OFICIAL, TELEFONOS, textoMetros } from "@/lib/zonaAhora";
@@ -151,24 +152,28 @@ export default function TuZona({ zona, depto, gps, plegado = false, onAccion, on
       </p>
 
       {/* el botón del nivel y, en alerta o emergencia, las llamadas */}
-      <div className={cn("mt-2.5 flex gap-2", fuerte ? "flex-wrap" : "")}>
-        <Button
-          className={cn("h-10 flex-1 text-[0.95rem] font-semibold", `tz-${nivel}`, fuerte ? "tz-relleno shadow" : "")}
-          variant={fuerte ? "ghost" : "default"}
-          disabled={!origen && boton.accion !== "avisos"}
-          onClick={() => onAccion?.(boton.accion)}
-        >
-          {boton.texto}
-        </Button>
-        {fuerte &&
-          TELEFONOS.map((t) => (
-            <Button key={t.numero} asChild variant="outline" className="h-10 px-3 font-semibold">
-              <a href={`tel:${t.numero}`} aria-label={`Llamar al ${t.numero}, ${t.quien}`}>
-                <Phone className="h-4 w-4" />
-                {t.numero}
-              </a>
-            </Button>
-          ))}
+      <div className={cn("mt-2.5 flex gap-2", fuerte ? "flex-wrap items-center" : "")}>
+        {boton.accion !== "acudir" && (
+          <Button
+            className={cn("h-10 flex-1 text-[0.95rem] font-semibold", `tz-${nivel}`, fuerte ? "tz-relleno shadow" : "")}
+            variant={fuerte ? "ghost" : "default"}
+            disabled={!origen && boton.accion !== "avisos"}
+            onClick={() => onAccion?.(boton.accion)}
+          >
+            {boton.texto}
+          </Button>
+        )}
+        {fuerte && (
+          <p className="text-sm font-semibold">
+            <Phone className="mr-1 inline h-4 w-4" aria-hidden="true" />
+            {TELEFONOS.map((t, i) => (
+              <span key={t.numero}>
+                {i > 0 && <span className="text-muted-foreground"> · </span>}
+                <TelefonoCopiable numero={t.numero} titulo={`${t.quien}: tocar para copiar`} /> <span className="font-normal text-muted-foreground">{t.quien}</span>
+              </span>
+            ))}
+          </p>
+        )}
       </div>
       {/* plegada no lleva pie: en alerta o emergencia los teléfonos están arriba y la instrucción ya
           manda a Defensa Civil; el texto completo sale al abrir la hoja */}

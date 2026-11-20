@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useRef, useState } from "react";
-import { ChevronDown, ChevronRight, ChevronUp, Droplets, LifeBuoy, Megaphone, Plus, ShieldAlert, TriangleAlert, Waves } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { ChevronDown, ChevronRight, Droplets, LifeBuoy, Megaphone, Plus, ShieldAlert, TriangleAlert, Waves, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { NIVEL_HEX, ZONA_HEX, ENFEN_HEX } from "@/map/palette";
@@ -29,11 +29,11 @@ const URL_AVISO = (referencia) =>
 // En el celular la hoja arranca plegada y el modo emergencia y "ver en el mapa" la pliegan (antes el
 // "vistazo" ocupaba el 61 % de la pantalla y el mapa quedaba casi invisible); desde lg es una tarjeta
 // a la izquierda que no tapa el mapa y arranca en "vistazo".
-export const ALTURAS = ["plegado", "vistazo", "media", "completa"];
-const ARRASTRE_PX = 40; // cuánto hay que arrastrar el asa para cambiar de altura
-const esEscritorio = () => typeof window !== "undefined" && Boolean(window.matchMedia?.("(min-width: 1024px)").matches);
-// la altura más chica que tiene sentido en esta pantalla
-const minima = () => (esEscritorio() ? "vistazo" : "plegado");
+// Ahora la hoja solo está abierta (mostrando todo, altura "completa") o cerrada (el botón flotante
+// "Alertas" de Mapa). Se cierra arrastrando la parte de arriba hacia abajo, con la X o con un
+// clic fuera de ella.
+const altura = "completa";
+const ARRASTRE_PX = 40; // cuánto hay que arrastrar el asa hacia abajo para cerrar
 
 function Explica({ titulo, children, pie, aviso }) {
   return (
@@ -66,59 +66,49 @@ export default function StatusPanel({
   onAccion, // (accion) -> el botón del nivel (zona | pasar | acudir | avisos)
   verPunto, // ({lat, lon, clave}) -> centra el mapa en un punto de "A dónde acudir"
   pedido, // { vez, altura, forzar, seccion } desde Mapa (modo emergencia, botón del nivel)
-  onAltura, // (altura) -> Mapa se entera (para el encuadre)
   tope, // clase de alto máximo en pantallas bajas (no tapar el chip del nowcasting)
   onReportar,
   onVerAlertas,
   onReintentar,
+  onCerrar, // () -> la hoja vuelve a ser el botón flotante de alertas
 }) {
-  const [altura, setAltura] = useState(minima);
   const [abierto, setAbierto] = useState(false); // "Qué significa esto"
-  const aMano = useRef(false); // la persona cambió la altura: una alerta no la vuelve a abrir
   const hojaRef = useRef(null);
   const acudirRef = useRef(null);
   useAltoHoja(hojaRef);
 
-  const cambiar = useCallback(
-    (a, { mano = false } = {}) => {
-      if (mano) aMano.current = true;
-      setAltura(a);
-      onAltura?.(a);
-    },
-    [onAltura]
-  );
-  const subir = () => cambiar(ALTURAS[Math.min(ALTURAS.length - 1, ALTURAS.indexOf(altura) + 1)], { mano: true });
-  const bajar = () => cambiar(ALTURAS[Math.max(0, ALTURAS.indexOf(altura) - 1)], { mano: true });
-
-  // pedidos desde Mapa: el modo emergencia pliega la hoja (forzado) una vez por cambio de nivel;
-  // en alerta solo si la persona no la movió a mano; el botón "A dónde acudir" abre a "media".
-  // Un pedido de "plegado" en escritorio vale "vistazo" (ahí la tarjeta no tapa el mapa).
+  // el botón "A dónde acudir" del nivel pide bajar hasta esa sección
   useEffect(() => {
-    if (!pedido?.vez) return;
-    const a = pedido.altura ?? "plegado";
-    if (pedido.forzar || !aMano.current) setAltura(a === "plegado" ? minima() : a);
-    if (pedido.seccion === "acudir") {
-      setAltura("media");
-      // la tarjeta recién se monta: se baja hasta ella en el cuadro siguiente
-      requestAnimationFrame(() => acudirRef.current?.scrollIntoView({ block: "start", behavior: "smooth" }));
-    }
+    if (pedido?.seccion !== "acudir") return;
+    // la tarjeta recién se monta: se baja hasta ella en el cuadro siguiente
+    requestAnimationFrame(() => acudirRef.current?.scrollIntoView({ block: "start", behavior: "smooth" }));
   }, [pedido]);
 
-  // "Ver en el mapa" pliega la hoja (abierta tapa el río) y lleva el mapa hasta el río
+  // clic o toque fuera de la hoja: se cierra (captura: Leaflet corta la propagación en el mapa)
+  useEffect(() => {
+    if (!onCerrar) return undefined;
+    const alPulsar = (e) => {
+      if (hojaRef.current && !hojaRef.current.contains(e.target)) onCerrar();
+    };
+    document.addEventListener("pointerdown", alPulsar, true);
+    return () => document.removeEventListener("pointerdown", alPulsar, true);
+  }, [onCerrar]);
+
+  // "Ver en el mapa" cierra la hoja (abierta tapa el río) y lleva el mapa hasta el río
   const verRio = (rio) => {
-    cambiar(minima(), { mano: true });
+    onCerrar?.();
     onVerRio?.(rio);
   };
-  // "Ver en el mapa" de un punto de "A dónde acudir": igual, primero se pliega
+  // "Ver en el mapa" de un punto de "A dónde acudir": igual, primero se cierra
   const verPuntoPlegando = verPunto
     ? (punto) => {
-        cambiar(minima(), { mano: true });
+        onCerrar?.();
         verPunto(punto);
       }
     : undefined;
 
-  // arrastre del asa con el puntero: la hoja sigue al dedo (transform) y al soltar sube o baja
-  // una altura; las flechas hacen lo mismo con teclado
+  // arrastre del asa con el puntero: la hoja sigue al dedo (transform) y al soltar hacia abajo
+  // se cierra
   const arrastre = useRef(null);
   const alBajarPuntero = (e) => {
     if (e.button != null && e.button !== 0) return;
@@ -130,7 +120,7 @@ export default function StatusPanel({
     const a = arrastre.current;
     if (!a || a.id !== e.pointerId) return;
     a.dy = e.clientY - a.y0;
-    const dy = Math.max(-48, Math.min(96, a.dy));
+    const dy = Math.max(0, Math.min(160, a.dy));
     if (hojaRef.current) hojaRef.current.style.transform = `translateY(${dy}px)`;
   };
   const alSoltarPuntero = (e) => {
@@ -141,8 +131,7 @@ export default function StatusPanel({
       hojaRef.current.style.transform = "";
       hojaRef.current.classList.remove("arrastrando");
     }
-    if (a.dy <= -ARRASTRE_PX) subir();
-    else if (a.dy >= ARRASTRE_PX) bajar();
+    if (a.dy >= ARRASTRE_PX) onCerrar?.();
   };
 
   const nivel = zona?.nivel ?? "sin_dato";
@@ -186,47 +175,38 @@ export default function StatusPanel({
           `tz-${nivel}`,
           fuerte && "tz-suave",
           nivel === "emergencia" && "es-emergencia",
-          // plegado cabe sin desplazar (~200-280 px); vistazo deja al menos la mitad del mapa libre
-          altura === "plegado" && "max-h-[min(44vh,calc(100vh-9rem))]",
-          altura === "vistazo" && "max-h-[min(50vh,calc(100vh-8rem))]",
-          altura === "media" && "max-h-[min(66vh,calc(100vh-7rem))]",
-          altura === "completa" && "max-h-[88vh]",
-          "lg:max-h-[80vh]",
-          // el tope por el chip del nowcasting solo importa abierta: plegada y en vistazo ya es más baja
-          (altura === "media" || altura === "completa") && tope
+          "max-h-[88vh] lg:max-h-[80vh]",
+          tope
         )}
       >
         <div className="hoja-franja shrink-0" aria-hidden="true" />
-        {/* asa: arrastrar o tocar para cambiar de altura; las flechas son la versión con teclado */}
+        {/* asa: arrastrarla hacia abajo cierra la hoja (Escape o Enter, con teclado) */}
         <div className="flex shrink-0 items-center px-2">
           <div
             role="button"
             tabIndex={0}
-            aria-label={`Cambiar el tamaño del panel (ahora: ${altura})`}
-            className="hoja-arrastre flex flex-1 justify-center py-2"
+            aria-label="Arrastra hacia abajo para cerrar las alertas"
+            className="hoja-arrastre flex flex-1 cursor-grab justify-center py-3.5"
+            style={{ touchAction: "none" }}
             onPointerDown={alBajarPuntero}
             onPointerMove={alMoverPuntero}
             onPointerUp={alSoltarPuntero}
             onPointerCancel={alSoltarPuntero}
-            onClick={() => (altura === "completa" ? cambiar(minima(), { mano: true }) : subir())}
             onKeyDown={(e) => {
-              if (e.key === "ArrowUp") subir();
-              else if (e.key === "ArrowDown") bajar();
-              else if (e.key === "Enter" || e.key === " ") {
+              if (e.key === "ArrowDown" || e.key === "Enter" || e.key === " " || e.key === "Escape") {
                 e.preventDefault();
-                altura === "completa" ? cambiar(minima(), { mano: true }) : subir();
+                onCerrar?.();
               }
             }}
           >
             <span className="hoja-asa" />
           </div>
           <div className="absolute right-2 top-2.5 flex items-center gap-0.5">
-            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={bajar} disabled={altura === ALTURAS[0]} aria-label="Achicar el panel">
-              <ChevronDown className="h-4 w-4" />
-            </Button>
-            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={subir} disabled={altura === "completa"} aria-label="Agrandar el panel">
-              <ChevronUp className="h-4 w-4" />
-            </Button>
+            {onCerrar && (
+              <Button variant="ghost" size="icon" className="h-7 w-7" onClick={onCerrar} aria-label="Cerrar las alertas">
+                <X className="h-4 w-4" />
+              </Button>
+            )}
           </div>
         </div>
 

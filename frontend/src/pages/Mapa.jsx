@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { Layers, LocateFixed, Plus } from "lucide-react";
+import { Layers, LocateFixed, Plus, TriangleAlert } from "lucide-react";
 import MapView from "@/components/MapView";
 import LayersPanel from "@/components/LayersPanel";
 import StatusPanel from "@/components/StatusPanel";
@@ -10,6 +10,7 @@ import CitySelector from "@/components/CitySelector";
 import DiaSelector from "@/components/DiaSelector";
 import ChipNowcast from "@/components/ChipNowcast";
 import OnboardingGps from "@/components/OnboardingGps";
+import { copiarTexto } from "@/components/TelefonoCopiable";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { LAYERS } from "@/map/layers";
@@ -100,6 +101,18 @@ export default function Mapa({
   // escucha en captura, antes de que lo haga.
   useEffect(() => {
     const alClic = (e) => {
+      const tel = e.target?.closest?.("a[data-copiar]");
+      if (tel) {
+        e.preventDefault();
+        const texto = tel.getAttribute("data-copiar");
+        const original = tel.textContent;
+        copiarTexto(texto).then((ok) => {
+          if (!ok) return;
+          tel.textContent = "Copiado";
+          setTimeout(() => (tel.textContent = original), 1800);
+        });
+        return;
+      }
       const a = e.target?.closest?.("a[data-ruta]");
       if (!a) return;
       e.preventDefault();
@@ -122,7 +135,12 @@ export default function Mapa({
   const gps = useMemo(() => ({ status: gpsStatus, geolocate }), [gpsStatus, geolocate]);
   // pedidos a la hoja: { vez, altura, forzar, seccion }
   const [pedido, setPedido] = useState(null);
-  const pedir = (altura, extra = {}) => setPedido({ vez: Date.now(), altura, ...extra });
+  // la hoja "Tu zona ahora" va detrás de un botón flotante; cualquier pedido a la hoja la abre
+  const [hojaAbierta, setHojaAbierta] = useState(false);
+  const pedir = (altura, extra = {}) => {
+    setHojaAbierta(true);
+    setPedido({ vez: Date.now(), altura, ...extra });
+  };
 
   // Modo emergencia: cuando la zona pasa a alerta o emergencia (por alerta_actual o por un río
   // vigilado), una vez por cambio de nivel: la hoja se pliega (forzado solo en emergencia: en
@@ -138,7 +156,7 @@ export default function Mapa({
     if (!esFuerte(nivelMax)) return;
     // de alerta a emergencia (o al revés) también se vuelve a abrir
     if (antes === nivelMax) return;
-    pedir("plegado", { forzar: nivelMax === "emergencia" });
+    // la hoja no se abre sola: el botón "Alertas" ya toma el color del nivel y el cauce se ve
     mostrar("rio");
     mostrar("zona");
     const rio = zonaRef.current.principal?.rio;
@@ -152,7 +170,7 @@ export default function Mapa({
     const z = zonaRef.current;
     const rio = z.principal?.rio ?? null;
     if (que === "zona") {
-      pedir("plegado", { forzar: true });
+      setHojaAbierta(false);
       mostrar("rio");
       mostrar("zona");
       const caja = cajaTuYRio(z.origen, rio?.cauce);
@@ -160,14 +178,14 @@ export default function Mapa({
       else if (rio) verRio(rio);
       else if (z.origen) setFocus({ lat: z.origen[0], lon: z.origen[1], zoom: 14 });
     } else if (que === "pasar") {
-      pedir("plegado", { forzar: true });
+      setHojaAbierta(false);
       if (rio) verRio(rio);
       mostrar("desbordes");
     } else if (que === "acudir") {
       mostrar("acudir");
       pedir("media", { forzar: true, seccion: "acudir" });
     } else if (que === "avisos") {
-      pedir("plegado", { forzar: true });
+      setHojaAbierta(false);
       mostrar("avisos");
       if (ciudad) setFocus({ lat: ciudad.lat, lon: ciudad.lon, zoom: 8 });
     }
@@ -243,8 +261,6 @@ export default function Mapa({
         )}
         role="status"
       >
-        <span className={cn("shrink-0", !fuerte && "text-primary")}>SIMPAC</span>
-        <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ background: fuerte ? "#fff" : "var(--nv)" }} aria-hidden="true" />
         <span className={cn("min-w-0 truncate", !fuerte && "tz-tinta", fuerte && "uppercase tracking-wide")} title={`${etiquetaChip} en ${depto}`}>
           {etiquetaChip} en {depto}
         </span>
@@ -375,8 +391,27 @@ export default function Mapa({
           status={gpsStatus}
           onCerrar={() => setBienvenida(false)}
         />
+      ) : !hojaAbierta ? (
+        <button
+          type="button"
+          data-tapa-mapa="abajo"
+          onClick={() => setHojaAbierta(true)}
+          className={cn(
+            "tz-boton-alertas absolute bottom-4 left-4 z-[600] flex items-center gap-2 rounded-full border px-4 py-2.5 text-sm font-semibold shadow-xl backdrop-blur",
+            `tz-${nivelMax}`,
+            fuerte ? "tz-relleno border-transparent" : "border-border bg-card/90"
+          )}
+          aria-label={`Ver alertas: ${etiquetaChip} en ${depto}`}
+        >
+          <TriangleAlert className="h-[18px] w-[18px]" />
+          Alertas
+          {p.cuantasTotal > 0 && (
+            <span className="grid h-5 min-w-5 place-items-center rounded-full bg-destructive px-1.5 text-xs text-destructive-foreground">{p.cuantasTotal}</span>
+          )}
+        </button>
       ) : (
         <StatusPanel
+          onCerrar={() => setHojaAbierta(false)}
           p={p}
           zona={zona}
           depto={depto}

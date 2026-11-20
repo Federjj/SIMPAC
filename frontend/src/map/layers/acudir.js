@@ -78,7 +78,7 @@ export function popupAcudir(p) {
     }) +
     `<div class="pop pop-acudir">` +
     (tels.length
-      ? `<p class="tel">Teléfono: ${tels.map((x) => `<a href="tel:${escapeHtml(x.replace(/[^\d+]/g, ""))}">${escapeHtml(x)}</a>`).join(" · ")}</p>`
+      ? `<p class="tel">Teléfono: ${tels.map((x) => `<a href="#" data-copiar="${escapeHtml(x.replace(/[^\d+]/g, ""))}" title="Tocar para copiar">${escapeHtml(x)}</a>`).join(" · ")} <span class="nota">(toca el número para copiarlo)</span></p>`
       : `<p class="nota">Sin teléfono en la fuente: si es urgente llama al 105 o al 116.</p>`) +
     `<p class="enl"><a href="${escapeHtml(maps)}" target="_blank" rel="noopener noreferrer">Cómo llegar (Google Maps)</a>` +
     (esAndroid() ? ` · <a href="${escapeHtml(geo)}">Abrir en el mapa del celular</a>` : "") +
