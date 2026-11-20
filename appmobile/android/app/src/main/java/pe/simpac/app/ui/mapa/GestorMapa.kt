@@ -19,11 +19,11 @@ import org.osmdroid.util.BoundingBox
 import org.osmdroid.util.GeoPoint
 import org.osmdroid.util.MapTileIndex
 import org.osmdroid.views.CustomZoomButtonsController
-import org.osmdroid.views.CustomZoomButtonsDisplay
 import org.osmdroid.views.MapView
 import org.osmdroid.views.overlay.FolderOverlay
 import org.osmdroid.views.overlay.Marker
 import org.osmdroid.views.overlay.Overlay
+import org.osmdroid.views.overlay.OverlayManager
 import org.osmdroid.views.overlay.Polygon
 import org.osmdroid.views.overlay.Polyline
 import org.osmdroid.views.overlay.TilesOverlay
@@ -88,11 +88,18 @@ object OsmdroidSimpac {
     fun preparar(contexto: Context) {
         if (listo) return
         val conf = Configuration.getInstance()
+        val base = File(contexto.cacheDir, "osmdroid")
+        val tiles = File(base, "tiles")
+        // las rutas van ANTES de load(): sin ellas, load() sale a buscar el mejor almacenamiento del
+        // telefono (lista los externos y prueba escribir en cada uno) en el hilo principal, para una
+        // ruta que igual se reemplaza por esta
+        conf.osmdroidBasePath = base
+        conf.osmdroidTileCache = tiles
         conf.load(contexto.applicationContext, contexto.getSharedPreferences("osmdroid", Context.MODE_PRIVATE))
         conf.userAgentValue = BuildConfig.APPLICATION_ID
-        val base = File(contexto.cacheDir, "osmdroid")
+        // load() puede traer una ruta guardada por una corrida anterior: la de la app manda
         conf.osmdroidBasePath = base
-        conf.osmdroidTileCache = File(base, "tiles")
+        conf.osmdroidTileCache = tiles
         conf.tileFileSystemCacheMaxBytes = 120L * 1024 * 1024
         conf.tileFileSystemCacheTrimBytes = 90L * 1024 * 1024
         conf.isMapViewHardwareAccelerated = true
@@ -147,14 +154,21 @@ class GestorMapa(
         const val FEN_LEJOS_HASTA = 9.0
         /** El Peru con margen, para bajar las imagenes de zoom 3 a 6 del satelite. */
         val PERU = BoundingBox(0.5, -68.0, -18.6, -81.8)
+        /** Duracion de los movimientos de camara (centrar, volar): corta, nunca bloquea el gesto. */
+        const val MOVIMIENTO_MS = 500L
     }
 
     private class Trazo(val rio: RioDibujo, val halo: Polyline, val linea: Polyline, var detalle: String)
     private val trazos = ArrayList<Trazo>()
+    // los trazos de cada rio (varios si el grueso tiene varias partes) y los rios con trazo, en su orden
+    private var trazosPorRio: Map<String, List<Trazo>> = emptyMap()
+    private var riosDibujados: List<RioDibujo> = emptyList()
+    // nombres de los rios: el marcador de texto (un bitmap) se dibuja una vez por rio y estado y se
+    // reusa en cada parada del mapa; se vacia al llegar rios nuevos
+    private val rotulosHechos = HashMap<String, Marker>()
     private val avisosDibujados = ArrayList<Pair<AvisoDibujo, List<Overlay>>>()
     private var finos: Map<String, List<List<Coord>>> = emptyMap()
     private var capas: Set<Capa> = emptySet()
-    private var bandaRios = ""
     private var marcadorUbicacion: Marker? = null
     private var mashconDibujado: MashconDibujo? = null
 
@@ -162,8 +176,13 @@ class GestorMapa(
     private class Localidad(val marcador: Marker, val aspecto: PronosticoMapa.Aspecto, val tuya: Boolean)
     private val localidades = ArrayList<Localidad>()
     private var pronosticoEnPuntos: Boolean? = null
-    // El Nino: poligonos creados una vez; a la vista y con el detalle del zoom
-    private class PoligonoFenDibujado(val dato: Fen.PoligonoFen, val overlays: List<Polygon>, var detalle: String, var enCapa: Boolean = false)
+    // El Nino: los Polygon de cada area se crean la primera vez que toca la vista (no todo el pais de
+    // golpe al prender la capa) y despues se reusan; a la vista y con el detalle del zoom
+    private class PoligonoFenDibujado(val dato: Fen.PoligonoFen, val fen: FenDibujo, val color: Int) {
+        var overlays: List<Polygon>? = null
+        var detalle = ""
+        var enCapa = false
+    }
     private val fenDibujados = ArrayList<PoligonoFenDibujado>()
     // desbordes: se reagrupan al cambiar el zoom entero
     private var incidentes: List<RioIncidente> = emptyList()
@@ -184,10 +203,10 @@ class GestorMapa(
         mapa.setTileSource(OsmdroidSimpac.fuenteTiles(mapa.context))
         mapa.setMultiTouchControls(true)
         mapa.setTilesScaledToDpi(true)
-        // botones de zoom siempre visibles arriba a la izquierda (como el control de Leaflet en la web)
-        mapa.zoomController.setVisibility(CustomZoomButtonsController.Visibility.ALWAYS)
-        mapa.zoomController.display.setPositions(false, CustomZoomButtonsDisplay.HorizontalPosition.LEFT, CustomZoomButtonsDisplay.VerticalPosition.TOP)
-        mapa.zoomController.display.setMarginPadding(0.4f, 0.4f)
+        // los botones de zoom de osmdroid (cuadrados blancos, ajenos a Material 3 y al modo oscuro) van
+        // apagados: MapaScreen dibuja los suyos arriba a la izquierda y llama a controller.zoomIn/zoomOut;
+        // el pellizco sigue con setMultiTouchControls
+        mapa.zoomController.setVisibility(CustomZoomButtonsController.Visibility.NEVER)
         mapa.minZoomLevel = 5.0
         mapa.maxZoomLevel = 18.0
         mapa.isHorizontalMapRepetitionEnabled = false
@@ -210,10 +229,20 @@ class GestorMapa(
     val caja: Caja
         get() = mapa.boundingBox.let { Caja(it.lonWest, it.latSouth, it.lonEast, it.latNorth) }
 
-    private fun vaciar(folder: FolderOverlay) {
-        // tras MapView.onDetach() el FolderOverlay devuelve null: no hay nada que vaciar
-        val items = folder.items?.toList() ?: return
-        items.forEach { folder.remove(it) }
+    /**
+     * La lista viva de una carpeta (null tras MapView.onDetach()). FolderOverlay.add y remove recalculan
+     * la caja de TODA la carpeta en cada llamada (y la caja de un trazo recien cambiado proyecta todos
+     * sus vertices), asi que llenar o vaciar una capa de a uno era cuadratico en el hilo principal. Esa
+     * caja no se usa para dibujar ni para los toques (FolderOverlay delega en su OverlayManager), por
+     * eso las capas se escriben directo en la lista y en lote.
+     */
+    private fun lista(folder: FolderOverlay): MutableList<Overlay>? =
+        (folder.items as? OverlayManager)?.overlays() ?: folder.items
+
+    private fun vaciar(folder: FolderOverlay) { lista(folder)?.clear() }
+
+    private fun poner(folder: FolderOverlay, overlays: List<Overlay>) {
+        if (overlays.isNotEmpty()) lista(folder)?.addAll(overlays)
     }
 
     /** Al salir de la pestana: suelta los proveedores de imagenes y el MapView. */
@@ -260,6 +289,7 @@ class GestorMapa(
     fun mostrarAvisos(avisos: List<AvisoDibujo>) {
         vaciar(capaAvisos)
         avisosDibujados.clear()
+        val nuevos = ArrayList<Overlay>()
         for (a in avisos.sortedBy { it.aviso.nivel ?: 0 }) {
             val color = Paleta.aviso(a.aviso.nivel).toInt()
             val overlays = ArrayList<Overlay>()
@@ -276,7 +306,7 @@ class GestorMapa(
                     alTocar(Seleccion.Avisos(if (aqui.isEmpty()) listOf(a) else aqui))
                     true
                 }
-                capaAvisos.add(p); overlays += p
+                nuevos += p; overlays += p
             }
             val glifo = a.glifo
             val centro = a.centro
@@ -287,10 +317,11 @@ class GestorMapa(
                 m.setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_CENTER)
                 m.infoWindow = null
                 m.setOnMarkerClickListener { _, _ -> alTocar(Seleccion.Avisos(listOf(a))); true }
-                capaAvisos.add(m); overlays += m
+                nuevos += m; overlays += m
             }
             avisosDibujados += a to overlays
         }
+        poner(capaAvisos, nuevos)
         revisarVista()
     }
 
@@ -298,8 +329,12 @@ class GestorMapa(
     fun mostrarRios(rios: List<RioDibujo>, mashcon: MashconDibujo?) {
         vaciar(capaRios)
         trazos.clear()
-        bandaRios = ""
+        rotulosHechos.clear()
         mashconDibujado = mashcon
+        // los halos de los rios van debajo de todas las lineas (afluentes, Mashcon y rios): se juntan
+        // en dos listas y la capa se llena de una vez, ya en ese orden
+        val halos = ArrayList<Overlay>()
+        val lineas = ArrayList<Overlay>()
         mashcon?.let { m ->
             for (parte in m.afluentes) {
                 val a = Polyline(mapa)
@@ -308,16 +343,13 @@ class GestorMapa(
                 a.outlinePaint.strokeWidth = 2f * densidad
                 a.outlinePaint.alpha = 230
                 a.infoWindow = null
-                capaRios.add(a)
+                lineas += a
             }
-            for (parte in m.cauce) {
-                val halo = linea(parte, Paleta.HALO.toInt(), 11f, 235)
-                capaRios.add(halo)
-            }
+            for (parte in m.cauce) lineas += linea(parte, Paleta.HALO.toInt(), 11f, 235)
             for (parte in m.cauce) {
                 val l = linea(parte, Paleta.cauce(m.cauceEstado.estado).toInt(), 5.5f, 255)
                 l.setOnClickListener { _, _, _ -> alTocar(Seleccion.Mashcon(m)); true }
-                capaRios.add(l)
+                lineas += l
             }
         }
         for (r in rios) {
@@ -326,17 +358,13 @@ class GestorMapa(
                 val halo = linea(parte, Paleta.HALO.toInt(), 10f, 230)
                 val l = linea(parte, color, 4.5f, 255)
                 l.setOnClickListener { _, _, _ -> alTocar(Seleccion.Rio(r)); true }
-                capaRios.add(halo); capaRios.add(l)
+                halos += halo; lineas += l
                 trazos += Trazo(r, halo, l, "grueso")
             }
         }
-        // los halos de todos van debajo de todas las lineas: se reordenan
-        val halos = trazos.map { it.halo }
-        halos.forEach { capaRios.remove(it) }
-        val lineas = capaRios.items.toList()
-        lineas.forEach { capaRios.remove(it) }
-        halos.forEach { capaRios.add(it) }
-        lineas.forEach { capaRios.add(it) }
+        trazosPorRio = trazos.groupBy { it.rio.rioAna }
+        riosDibujados = trazosPorRio.values.map { it.first().rio }
+        poner(capaRios, halos + lineas)
         revisarVista()
     }
 
@@ -354,11 +382,16 @@ class GestorMapa(
 
     fun mostrarFinos(nuevos: Map<String, List<List<Coord>>>) {
         finos = nuevos
-        bandaRios = ""
         revisarVista()
     }
 
-    /** Detalle del trazo por zoom: grueso (pais), medio, lejos (~50 m) o fino (~6 m) si llego y esta a la vista. */
+    /**
+     * Detalle del trazo por zoom: grueso (pais), medio, lejos (~50 m) o fino (~6 m) si llego. Solo se
+     * tocan los rios que tocan la vista (con margen): los demas estan apagados y no se dibujan, y
+     * reciben el detalle del zoom recien cuando entran en la vista (al parar el mapa). Asi, en vez de
+     * volcar los ~35 000 vertices de los ~100 rios del pais en el hilo principal cada vez que el zoom
+     * cruza una banda (y al llegar los datos, a zoom 13), se vuelcan los de los pocos rios a la vista.
+     */
     private fun ajustarDetalleRios(zoom: Double, vista: Caja) {
         val banda = when {
             zoom < 8 -> "grueso"
@@ -366,27 +399,20 @@ class GestorMapa(
             zoom < Cauces.DETALLE_DESDE -> "lejos"
             else -> "fino"
         }
-        val cambio = banda != bandaRios
-        bandaRios = banda
+        val conMargen = GeoJson.cajaConMargen(vista, 0.3)
         // una parte por trazo: cuando un rio tiene varias partes se dibujo una Polyline por parte del grueso;
         // al cambiar de banda se le ponen las partes equivalentes (misma cantidad y orden)
-        val porRio = trazos.groupBy { it.rio.rioAna }
-        for ((_, lista) in porRio) {
+        for ((rioAna, lista) in trazosPorRio) {
             val r = lista.first().rio
-            val visible = GeoJson.cajasSeCruzan(r.caja, vista)
-            val quiere = when {
-                banda == "fino" && visible && finos.containsKey(r.rioAna) -> "fino"
-                banda == "fino" -> "lejos"
-                else -> banda
-            }
+            if (!GeoJson.cajasSeCruzan(r.caja, conMargen)) continue
+            val quiere = if (banda == "fino" && !finos.containsKey(rioAna)) "lejos" else banda
             val partes: List<List<Coord>> = when (quiere) {
-                "fino" -> finos[r.rioAna] ?: r.lejos
+                "fino" -> finos[rioAna] ?: r.lejos
                 "lejos" -> r.lejos
                 "medio" -> r.medio
                 else -> r.grueso
             }
             for ((i, t) in lista.withIndex()) {
-                if (t.detalle == quiere && !cambio) continue
                 if (t.detalle == quiere) continue
                 val parte = partes.getOrNull(i) ?: continue
                 val pts = puntos(parte)
@@ -398,7 +424,6 @@ class GestorMapa(
         // en vista pais los rios tranquilos van finos y grises, los fuertes de color; lo que no toca la
         // vista (con margen) no se dibuja: osmdroid igual proyectaria sus vertices en cada cuadro
         val pais = zoom <= 6.5
-        val conMargen = GeoJson.cajaConMargen(vista, 0.3)
         for (t in trazos) {
             val fuerte = Cauces.esFuerte(t.rio.estado)
             val visible = GeoJson.cajasSeCruzan(t.rio.caja, conMargen)
@@ -414,8 +439,7 @@ class GestorMapa(
         if (zoom < Cauces.ROTULOS_DESDE || Capa.RIOS !in capas) return
         data class Candidato(val rio: RioDibujo, val punto: Coord, val adentro: Int, val fuerte: Boolean)
         val cand = ArrayList<Candidato>()
-        val rios = trazos.map { it.rio }.distinctBy { it.rioAna }
-        for (r in rios) {
+        for (r in riosDibujados) {
             if (!GeoJson.cajasSeCruzan(r.caja, vista)) continue
             var mejorParte: List<Coord>? = null; var mejorN = 0
             for (parte in r.lejos) {
@@ -428,22 +452,34 @@ class GestorMapa(
             cand += Candidato(r, adentro[adentro.size / 2], adentro.size, Cauces.esFuerte(r.estado))
         }
         cand.sortWith(compareByDescending<Candidato> { it.fuerte }.thenByDescending { it.adentro })
+        val nuevos = ArrayList<Overlay>()
         for (c in cand.take(Cauces.MAX_ROTULOS)) {
             val rio = c.rio
-            capaRotulos.add(rotulo(c.punto, rio.nombre, rio.estado.cauce.estado) { alTocar(Seleccion.Rio(rio)) })
+            val m = rotulosHechos.getOrPut("rio:${rio.rioAna}:${rio.estado.cauce.estado}") {
+                rotulo(rio.nombre, rio.estado.cauce.estado) { alTocar(Seleccion.Rio(rio)) }
+            }
+            m.position = gp(c.punto)
+            nuevos += m
         }
         // el Mashcon (rio vigilado) lleva tambien su nombre
-        val m = mashconDibujado ?: return
-        if (!GeoJson.cajasSeCruzan(m.caja, vista)) return
-        val parte = m.cauce.maxByOrNull { p -> p.count { GeoJson.dentro(it, vista) } } ?: return
-        val adentro = parte.filter { GeoJson.dentro(it, vista) }
-        if (adentro.size < 2) return
-        capaRotulos.add(rotulo(adentro[adentro.size / 2], m.nombre, m.cauceEstado.estado) { alTocar(Seleccion.Mashcon(m)) })
+        val m = mashconDibujado
+        if (m != null && GeoJson.cajasSeCruzan(m.caja, vista)) {
+            val parte = m.cauce.maxByOrNull { p -> p.count { GeoJson.dentro(it, vista) } }
+            val adentro = parte?.filter { GeoJson.dentro(it, vista) } ?: emptyList()
+            if (adentro.size >= 2) {
+                val marcador = rotulosHechos.getOrPut("mashcon:${m.cauceEstado.estado}") {
+                    rotulo(m.nombre, m.cauceEstado.estado) { alTocar(Seleccion.Mashcon(m)) }
+                }
+                marcador.position = gp(adentro[adentro.size / 2])
+                nuevos += marcador
+            }
+        }
+        poner(capaRotulos, nuevos)
     }
 
-    private fun rotulo(punto: Coord, nombre: String, estado: pe.simpac.app.dominio.EstadoCauce, alTocarRotulo: () -> Unit): Marker {
+    /** Marcador de texto con el nombre de un rio (setTextIcon dibuja un bitmap: por eso se guarda y se reusa); la posicion la pone quien lo usa. */
+    private fun rotulo(nombre: String, estado: pe.simpac.app.dominio.EstadoCauce, alTocarRotulo: () -> Unit): Marker {
         val m = Marker(mapa)
-        m.position = gp(punto)
         m.setTextLabelBackgroundColor(0xE6FFFFFF.toInt())
         m.setTextLabelForegroundColor(if (estado == pe.simpac.app.dominio.EstadoCauce.NORMAL) 0xFF0F4C81.toInt() else Paleta.cauce(estado).toInt())
         m.setTextLabelFontSize((12 * densidad).toInt())
@@ -457,6 +493,7 @@ class GestorMapa(
     // ---- estaciones de rio (ANA) ----
     fun mostrarEstacionesRio(lista: List<EstacionRioDibujo>) {
         vaciar(capaEstacionesRio)
+        val nuevos = ArrayList<Overlay>(lista.size)
         for (e in lista.sortedBy { if (it.fuerte) 1 else 0 }) {
             val m = Marker(mapa)
             m.position = GeoPoint(e.caudal.lat!!, e.caudal.lon!!)
@@ -464,14 +501,16 @@ class GestorMapa(
             m.setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_CENTER)
             m.infoWindow = null
             m.setOnMarkerClickListener { _, _ -> alTocar(Seleccion.EstacionRio(e)); true }
-            capaEstacionesRio.add(m)
+            nuevos += m
         }
+        poner(capaEstacionesRio, nuevos)
         mapa.invalidate()
     }
 
     // ---- zonas ----
     fun mostrarZonas(zonas: List<ZonaDibujo>) {
         vaciar(capaZonas)
+        val nuevos = ArrayList<Overlay>()
         // bajo_3m y estudio primero (debajo), bajo_2m encima
         val orden = zonas.sortedBy { if (it.subtipo == "bajo_2m") 1 else 0 }
         for (z in orden) {
@@ -489,7 +528,7 @@ class GestorMapa(
                     b.outlinePaint.alpha = 240
                     b.outlinePaint.strokeWidth = 5.5f * densidad
                     b.infoWindow = null
-                    capaZonas.add(b)
+                    nuevos += b
                 }
                 val p = Polygon(mapa)
                 p.points = puntos(pol.first())
@@ -520,15 +559,17 @@ class GestorMapa(
                 }
                 p.infoWindow = null
                 p.setOnClickListener { _, _, _ -> alTocar(Seleccion.Zona(z)); true }
-                capaZonas.add(p)
+                nuevos += p
             }
         }
+        poner(capaZonas, nuevos)
         mapa.invalidate()
     }
 
     // ---- franja de atencion de los rios del pais en alerta o emergencia ----
     fun mostrarFranjas(franjas: List<FranjaDibujo>) {
         vaciar(capaFranjas)
+        val nuevos = ArrayList<Overlay>()
         for (f in franjas) {
             val nivel = f.rio.estado.zona.nivel
             val oscuro = Paleta.zonaOscuro(nivel).toInt()
@@ -544,15 +585,17 @@ class GestorMapa(
                 p.outlinePaint.pathEffect = DashPathEffect(floatArrayOf(6f * densidad, 4f * densidad), 0f)   // contorno punteado
                 p.infoWindow = null
                 p.setOnClickListener { _, _, _ -> alTocar(Seleccion.Franja(f)); true }
-                capaFranjas.add(p)
+                nuevos += p
             }
         }
+        poner(capaFranjas, nuevos)
         mapa.invalidate()
     }
 
     // ---- estaciones de SENAMHI ----
     fun mostrarEstaciones(lista: List<EstacionSenamhi>) {
         vaciar(capaEstaciones)
+        val nuevos = ArrayList<Overlay>(lista.size)
         for (e in lista) {
             val m = Marker(mapa)
             m.position = GeoPoint(e.lat!!, e.lon!!)
@@ -560,14 +603,16 @@ class GestorMapa(
             m.setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_CENTER)
             m.infoWindow = null
             m.setOnMarkerClickListener { _, _ -> alTocar(Seleccion.Estacion(e)); true }
-            capaEstaciones.add(m)
+            nuevos += m
         }
+        poner(capaEstaciones, nuevos)
         mapa.invalidate()
     }
 
     // ---- a donde acudir ----
     fun mostrarAcudir(lista: List<PuntoAcudir>) {
         vaciar(capaAcudir)
+        val nuevos = ArrayList<Overlay>(lista.size)
         for (p in lista) {
             val m = Marker(mapa)
             m.position = GeoPoint(p.lat!!, p.lon!!)
@@ -575,8 +620,9 @@ class GestorMapa(
             m.setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_CENTER)
             m.infoWindow = null
             m.setOnMarkerClickListener { _, _ -> alTocar(Seleccion.Acudir(p)); true }
-            capaAcudir.add(m)
+            nuevos += m
         }
+        poner(capaAcudir, nuevos)
         mapa.invalidate()
     }
 
@@ -590,6 +636,7 @@ class GestorMapa(
         vaciar(capaPronostico)
         localidades.clear()
         pronosticoEnPuntos = null
+        val nuevos = ArrayList<Overlay>()
         val propiasPorCodigo = filas.groupBy { it.codigo }
         val delDia = filas.filter { it.fecha == fecha && it.lat != null && it.lon != null }
         // tu localidad al final (encima); los de mas prioridad (tormenta, lluvia) encima de los secos
@@ -602,9 +649,10 @@ class GestorMapa(
             m.infoWindow = null
             m.title = f.nombre
             m.setOnMarkerClickListener { _, _ -> alTocar(Seleccion.Localidad(f, propiasPorCodigo[f.codigo] ?: listOf(f), esTuya)); true }
-            capaPronostico.add(m)
+            nuevos += m
             localidades += Localidad(m, a, esTuya)
         }
+        poner(capaPronostico, nuevos)
         revisarVista()
     }
 
@@ -622,6 +670,7 @@ class GestorMapa(
     fun mostrarNowcast(n: NowcastDibujo?) {
         vaciar(capaNowcast)
         if (n == null) { mapa.invalidate(); return }
+        val nuevos = ArrayList<Overlay>()
         for (m in n.manchas) {
             val color = (Nowcast.COLOR[m.nivel] ?: Nowcast.COLOR.getValue(1)).toInt()
             for (pol in m.poligonos.poligonos) {
@@ -634,15 +683,17 @@ class GestorMapa(
                 p.outlinePaint.pathEffect = DashPathEffect(floatArrayOf(4f * densidad, 3f * densidad), 0f)
                 p.infoWindow = null
                 p.setOnClickListener { _, _, pos -> alTocar(Seleccion.ManchaNowcast(m, n.horizonte, pos.latitude, pos.longitude)); true }
-                capaNowcast.add(p)
+                nuevos += p
             }
         }
+        poner(capaNowcast, nuevos)
         mapa.invalidate()
     }
 
     // ---- lluvia de la ultima hora ----
     fun mostrarLluviaAhora(lista: List<LluviaDibujo>) {
         vaciar(capaLluvia)
+        val nuevos = ArrayList<Overlay>(lista.size)
         for (l in lista) {   // ya viene ordenada: las que pasaron la referencia al final (encima)
             val m = Marker(mapa)
             m.position = GeoPoint(l.e.lat!!, l.e.lon!!)
@@ -650,8 +701,9 @@ class GestorMapa(
             m.setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_CENTER)
             m.infoWindow = null
             m.setOnMarkerClickListener { _, _ -> alTocar(Seleccion.LluviaEstacion(l)); true }
-            capaLluvia.add(m)
+            nuevos += m
         }
+        poner(capaLluvia, nuevos)
         mapa.invalidate()
     }
 
@@ -716,26 +768,24 @@ class GestorMapa(
     }
 
     // ---- El Nino pasados ----
-    /** Crea los poligonos una vez (fuera de la capa); revisarVista pone en la capa los de la vista con el detalle del zoom. */
+    /** Guarda las areas del evento; revisarVista crea y pone en la capa las de la vista con el detalle del zoom. */
     fun mostrarFen(f: FenDibujo?) {
         vaciar(capaFen)
         fenDibujados.clear()
-        if (f != null) for (d in f.poligonos) {
-            val color = (d.clase?.color ?: Fen.COLOR_SIN_CLASE).toInt()
-            val overlays = ArrayList<Polygon>(d.lejos.size)
-            for (anillo in d.lejos) {
-                val p = Polygon(mapa)
-                p.points = puntos(anillo)
-                p.fillPaint.color = (color and 0x00FFFFFF) or (Fen.alfa(d.clase) shl 24)
-                p.outlinePaint.color = Color.TRANSPARENT
-                p.outlinePaint.strokeWidth = 0f
-                p.infoWindow = null
-                p.setOnClickListener { _, _, _ -> alTocar(Seleccion.PoligonoFen(d, f)); true }
-                overlays += p
-            }
-            fenDibujados += PoligonoFenDibujado(d, overlays, "lejos")
-        }
+        if (f != null) for (d in f.poligonos) fenDibujados += PoligonoFenDibujado(d, f, (d.clase?.color ?: Fen.COLOR_SIN_CLASE).toInt())
         revisarVista()
+    }
+
+    /** Los Polygon de un area (uno por anillo), con los anillos lejanos; ajustarFen les pone el detalle del zoom. */
+    private fun poligonosFen(d: PoligonoFenDibujado): List<Polygon> = d.dato.lejos.map { anillo ->
+        val p = Polygon(mapa)
+        p.points = puntos(anillo)
+        p.fillPaint.color = (d.color and 0x00FFFFFF) or (Fen.alfa(d.dato.clase) shl 24)
+        p.outlinePaint.color = Color.TRANSPARENT
+        p.outlinePaint.strokeWidth = 0f
+        p.infoWindow = null
+        p.setOnClickListener { _, _, _ -> alTocar(Seleccion.PoligonoFen(d.dato, d.fen)); true }
+        p
     }
 
     /**
@@ -743,23 +793,33 @@ class GestorMapa(
      * en TODOS los overlays de una carpeta, esten o no habilitados, y un poligono fuera de la vista
      * guarda el trazo de pantalla de su ultimo dibujo; sacarlo de la carpeta evita que se lleve un
      * toque y que se recorra en cada cuadro. De lejos (zoom 9 o menos) van los anillos simplificados.
+     * Los Polygon de un area se crean la primera vez que toca la vista: al prender la capa con el mapa
+     * cerca no se construye el pais entero en el hilo principal.
      */
     private fun ajustarFen(zoom: Double, vista: Caja) {
         if (fenDibujados.isEmpty()) return
         val detalle = if (zoom <= FEN_LEJOS_HASTA) "lejos" else "fino"
         val conMargen = GeoJson.cajaConMargen(vista, 0.3)
+        val items = lista(capaFen) ?: return
+        // altas y bajas en lote: la lista de la carpeta copia todo su arreglo en cada cambio
+        val quitar = HashSet<Overlay>()
+        val agregar = ArrayList<Overlay>()
         for (d in fenDibujados) {
             val visible = Capa.FEN in capas && GeoJson.cajasSeCruzan(d.dato.caja, conMargen)
-            if (visible && d.detalle != detalle) {
+            if (!visible) {
+                if (d.enCapa) { d.overlays?.let { quitar += it }; d.enCapa = false }
+                continue
+            }
+            val overlays = d.overlays ?: poligonosFen(d).also { d.overlays = it; d.detalle = "lejos" }
+            if (d.detalle != detalle) {
                 val anillos = if (detalle == "fino") d.dato.anillos else d.dato.lejos
-                for ((i, p) in d.overlays.withIndex()) anillos.getOrNull(i)?.let { p.points = puntos(it) }
+                for ((i, p) in overlays.withIndex()) anillos.getOrNull(i)?.let { p.points = puntos(it) }
                 d.detalle = detalle
             }
-            if (visible != d.enCapa) {
-                if (visible) d.overlays.forEach { capaFen.add(it) } else d.overlays.forEach { capaFen.remove(it) }
-                d.enCapa = visible
-            }
+            if (!d.enCapa) { agregar += overlays; d.enCapa = true }
         }
+        if (quitar.isNotEmpty()) items.removeAll(quitar)
+        if (agregar.isNotEmpty()) items.addAll(agregar)
     }
 
     // ---- desbordes y danos pasados (rombos agrupados por zoom) ----
@@ -776,6 +836,7 @@ class GestorMapa(
         zoomRombos = z
         vaciar(capaDesbordes)
         if (incidentes.isEmpty()) return
+        val nuevos = ArrayList<Overlay>()
         val lat0 = incidentes.sumOf { it.lat!! } / incidentes.size
         for (g in Incidentes.agrupar(incidentes, Incidentes.radioM(lat0, z.toDouble()))) {
             val i = g.incidentes.first()   // el mas nuevo
@@ -785,13 +846,15 @@ class GestorMapa(
             m.setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_CENTER)
             m.infoWindow = null
             m.setOnMarkerClickListener { _, _ -> alTocar(Seleccion.Incidentes(g, nombresRiosVigilados[i.rio])); true }
-            capaDesbordes.add(m)
+            nuevos += m
         }
+        poner(capaDesbordes, nuevos)
     }
 
     // ---- reportes de la comunidad ----
     fun mostrarReportes(lista: List<ReporteVigente>) {
         vaciar(capaReportes)
+        val nuevos = ArrayList<Overlay>(lista.size)
         for (r in lista) {
             val tipo = Reportes.tipo(r.tipo)
             val m = Marker(mapa)
@@ -801,8 +864,9 @@ class GestorMapa(
             m.alpha = Reportes.opacidad(r.estado, r.likes, r.dislikes)
             m.infoWindow = null
             m.setOnMarkerClickListener { _, _ -> alTocar(Seleccion.Reporte(r)); true }
-            capaReportes.add(m)
+            nuevos += m
         }
+        poner(capaReportes, nuevos)
         mapa.invalidate()
     }
 
@@ -817,13 +881,19 @@ class GestorMapa(
         m.setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_CENTER)
         m.infoWindow = null
         m.setOnMarkerClickListener { _, _ -> true }
-        capaUbicacion.add(m)
+        poner(capaUbicacion, listOf(m))
         marcadorUbicacion = m
         mapa.invalidate()
     }
 
+    /** Vuelo corto (500 ms) hasta el punto; el zoom se conserva si no se pide otro. */
     fun centrar(p: Posicion, zoom: Double? = null) {
-        mapa.controller.animateTo(GeoPoint(p.lat, p.lon), zoom ?: mapa.zoomLevelDouble, 400L)
+        mapa.controller.animateTo(GeoPoint(p.lat, p.lon), zoom ?: mapa.zoomLevelDouble, MOVIMIENTO_MS)
+    }
+
+    /** Lo mismo pero con un zoom fijo (cambio de ciudad o de ubicacion con el mapa ya abierto). */
+    fun volar(p: Posicion, zoom: Double) {
+        mapa.controller.animateTo(GeoPoint(p.lat, p.lon), zoom, MOVIMIENTO_MS)
     }
 
     fun encuadrar(c: Caja) {

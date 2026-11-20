@@ -23,6 +23,7 @@ import pe.simpac.app.SimpacApp
 import pe.simpac.app.data.AvisoHidro
 import pe.simpac.app.data.AvisoVigente
 import pe.simpac.app.data.CaudalActual
+import pe.simpac.app.data.ErrorConsulta
 import pe.simpac.app.data.EstacionSenamhi
 import pe.simpac.app.data.LluviaSenamhiActual
 import pe.simpac.app.data.NowcastEstado
@@ -60,6 +61,7 @@ import pe.simpac.app.dominio.TextoRio
 import pe.simpac.app.dominio.Tiempo
 import pe.simpac.app.ubicacion.Posicion
 import pe.simpac.app.ubicacion.Ubicacion
+import java.io.IOException
 
 /** Los grupos del panel de capas, en el orden de la web (map/layers/index.js GRUPOS). */
 object GruposCapa {
@@ -255,7 +257,14 @@ data class EstadoMapa(
     val obtenidoReportesEn: Long? = null,
     val franjas: List<FranjaDibujo> = emptyList(),
     val errores: Map<Capa, String> = emptyMap(),          // "No se pudo cargar ..." por capa
+    val cargandoCapas: Set<Capa> = emptySet(),            // capas que estan pidiendo datos ahora mismo (solo para el indicador)
 ) {
+    /** Verdadero mientras el mapa o alguna capa pide datos (la barra fina bajo el selector de dia). */
+    val cargandoAlgo: Boolean get() = cargando || fenCargando || cargandoCapas.isNotEmpty()
+
+    /** Si la capa esta pidiendo datos ahora (para la rueda chica junto a su interruptor). */
+    fun cargandoCapa(capa: Capa): Boolean = capa in cargandoCapas || (capa == Capa.FEN && fenCargando)
+
     /** Lo que la hoja "Capas" dice bajo cada interruptor (la nota de render() de la web). */
     fun nota(capa: Capa): String? {
         errores[capa]?.let { return it }
@@ -361,6 +370,7 @@ class MapaViewModel(app: Application) : AndroidViewModel(app) {
                     sateliteHora = actual.sateliteHora, sateliteNota = actual.sateliteNota, fenOpcion = actual.fenOpcion, fen = actual.fen,
                     fenCargando = actual.fenCargando, incidentes = actual.incidentes, obtenidoIncidentesEn = actual.obtenidoIncidentesEn,
                     reportes = actual.reportes, obtenidoReportesEn = actual.obtenidoReportesEn, errores = actual.errores,
+                    cargandoCapas = actual.cargandoCapas,
                     localidadTuya = actual.pronostico.takeIf { it.isNotEmpty() }?.let { p -> PronosticoMapa.localidadCercana(p, centro.lat, centro.lon) },
                 )
             }
@@ -412,6 +422,11 @@ class MapaViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    /** Vuelve a las capas de fabrica (boton "Restablecer" de la hoja Capas); cada cambio pasa por alternarCapa. */
+    fun restablecerCapas() {
+        for (capa in Capa.entries) if ((capa in _estado.value.capas) != capa.deFabrica) alternarCapa(capa)
+    }
+
     /** El selector Hoy / Manana / Pasado: mueve a la vez los avisos (por su fecha) y el pronostico. */
     fun elegirDia(dia: DiaMapa) {
         _estado.update { e ->
@@ -445,11 +460,33 @@ class MapaViewModel(app: Application) : AndroidViewModel(app) {
 
     private fun conError(capa: Capa, texto: String?) = _estado.update { e -> e.copy(errores = if (texto == null) e.errores - capa else e.errores + (capa to texto)) }
 
+    /**
+     * Texto de un fallo para la pantalla, sin detalles tecnicos: nunca el host de Supabase ni el
+     * mensaje de la excepcion. Si fallo la red (sin conexion, tiempo agotado) pide revisar la
+     * conexion; si no (el servidor respondio mal o la respuesta no se entendio) pide intentar luego.
+     */
+    private fun fallo(base: String, e: Throwable?): String =
+        if (esDeRed(e)) "$base Revisa tu conexión e inténtalo de nuevo." else "$base Inténtalo de nuevo en un momento."
+
+    /** Http.get envuelve el IOException de OkHttp en un ErrorConsulta con esa causa; un IOException suelto tambien es red. */
+    private fun esDeRed(e: Throwable?): Boolean = when (e) {
+        null -> false
+        is ErrorConsulta -> e.cause is IOException
+        is IOException -> true
+        else -> false
+    }
+
+    /** Marca (o desmarca) que la capa esta pidiendo datos; solo mueve el indicador, no cambia ningun dato. */
+    private fun cargandoCapa(capa: Capa, si: Boolean) = _estado.update { e ->
+        if (si == (capa in e.cargandoCapas)) e else e.copy(cargandoCapas = if (si) e.cargandoCapas + capa else e.cargandoCapas - capa)
+    }
+
     // ---- pronostico por localidad ----
     private fun pedirPronostico() {
         if (pronosticoPedido) return
         pronosticoPedido = true
         viewModelScope.launch {
+            cargandoCapa(Capa.PRONOSTICO, true)
             try {
                 val r = withContext(Dispatchers.IO) { repo.pronosticoMapa() }
                 val filas = r.dato.filter { it.lat != null && it.lon != null && it.fecha != null }
@@ -460,7 +497,9 @@ class MapaViewModel(app: Application) : AndroidViewModel(app) {
                 conError(Capa.PRONOSTICO, null)
             } catch (ex: Exception) {
                 pronosticoPedido = false
-                conError(Capa.PRONOSTICO, "No se pudo cargar el pronóstico por localidad (${ex.message}).")
+                conError(Capa.PRONOSTICO, fallo("No se pudo cargar el pronóstico por localidad.", ex))
+            } finally {
+                cargandoCapa(Capa.PRONOSTICO, false)
             }
         }
     }
@@ -478,20 +517,27 @@ class MapaViewModel(app: Application) : AndroidViewModel(app) {
 
     private suspend fun pedirNowcast() {
         val h = _estado.value.nowcastHorizonte
-        val rEstado = runCatching { withContext(Dispatchers.IO) { repo.nowcastEstado() } }
-        val rManchas = runCatching { withContext(Dispatchers.IO) { repo.nowcastVigente(h) } }
-        val ahora = System.currentTimeMillis()
-        val e = rEstado.getOrNull()?.dato?.firstOrNull { it.horizonte_min == h }
-        val manchas = rManchas.getOrNull()?.dato
-        val nota = Nowcast.nota(e, manchas?.size, h, ahora)
-        val dibujos = if (nota.estado == Nowcast.EstadoNota.FRESCO) withContext(Dispatchers.Default) {
-            (manchas ?: emptyList()).mapNotNull { m ->
-                val geo = GeoJson.parsear(m.geojson) as? Geometria.Poligonos ?: return@mapNotNull null
-                val caja = GeoJson.caja(geo) ?: return@mapNotNull null
-                ManchaDibujo(m.nivel, m, geo, caja)
-            }.sortedBy { it.nivel }
-        } else emptyList()
-        _estado.update { it.copy(nowcast = NowcastDibujo(h, e, dibujos, nota, ahora)) }
+        // el indicador solo la primera vez (o al cambiar de horizonte): el refresco de cada 2 min es silencioso
+        val primera = _estado.value.nowcast == null
+        if (primera) cargandoCapa(Capa.NOWCAST, true)
+        try {
+            val rEstado = runCatching { withContext(Dispatchers.IO) { repo.nowcastEstado() } }
+            val rManchas = runCatching { withContext(Dispatchers.IO) { repo.nowcastVigente(h) } }
+            val ahora = System.currentTimeMillis()
+            val e = rEstado.getOrNull()?.dato?.firstOrNull { it.horizonte_min == h }
+            val manchas = rManchas.getOrNull()?.dato
+            val nota = Nowcast.nota(e, manchas?.size, h, ahora)
+            val dibujos = if (nota.estado == Nowcast.EstadoNota.FRESCO) withContext(Dispatchers.Default) {
+                (manchas ?: emptyList()).mapNotNull { m ->
+                    val geo = GeoJson.parsear(m.geojson) as? Geometria.Poligonos ?: return@mapNotNull null
+                    val caja = GeoJson.caja(geo) ?: return@mapNotNull null
+                    ManchaDibujo(m.nivel, m, geo, caja)
+                }.sortedBy { it.nivel }
+            } else emptyList()
+            _estado.update { it.copy(nowcast = NowcastDibujo(h, e, dibujos, nota, ahora)) }
+        } finally {
+            if (primera) cargandoCapa(Capa.NOWCAST, false)
+        }
     }
 
     // ---- lluvia de la ultima hora ----
@@ -499,6 +545,7 @@ class MapaViewModel(app: Application) : AndroidViewModel(app) {
         if (lluviaPedida && System.currentTimeMillis() - (_estado.value.obtenidoLluviaEn ?: 0L) < 5 * 60_000L) return
         lluviaPedida = true
         viewModelScope.launch {
+            cargandoCapa(Capa.LLUVIA_AHORA, true)
             try {
                 val r = withContext(Dispatchers.IO) { repo.lluviaAhora() }
                 val lista = withContext(Dispatchers.Default) {
@@ -510,7 +557,9 @@ class MapaViewModel(app: Application) : AndroidViewModel(app) {
                 conError(Capa.LLUVIA_AHORA, null)
             } catch (ex: Exception) {
                 lluviaPedida = false
-                conError(Capa.LLUVIA_AHORA, "No se pudo cargar la lluvia de las estaciones (${ex.message}).")
+                conError(Capa.LLUVIA_AHORA, fallo("No se pudo cargar la lluvia de las estaciones.", ex))
+            } finally {
+                cargandoCapa(Capa.LLUVIA_AHORA, false)
             }
         }
     }
@@ -518,14 +567,19 @@ class MapaViewModel(app: Application) : AndroidViewModel(app) {
     // ---- lluvia observada (WMS de SENAMHI): de que dias es (latido) y si el servidor responde ----
     private fun pedirLluviaObservada() {
         viewModelScope.launch {
-            val c = Lluvia.observada(_estado.value.lluviaObsOpcion)
-            val resumen = runCatching { withContext(Dispatchers.IO) { repo.latido("lluvia_nacional") } }.getOrNull()?.dato?.resumen as? JsonObject
-            fun campo(k: String) = (resumen?.get(k) as? JsonPrimitive)?.content?.takeIf { it != "null" }
-            val nota = Lluvia.notaObservada(c, campo("prec_1"), campo("prec_1_ac07d_desde"), campo("prec_1_ac07d"))
-            _estado.update { it.copy(lluviaObsNota = nota, lluviaObsDia = campo("prec_1"), lluviaObsSinServidor = false) }
-            // una imagen de prueba (el pais a zoom 5): si falla, la capa lo dice (como tileerror en la web)
-            val responde = repo.pruebaWms(FuenteWmsSenamhi.urlPrueba(c))
-            if (!responde) _estado.update { it.copy(lluviaObsSinServidor = true) }
+            cargandoCapa(Capa.LLUVIA_OBSERVADA, true)
+            try {
+                val c = Lluvia.observada(_estado.value.lluviaObsOpcion)
+                val resumen = runCatching { withContext(Dispatchers.IO) { repo.latido("lluvia_nacional") } }.getOrNull()?.dato?.resumen as? JsonObject
+                fun campo(k: String) = (resumen?.get(k) as? JsonPrimitive)?.content?.takeIf { it != "null" }
+                val nota = Lluvia.notaObservada(c, campo("prec_1"), campo("prec_1_ac07d_desde"), campo("prec_1_ac07d"))
+                _estado.update { it.copy(lluviaObsNota = nota, lluviaObsDia = campo("prec_1"), lluviaObsSinServidor = false) }
+                // una imagen de prueba (el pais a zoom 5): si falla, la capa lo dice (como tileerror en la web)
+                val responde = repo.pruebaWms(FuenteWmsSenamhi.urlPrueba(c))
+                if (!responde) _estado.update { it.copy(lluviaObsSinServidor = true) }
+            } finally {
+                cargandoCapa(Capa.LLUVIA_OBSERVADA, false)
+            }
         }
     }
 
@@ -534,13 +588,16 @@ class MapaViewModel(app: Application) : AndroidViewModel(app) {
         trabajoSatelite?.cancel()
         trabajoSatelite = viewModelScope.launch {
             while (isActive) {
+                cargandoCapa(Capa.SATELITE, true)
                 try {
                     val hora = repo.horaSatelite()
                     _estado.update { it.copy(sateliteHora = hora, sateliteNota = Lluvia.notaSatelite(hora, 13.0)) }
                     conError(Capa.SATELITE, null)
                 } catch (ex: Exception) {
                     _estado.update { it.copy(sateliteHora = null, sateliteNota = null) }
-                    conError(Capa.SATELITE, "No se pudo consultar las imágenes de NASA GIBS (${ex.message}).")
+                    conError(Capa.SATELITE, fallo("No se pudo consultar las imágenes de NASA GIBS.", ex))
+                } finally {
+                    cargandoCapa(Capa.SATELITE, false)
                 }
                 delay(30 * 60_000L)
             }
@@ -573,7 +630,7 @@ class MapaViewModel(app: Application) : AndroidViewModel(app) {
                 conError(Capa.FEN, null)
             } catch (ex: Exception) {
                 _estado.update { it.copy(fenCargando = false) }
-                conError(Capa.FEN, "No se pudo cargar el mapa del evento (${ex.message}).")
+                conError(Capa.FEN, fallo("No se pudo cargar el mapa del evento.", ex))
             }
         }
     }
@@ -583,13 +640,16 @@ class MapaViewModel(app: Application) : AndroidViewModel(app) {
         if (incidentesPedidos) return
         incidentesPedidos = true
         viewModelScope.launch {
+            cargandoCapa(Capa.DESBORDES, true)
             try {
                 val r = withContext(Dispatchers.IO) { repo.incidentesRio() }
                 _estado.update { it.copy(incidentes = r.dato, obtenidoIncidentesEn = r.obtenidoEn) }
                 conError(Capa.DESBORDES, null)
             } catch (ex: Exception) {
                 incidentesPedidos = false
-                conError(Capa.DESBORDES, "No se pudieron cargar los desbordes pasados (${ex.message}).")
+                conError(Capa.DESBORDES, fallo("No se pudieron cargar los desbordes pasados.", ex))
+            } finally {
+                cargandoCapa(Capa.DESBORDES, false)
             }
         }
     }
@@ -599,12 +659,17 @@ class MapaViewModel(app: Application) : AndroidViewModel(app) {
         val fuertes = _estado.value.rios.filter { Cauces.esFuerte(it.estado) && it.rioAna !in franjasPedidas }
         if (fuertes.isEmpty()) return
         viewModelScope.launch {
-            for (r in fuertes) {
-                franjasPedidas += r.rioAna
-                val f = try { withContext(Dispatchers.IO) { repo.franjaRio(r.rioAna) }.dato } catch (_: Exception) { franjasPedidas -= r.rioAna; continue }
-                val geo = withContext(Dispatchers.Default) { GeoJson.parsear(f?.franja) as? Geometria.Poligonos } ?: continue
-                val caja = GeoJson.caja(geo) ?: continue
-                _estado.update { e -> e.copy(franjas = e.franjas.filter { it.rio.rioAna != r.rioAna } + FranjaDibujo(r, f?.ancho_m, geo, caja)) }
+            cargandoCapa(Capa.ZONAS, true)
+            try {
+                for (r in fuertes) {
+                    franjasPedidas += r.rioAna
+                    val f = try { withContext(Dispatchers.IO) { repo.franjaRio(r.rioAna) }.dato } catch (_: Exception) { franjasPedidas -= r.rioAna; continue }
+                    val geo = withContext(Dispatchers.Default) { GeoJson.parsear(f?.franja) as? Geometria.Poligonos } ?: continue
+                    val caja = GeoJson.caja(geo) ?: continue
+                    _estado.update { e -> e.copy(franjas = e.franjas.filter { it.rio.rioAna != r.rioAna } + FranjaDibujo(r, f?.ancho_m, geo, caja)) }
+                }
+            } finally {
+                cargandoCapa(Capa.ZONAS, false)
             }
         }
     }
@@ -645,13 +710,16 @@ class MapaViewModel(app: Application) : AndroidViewModel(app) {
         if (redonda == ultimaCajaReportes && ahora - reportesPedidosEn < REPORTES_CADA_MS) return
         ultimaCajaReportes = redonda
         reportesPedidosEn = ahora
+        cargandoCapa(Capa.REPORTES, true)
         try {
             val r = withContext(Dispatchers.IO) { repo.reportesVigentes(redonda) }
             _estado.update { it.copy(reportes = r.dato.filter { x -> x.lat != null && x.lon != null }, obtenidoReportesEn = r.obtenidoEn) }
             conError(Capa.REPORTES, null)
         } catch (ex: Exception) {
             ultimaCajaReportes = null
-            conError(Capa.REPORTES, "No se pudieron leer los reportes de la comunidad (${ex.message}).")
+            conError(Capa.REPORTES, fallo("No se pudieron leer los reportes de la comunidad.", ex))
+        } finally {
+            cargandoCapa(Capa.REPORTES, false)
         }
     }
 
@@ -659,15 +727,20 @@ class MapaViewModel(app: Application) : AndroidViewModel(app) {
         val ids = Cauces.riosParaZonas(cajasPais, caja, zoom).filter { it !in zonasPedidas }
         if (ids.isEmpty()) return
         zonasPedidas += ids
-        val filas = try {
-            withContext(Dispatchers.IO) { repo.zonasCauces(ids) }
-        } catch (_: Exception) {
-            zonasPedidas -= ids.toSet()   // se vuelve a intentar al mover el mapa
-            return
+        cargandoCapa(Capa.ZONAS, true)
+        try {
+            val filas = try {
+                withContext(Dispatchers.IO) { repo.zonasCauces(ids) }
+            } catch (_: Exception) {
+                zonasPedidas -= ids.toSet()   // se vuelve a intentar al mover el mapa
+                return
+            }
+            val nuevas = withContext(Dispatchers.Default) { filas.dato.mapNotNull { zonaPais(it) } }
+            if (nuevas.isEmpty()) return
+            _estado.update { e -> e.copy(zonas = e.zonas + nuevas.filter { n -> e.zonas.none { it.clave == n.clave } }) }
+        } finally {
+            cargandoCapa(Capa.ZONAS, false)
         }
-        val nuevas = withContext(Dispatchers.Default) { filas.dato.mapNotNull { zonaPais(it) } }
-        if (nuevas.isEmpty()) return
-        _estado.update { e -> e.copy(zonas = e.zonas + nuevas.filter { n -> e.zonas.none { it.clave == n.clave } }) }
     }
 
     private fun zonaPais(z: RioCauceZonaMapa): ZonaDibujo? {
@@ -687,16 +760,21 @@ class MapaViewModel(app: Application) : AndroidViewModel(app) {
     private suspend fun pedirFinos(caja: Caja) {
         val visibles = _estado.value.rios.filter { GeoJson.cajasSeCruzan(it.caja, caja) && it.rioAna !in finosPedidos }.take(6)
         if (visibles.isEmpty()) return
-        for (r in visibles) {
-            finosPedidos += r.rioAna
-            val detalle = try {
-                withContext(Dispatchers.IO) { repo.cauceFino(r.rioAna) }.dato
-            } catch (_: Exception) {
-                finosPedidos -= r.rioAna
-                continue
+        cargandoCapa(Capa.RIOS, true)
+        try {
+            for (r in visibles) {
+                finosPedidos += r.rioAna
+                val detalle = try {
+                    withContext(Dispatchers.IO) { repo.cauceFino(r.rioAna) }.dato
+                } catch (_: Exception) {
+                    finosPedidos -= r.rioAna
+                    continue
+                }
+                val partes = withContext(Dispatchers.Default) { (GeoJson.parsear(detalle?.cauce) as? Geometria.Lineas)?.partes }
+                if (partes != null) _estado.update { e -> e.copy(cauceFino = e.cauceFino + (r.rioAna to partes)) }
             }
-            val partes = withContext(Dispatchers.Default) { (GeoJson.parsear(detalle?.cauce) as? Geometria.Lineas)?.partes }
-            if (partes != null) _estado.update { e -> e.copy(cauceFino = e.cauceFino + (r.rioAna to partes)) }
+        } finally {
+            cargandoCapa(Capa.RIOS, false)
         }
     }
 
@@ -704,11 +782,14 @@ class MapaViewModel(app: Application) : AndroidViewModel(app) {
         val redonda = GeoJson.cajaRedondeada(caja)
         if (redonda == ultimaCajaEstaciones) return
         ultimaCajaEstaciones = redonda
+        cargandoCapa(Capa.ESTACIONES, true)
         try {
             val r = withContext(Dispatchers.IO) { repo.estaciones(redonda) }
             _estado.update { it.copy(estaciones = r.dato.filter { e -> e.lat != null && e.lon != null }, obtenidoEstacionesEn = r.obtenidoEn) }
         } catch (_: Exception) {
             ultimaCajaEstaciones = null
+        } finally {
+            cargandoCapa(Capa.ESTACIONES, false)
         }
     }
 
@@ -716,11 +797,14 @@ class MapaViewModel(app: Application) : AndroidViewModel(app) {
         val redonda = GeoJson.cajaRedondeada(caja)
         if (redonda == ultimaCajaAcudir) return
         ultimaCajaAcudir = redonda
+        cargandoCapa(Capa.ACUDIR, true)
         try {
             val r = withContext(Dispatchers.IO) { repo.puntosAcudirMapa(redonda) }
             _estado.update { it.copy(acudir = r.dato.filter { p -> p.lat != null && p.lon != null }, obtenidoAcudirEn = r.obtenidoEn) }
         } catch (_: Exception) {
             ultimaCajaAcudir = null
+        } finally {
+            cargandoCapa(Capa.ACUDIR, false)
         }
     }
 
@@ -740,13 +824,14 @@ class MapaViewModel(app: Application) : AndroidViewModel(app) {
         val rCauces = tCauces.await(); val rSenalesCauces = tSenalesCauces.await()
 
         if (rAvisos.isFailure && rCaudales.isFailure && rCauces.isFailure) {
-            val motivo = rCaudales.exceptionOrNull()?.message ?: rAvisos.exceptionOrNull()?.message ?: "sin respuesta"
-            return@coroutineScope EstadoMapa(cargando = false, error = "No se pudieron leer los datos del mapa ($motivo). Revisa tu conexión.")
+            // sin el motivo tecnico en pantalla (traia el host de Supabase); solo si fue la red o no
+            val causa = rCaudales.exceptionOrNull() ?: rAvisos.exceptionOrNull() ?: rCauces.exceptionOrNull()
+            return@coroutineScope EstadoMapa(cargando = false, error = fallo("No se pudieron leer los datos del mapa.", causa))
         }
         val parciales = mutableListOf<String>()
-        rAvisos.exceptionOrNull()?.let { parciales += "No se pudieron leer los avisos de SENAMHI (${it.message})." }
-        rCaudales.exceptionOrNull()?.let { parciales += "No se pudieron leer los niveles de los ríos de ANA (${it.message})." }
-        rCauces.exceptionOrNull()?.let { parciales += "No se pudieron leer los trazos de los ríos (${it.message})." }
+        rAvisos.exceptionOrNull()?.let { parciales += fallo("No se pudieron leer los avisos de SENAMHI.", it) }
+        rCaudales.exceptionOrNull()?.let { parciales += fallo("No se pudieron leer los niveles de los ríos de ANA.", it) }
+        rCauces.exceptionOrNull()?.let { parciales += fallo("No se pudieron leer los trazos de los ríos.", it) }
         rVigilados.exceptionOrNull()?.let { parciales += "No se pudo leer el río Mashcón." }
 
         val ahora = System.currentTimeMillis()

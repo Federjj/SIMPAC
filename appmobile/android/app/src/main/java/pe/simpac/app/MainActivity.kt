@@ -8,6 +8,7 @@ import androidx.activity.enableEdgeToEdge
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import pe.simpac.app.ui.AppSimpac
 import pe.simpac.app.ui.Pestana
 import pe.simpac.app.ui.theme.SimpacTheme
@@ -23,6 +24,9 @@ class MainActivity : ComponentActivity() {
     private var vecesPedida by mutableStateOf(0)
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        // Pantalla de arranque del sistema (Theme.SIMPAC.Splash: fondo azul oscuro y la gota); al dibujar
+        // el primer cuadro de Compose pasa sola al tema normal (postSplashScreenTheme). Va antes de super.
+        installSplashScreen()
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         leerRuta(intent)

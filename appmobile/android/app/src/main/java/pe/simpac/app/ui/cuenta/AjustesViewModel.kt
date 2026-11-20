@@ -18,7 +18,7 @@ class AjustesViewModel(app: Application) : AndroidViewModel(app) {
 
     val conf: StateFlow<AjustesApp?> = ajustes.flujo.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 
-    /** Mensaje corto de la ultima accion (guardado, error de FCM...). */
+    /** Mensaje corto de la ultima accion (guardado, error de FCM...); la pantalla lo muestra en el snackbar global y lo consume. */
     private val _mensaje = MutableStateFlow<String?>(null)
     val mensaje: StateFlow<String?> = _mensaje
 
@@ -29,7 +29,16 @@ class AjustesViewModel(app: Application) : AndroidViewModel(app) {
             ajustes.guardarDepartamento(nombre)
             ajustes.guardarUsarGps(false)
             val c = ajustes.actual()
-            if (c.notificaciones && pushDisponible) activarPush(nombre)
+            if (c.notificaciones && pushDisponible) {
+                try {
+                    activarPush(nombre)
+                    _mensaje.value = "Zona guardada: $nombre. Los avisos ahora son de este departamento."
+                } catch (e: Exception) {
+                    _mensaje.value = "Zona guardada: $nombre, pero no se pudo cambiar la suscripción (${e.message ?: "sin respuesta de Firebase"})."
+                }
+            } else {
+                _mensaje.value = "Zona guardada: $nombre."
+            }
         }
     }
 

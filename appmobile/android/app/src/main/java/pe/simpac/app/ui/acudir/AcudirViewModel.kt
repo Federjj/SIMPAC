@@ -23,6 +23,7 @@ data class EstadoAcudir(
     val cuantosEnCaja: Int = 0,
     val obtenidoEn: Long? = null,
     val deCache: Boolean = false,
+    val cargado: Boolean = false,             // punto_acudir ya respondio alguna vez: recargar no vuelve al esqueleto
 )
 
 class AcudirViewModel(app: Application) : AndroidViewModel(app) {
@@ -46,10 +47,14 @@ class AcudirViewModel(app: Application) : AndroidViewModel(app) {
                 _estado.value = EstadoAcudir(
                     cargando = false, desde = desde, porGps = posicion != null,
                     puntos = Acudir.paraTarjeta(r.dato, centro.lat, centro.lon),
-                    cuantosEnCaja = r.dato.size, obtenidoEn = r.obtenidoEn, deCache = r.deCache,
+                    cuantosEnCaja = r.dato.size, obtenidoEn = r.obtenidoEn, deCache = r.deCache, cargado = true,
                 )
             } catch (e: Exception) {
-                _estado.value = EstadoAcudir(cargando = false, desde = desde, porGps = posicion != null, error = e.message ?: "sin respuesta")
+                val previo = _estado.value
+                val motivo = e.message ?: "sin respuesta"
+                // con puntos ya en pantalla se conservan y la seccion avisa que no se pudo actualizar
+                _estado.value = if (previo.cargado) previo.copy(cargando = false, error = motivo)
+                else EstadoAcudir(cargando = false, desde = desde, porGps = posicion != null, error = motivo)
             }
         }
     }

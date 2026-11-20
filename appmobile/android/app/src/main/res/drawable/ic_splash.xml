@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Icono de la pantalla de arranque (splash): la misma gota del launcher, al 80 % y centrada en el
+     area segura (el sistema muestra solo el circulo central, 66 de 108), para que respire. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <group
+        android:pivotX="54"
+        android:pivotY="54"
+        android:scaleX="0.8"
+        android:scaleY="0.8">
+        <!-- Gota -->
+        <path
+            android:fillColor="#FFFFFF"
+            android:pathData="M54,26 C54,26 34,48 34,62 A20,20 0 0 0 74,62 C74,48 54,26 54,26 Z" />
+        <!-- Onda dentro de la gota (agua que sube) -->
+        <path
+            android:fillColor="#1D4ED8"
+            android:pathData="M39,66 C43,62 47,62 51,66 C55,70 59,70 63,66 C66,63 68,63 69,64 A15,15 0 0 1 39,66 Z" />
+    </group>
+</vector>

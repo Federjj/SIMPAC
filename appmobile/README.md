@@ -506,3 +506,31 @@ Google Play exige que el AAB vaya firmado con una llave propia (la "upload key")
   explícitos, como antes el WebView: el `ViewGroup` de `AndroidView` pone `WRAP_CONTENT` si la vista no
   trae parámetros. La app anterior con Capacitor se retiró del repo el 24-10-2026; esta la reemplaza en
   el teléfono por tener el mismo `applicationId`.
+
+## Interfaz: esqueletos, animaciones y estados
+
+Desde el 19-11-2026 la app tiene un kit común en `ui/componentes/` para que todas las pantallas se
+sientan iguales: nada bloquea la interacción, todo dura entre 150 y 300 ms con el easing de Material,
+y ninguna animación se repite al recomponer ni al volver a una pestaña.
+
+| Archivo | Qué hay | Cuándo usarlo |
+|---|---|---|
+| `Esqueletos.kt` | `Modifier.esqueleto(forma)` con brillo (shimmer) sobre `surfaceVariant`, correcto en modo oscuro; `EsqueletoLinea`, `EsqueletoBloque`, `EsqueletoCirculo`, `EsqueletoTarjeta` (mismo borde que `Seccion`) y `EsqueletoLista`; `ProveedorEsqueleto` / `rememberEsqueleto` (una sola transición infinita por pantalla, compartida por `LocalEsqueleto`; la banda de luz se calcula con la posición en la ventana, así que recorre toda la pantalla como una sola) | Primer cargado de una pantalla: en vez de "Cargando..." se dibuja la silueta de lo que va a aparecer. `ContenidoConEstado` ya pone el proveedor; fuera de él, envolver con `ProveedorEsqueleto` |
+| `Estados.kt` | `ContenidoConEstado(cargando, error, onReintentar, esqueleto, contenido)` cruza esqueleto, error y contenido con fundido de 220 ms y tamaño animado; `ErrorReintentar(mensaje, onReintentar)` (icono, título, mensaje, botón, aparece con fundido; antes estaba en `Comunes.kt`); `EstadoVacio(icono, titulo, texto, accionTexto, onAccion)` sobrio y centrado | Toda pantalla que lea datos; listas sin resultados ("No hay alertas vigentes...") y pantallas sin sesión |
+| `Animaciones.kt` | `Transiciones` (pestañas: fundido 200 ms; detalle: deslizamiento del 30 % + fundido 250 ms con sus inversos al volver; `aparecer` / `desaparecer` para `AnimatedVisibility`); `AparecerEscalonado(indice)` (fundido + subida de 12 dp con 35 ms por elemento, hasta 6, solo la primera vez: `rememberSaveable`); `Modifier.presionable(interactionSource)` (escala a 0,97 al pulsar); `ContadorAnimado(valor)` (el número sube o baja); `Haptica.toque / confirmar / rechazar(view)` con `HapticFeedbackConstants`, sin permisos | Entrada escalonada de las primeras tarjetas de cada pantalla, tarjetas que se tocan, contadores de votos y comentarios, vibración al votar, enviar o fallar |
+| `Refrescar.kt` | `RefrescarAlTirar(refrescando, onRefrescar) { ... }` sobre `PullToRefreshBox` de Material 3 | Listas y pantallas con scroll que se recargan; `refrescando` es "recargando con datos ya en pantalla" (el primer cargado va con esqueleto) |
+| `Avisador.kt` | `LocalAvisador` (un `SnackbarHostState` en el `Scaffold` de `AppSimpac`, encima de la barra inferior) y `Avisador.avisar(mensaje, accion, duracion, onAccion)`, con un ámbito que vive lo que la app | Confirmaciones y errores breves ("Voto registrado", "Sin conexión" con "Reintentar") desde cualquier pantalla, también justo antes de navegar |
+| `Comunes.kt` | `Seccion(titulo, modifier, accion) { ... }` (forma `medium` 14 dp, sin sombra, borde fino `outline`; `accion` opcional a la derecha del título), `bordeTarjeta()`, `AvisoDato` con tintas para claro y oscuro, `temaOscuro()`, `Cargando` (rueda, solo para esperas cortas sin silueta, como "Revisando tu sesión...") | Secciones de todas las pantallas |
+
+`ui/Navegacion.kt` aplica `Transiciones` al `NavHost` (pestañas con fundido; `comunidad/nuevo` y
+`comunidad/{id}` entran deslizando desde la derecha y vuelven hacia la derecha) y provee el snackbar
+global; tocar una pestaña da una vibración corta. `ui/theme/Theme.kt` define las formas (`small` 8 dp,
+`medium` 14 dp, `large` 20 dp) y completa los dos esquemas de color (contenedores, chips
+seleccionados, snackbar, error) con la misma escala de grises azulados en claro y oscuro.
+
+**Pantalla de arranque.** `androidx.core:core-splashscreen` 1.0.1: `MainActivity` usa el tema
+`Theme.SIMPAC.Splash` (`res/values/themes.xml`: fondo `@color/ic_launcher_background`, icono
+`@drawable/ic_splash`, la gota al 80 % centrada en el área segura, y `postSplashScreenTheme`
+`Theme.SIMPAC`), llama `installSplashScreen()` antes de `super.onCreate` y pasa sola al tema normal con
+el primer cuadro de Compose. El fondo de la ventana (`@color/fondo_app`, con variante en `values-night`)
+es el mismo de la app para que no haya un destello al arrancar.

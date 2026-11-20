@@ -11,13 +11,16 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalView
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.NavType
@@ -27,6 +30,10 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import pe.simpac.app.ui.alertas.AlertasScreen
+import pe.simpac.app.ui.componentes.Haptica
+import pe.simpac.app.ui.componentes.LocalAvisador
+import pe.simpac.app.ui.componentes.Transiciones
+import pe.simpac.app.ui.componentes.rememberAvisador
 import pe.simpac.app.ui.comunidad.ComunidadScreen
 import pe.simpac.app.ui.comunidad.ReporteDetalleScreen
 import pe.simpac.app.ui.comunidad.ReporteNuevoScreen
@@ -61,13 +68,19 @@ object Rutas {
     fun reporte(id: String) = "comunidad/$id"
 }
 
-/** Marco de la app: barra inferior + NavHost. pestanaInicial cambia cuando llega una notificacion. */
+/**
+ * Marco de la app: barra inferior + NavHost + snackbar global (`LocalAvisador`, encima de la barra).
+ * pestanaInicial cambia cuando llega una notificacion. Las pestanas se cruzan con un fundido de 200 ms
+ * y las pantallas de comunidad (nuevo y detalle) entran deslizando desde la derecha (Transiciones).
+ */
 @Composable
 fun AppSimpac(pestanaInicial: Pestana?, vecesPedida: Int) {
     val navController = rememberNavController()
     val compartido: EstadoCompartido = viewModel()
     val entrada by navController.currentBackStackEntryAsState()
     val rutaActual = entrada?.destination?.route
+    val avisador = rememberAvisador()
+    val vista = LocalView.current
 
     fun ir(p: Pestana) {
         // volver a tocar la pestana actual no hace nada: navegar a la misma ruta reemplaza la entrada
@@ -92,54 +105,78 @@ fun AppSimpac(pestanaInicial: Pestana?, vecesPedida: Int) {
         onDispose { compartido.abrirReporte = null }
     }
 
-    Scaffold(
-        bottomBar = {
-            NavigationBar {
-                Pestana.entries.forEach { p ->
-                    NavigationBarItem(
-                        selected = rutaActual?.substringBefore('/') == p.ruta,
-                        onClick = { ir(p) },
-                        icon = { Icon(p.icono, contentDescription = null) },
-                        label = { Text(p.etiqueta) },
+    CompositionLocalProvider(LocalAvisador provides avisador) {
+        Scaffold(
+            snackbarHost = { SnackbarHost(avisador.estado) },
+            bottomBar = {
+                NavigationBar {
+                    Pestana.entries.forEach { p ->
+                        NavigationBarItem(
+                            selected = rutaActual?.substringBefore('/') == p.ruta,
+                            onClick = { Haptica.toque(vista); ir(p) },
+                            icon = { Icon(p.icono, contentDescription = null) },
+                            label = { Text(p.etiqueta) },
+                        )
+                    }
+                }
+            },
+        ) { relleno ->
+            NavHost(
+                navController,
+                startDestination = Pestana.INICIO.ruta,
+                modifier = Modifier.padding(relleno),
+                enterTransition = Transiciones.entrarPestana,
+                exitTransition = Transiciones.salirPestana,
+                popEnterTransition = Transiciones.entrarPestana,
+                popExitTransition = Transiciones.salirPestana,
+            ) {
+                composable(Pestana.INICIO.ruta) {
+                    InicioScreen(
+                        irAlertas = { ir(Pestana.ALERTAS) },
+                        irReportar = { ir(Pestana.COMUNIDAD); navController.navigate(Rutas.REPORTE_NUEVO) { launchSingleTop = true } },
+                        irMapa = { e -> compartido.pedirEncuadre(e); ir(Pestana.MAPA) },
                     )
                 }
+                composable(Pestana.ALERTAS.ruta) { AlertasScreen() }
+                composable(Pestana.MAPA.ruta) { MapaScreen(compartido) }
+                composable(Pestana.COMUNIDAD.ruta) {
+                    ComunidadScreen(
+                        irNuevo = { navController.navigate(Rutas.REPORTE_NUEVO) { launchSingleTop = true } },
+                        abrirReporte = { abrirReporte(it) },
+                        irCuenta = { ir(Pestana.CUENTA) },
+                        verEnMapa = { lat, lon -> verEnMapa(lat, lon) },
+                    )
+                }
+                composable(
+                    Rutas.REPORTE_NUEVO,
+                    enterTransition = Transiciones.entrarDetalle,
+                    exitTransition = Transiciones.salirDetalle,
+                    popEnterTransition = Transiciones.popEntrarDetalle,
+                    popExitTransition = Transiciones.popSalirDetalle,
+                ) {
+                    ReporteNuevoScreen(
+                        volver = { volver() },
+                        abrirReporte = { id -> navController.navigate(Rutas.reporte(id)) { popUpTo(Rutas.REPORTE_NUEVO) { inclusive = true } } },
+                        irCuenta = { ir(Pestana.CUENTA) },
+                    )
+                }
+                composable(
+                    Rutas.REPORTE,
+                    arguments = listOf(navArgument("id") { type = NavType.StringType }),
+                    enterTransition = Transiciones.entrarDetalle,
+                    exitTransition = Transiciones.salirDetalle,
+                    popEnterTransition = Transiciones.popEntrarDetalle,
+                    popExitTransition = Transiciones.popSalirDetalle,
+                ) { e ->
+                    ReporteDetalleScreen(
+                        id = e.arguments?.getString("id") ?: "",
+                        volver = { volver() },
+                        irCuenta = { ir(Pestana.CUENTA) },
+                        verEnMapa = { lat, lon -> verEnMapa(lat, lon) },
+                    )
+                }
+                composable(Pestana.CUENTA.ruta) { CuentaScreen(abrirReporte = { abrirReporte(it) }) }
             }
-        },
-    ) { relleno ->
-        NavHost(navController, startDestination = Pestana.INICIO.ruta, modifier = Modifier.padding(relleno)) {
-            composable(Pestana.INICIO.ruta) {
-                InicioScreen(
-                    irAlertas = { ir(Pestana.ALERTAS) },
-                    irReportar = { ir(Pestana.COMUNIDAD); navController.navigate(Rutas.REPORTE_NUEVO) { launchSingleTop = true } },
-                    irMapa = { e -> compartido.pedirEncuadre(e); ir(Pestana.MAPA) },
-                )
-            }
-            composable(Pestana.ALERTAS.ruta) { AlertasScreen() }
-            composable(Pestana.MAPA.ruta) { MapaScreen(compartido) }
-            composable(Pestana.COMUNIDAD.ruta) {
-                ComunidadScreen(
-                    irNuevo = { navController.navigate(Rutas.REPORTE_NUEVO) { launchSingleTop = true } },
-                    abrirReporte = { abrirReporte(it) },
-                    irCuenta = { ir(Pestana.CUENTA) },
-                    verEnMapa = { lat, lon -> verEnMapa(lat, lon) },
-                )
-            }
-            composable(Rutas.REPORTE_NUEVO) {
-                ReporteNuevoScreen(
-                    volver = { volver() },
-                    abrirReporte = { id -> navController.navigate(Rutas.reporte(id)) { popUpTo(Rutas.REPORTE_NUEVO) { inclusive = true } } },
-                    irCuenta = { ir(Pestana.CUENTA) },
-                )
-            }
-            composable(Rutas.REPORTE, arguments = listOf(navArgument("id") { type = NavType.StringType })) { e ->
-                ReporteDetalleScreen(
-                    id = e.arguments?.getString("id") ?: "",
-                    volver = { volver() },
-                    irCuenta = { ir(Pestana.CUENTA) },
-                    verEnMapa = { lat, lon -> verEnMapa(lat, lon) },
-                )
-            }
-            composable(Pestana.CUENTA.ruta) { CuentaScreen(abrirReporte = { abrirReporte(it) }) }
         }
     }
 }

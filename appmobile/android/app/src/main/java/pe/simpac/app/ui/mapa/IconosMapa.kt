@@ -379,8 +379,14 @@ object IconosMapa {
         BitmapDrawable(res, bmp)
     }
 
-    /** Rayado a 45 grados de una zona bajo_2m: franjas del tono oscuro del nivel sobre blanco tenue (como simpac-rayado-*). */
-    fun shaderRayado(res: Resources, nivel: NivelZona): Shader {
+    private val rayados = HashMap<NivelZona, Shader>()
+
+    /**
+     * Rayado a 45 grados de una zona bajo_2m: franjas del tono oscuro del nivel sobre blanco tenue (como
+     * simpac-rayado-*). Un shader por nivel, compartido por todos los poligonos de ese nivel (antes se
+     * dibujaba un bitmap nuevo por poligono cada vez que llegaban zonas).
+     */
+    fun shaderRayado(res: Resources, nivel: NivelZona): Shader = rayados.getOrPut(nivel) {
         val oscuro = Paleta.zonaOscuro(nivel).toInt()
         val tenue = nivel == NivelZona.SIN_SENALES
         val s = dp(res, 8f).toInt().coerceAtLeast(6)
@@ -392,6 +398,6 @@ object IconosMapa {
         c.drawLine(-f, -f, 2 * f, 2 * f, pt)
         c.drawLine(0f, -f, 2 * f, f, pt)
         c.drawLine(-f, 0f, f, 2 * f, pt)
-        return BitmapShader(bmp, Shader.TileMode.REPEAT, Shader.TileMode.REPEAT)
+        BitmapShader(bmp, Shader.TileMode.REPEAT, Shader.TileMode.REPEAT)
     }
 }

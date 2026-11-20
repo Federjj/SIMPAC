@@ -40,10 +40,11 @@ class CuentaViewModel(app: Application) : AndroidViewModel(app) {
     private val _estado = MutableStateFlow(EstadoCuenta())
     val estado: StateFlow<EstadoCuenta> = _estado
 
-    fun cambiarModo(m: ModoCuenta) { _estado.value = _estado.value.copy(modo = m, errores = emptyMap(), aviso = null) }
-    fun cambiarEmail(v: String) { _estado.value = _estado.value.copy(email = v, errores = _estado.value.errores - "email") }
-    fun cambiarPassword(v: String) { _estado.value = _estado.value.copy(password = v, errores = _estado.value.errores - "password") }
-    fun cambiarNombre(v: String) { _estado.value = _estado.value.copy(nombre = v.take(80), errores = _estado.value.errores - "nombre") }
+    /** Cambia de Entrar / Crear cuenta / Olvide mi contrasena. El ultimo aviso y los errores de campo se conservan (la pantalla retira el aviso a los 6 s); escribir los limpia. */
+    fun cambiarModo(m: ModoCuenta) { _estado.value = _estado.value.copy(modo = m) }
+    fun cambiarEmail(v: String) { _estado.value = _estado.value.copy(email = v, errores = _estado.value.errores - "email", aviso = null) }
+    fun cambiarPassword(v: String) { _estado.value = _estado.value.copy(password = v, errores = _estado.value.errores - "password", aviso = null) }
+    fun cambiarNombre(v: String) { _estado.value = _estado.value.copy(nombre = v.take(80), errores = _estado.value.errores - "nombre", aviso = null) }
     fun limpiarAviso() { _estado.value = _estado.value.copy(aviso = null) }
 
     /** A donde vuelve el enlace del correo: la pagina Cuenta de la web (misma regla que lib/sesion.js volverA). */

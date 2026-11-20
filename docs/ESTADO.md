@@ -871,6 +871,16 @@ estaciones evaluadas, 1 alerta real de 6 h en Cotahuasi, Arequipa)
       acceso "Descargar la app" en la barra lateral y tarjeta "Lleva SIMPAC en tu celular" en Cuenta.
       `npm test` y `npm run build` OK; verificada en escritorio y 375x812. **Falta publicar el release
       en GitHub con `SIMPAC.apk` adjunto** (hasta entonces el enlace responde 404).
+- [x] **Pulido de la app Android (19-11-2026)**: kit común en `ui/componentes` (esqueletos con
+      shimmer, estados vacío y de error, transiciones del NavHost, aparición escalonada, pulsado con
+      escala, contadores animados, háptica, pull-to-refresh y snackbar global), splash screen
+      (`core-splashscreen`), tema con formas y esquemas claro/oscuro completos, y las cinco pestañas
+      adaptadas (esqueleto fiel mientras carga, estados vacío/error con el kit, botones de zoom y
+      chips del mapa en Material 3, barra de progreso de capas, FAB "Reportar incidente", hoja Capas
+      agrupada). Verificado en el emulador Pixel_7a: 64 pruebas JVM y `InicioScreenTest` 4/4 en
+      verde, sin crashes ni ANR en logcat, modo oscuro en las cinco pestañas. Pendiente medir en un
+      teléfono real: la hoja Capas y la primera apertura del mapa saltan cuadros en el emulador con GPU
+      por software. Detalle en `appmobile/README.md` ("Interfaz: esqueletos, animaciones y estados").
 
 **Despliegue en la nube (preparado el 04-11-2026; ejecutado el 05-11-2026)**
 - [x] **En producción**: web `https://simpac-v7nf.vercel.app` (Vercel, Root Directory `frontend`,

@@ -33,6 +33,7 @@ data class EstadoInicio(
     val cargando: Boolean = true,
     val error: String? = null,                  // error total: ni titular ni alertas (con reintentar)
     val explicarGps: Boolean = false,           // mostrar la pantalla que explica el permiso
+    val leyendoAjustes: Boolean = false,        // aun no se leyeron los ajustes: no se sabe si toca explicar el GPS, asi que no se dibuja nada (ni el esqueleto)
     val departamento: String = Departamentos.POR_DEFECTO.nombre,
     val porGps: Boolean = false,
     val nivel: Nivel = Nivel.SIN_DATO,
@@ -54,14 +55,22 @@ data class EstadoInicio(
     val avisos: List<String> = emptyList(),     // consultas parciales que fallaron
     val centroLat: Double? = null,              // tu punto (GPS) o el centro del departamento: lo usa "Ver el rio en el mapa"
     val centroLon: Double? = null,
-)
+) {
+    /**
+     * Ya hay algo que mostrar (titular o alertas leidas): con datos, una recarga no vuelve al esqueleto
+     * (va con "tirar para actualizar") y un error de recarga se avisa abajo sin tapar la pantalla.
+     */
+    val tieneDatos: Boolean get() = titular != null || alertasLeidas
+}
 
 class InicioViewModel(app: Application) : AndroidViewModel(app) {
     private val contenedor = (app as SimpacApp).contenedor
     private val repo = contenedor.repositorio
     private val ajustes = contenedor.ajustes
 
-    private val _estado = MutableStateFlow(EstadoInicio())
+    // Arranca "leyendo ajustes": hasta saber si hay que explicar el GPS no se dibuja el esqueleto, asi la
+    // primera apertura no muestra la silueta de los datos para despues cruzar a "Tu ubicacion".
+    private val _estado = MutableStateFlow(EstadoInicio(leyendoAjustes = true))
     val estado: StateFlow<EstadoInicio> = _estado
 
     init { cargar() }
@@ -71,6 +80,8 @@ class InicioViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch {
             ajustes.guardarGpsExplicado(true)
             ajustes.guardarUsarGps(usar)
+            // la explicacion se va de inmediato: mientras se lee la zona se ve el esqueleto, no la pantalla del permiso
+            _estado.value = _estado.value.copy(explicarGps = false)
             cargar()
         }
     }
@@ -91,12 +102,22 @@ class InicioViewModel(app: Application) : AndroidViewModel(app) {
                 _estado.value = EstadoInicio(cargando = false, explicarGps = true, departamento = conf.departamento)
                 return@launch
             }
+            // ya se sabe que no toca explicar el GPS: recien ahora se ve el esqueleto (solo pasa en el primer cargado)
+            if (_estado.value.leyendoAjustes) _estado.value = _estado.value.copy(leyendoAjustes = false)
             val app = getApplication<Application>()
             val posicion: Posicion? = (if (conf.usarGps && Ubicacion.tienePermiso(app)) Ubicacion.actual(app) else null)?.takeIf { Ubicacion.enPeru(it) }
             val departamento = posicion?.let { repo.departamentoDe(it.lat, it.lon) } ?: conf.departamento
             val centro = posicion ?: Departamentos.porNombre(departamento)?.let { Posicion(it.lat, it.lon) }
                 ?: Posicion(Departamentos.POR_DEFECTO.lat, Departamentos.POR_DEFECTO.lon)
-            _estado.value = armar(departamento, posicion != null, centro, conf.apiUrl)
+            val nuevo = armar(departamento, posicion != null, centro, conf.apiUrl)
+            val actual = _estado.value
+            // Si la recarga de la misma zona falla con datos ya en pantalla, se conservan y el error va
+            // aparte (la pantalla lo avisa abajo con "Reintentar"); con otra zona si se muestra el error.
+            _estado.value = if (nuevo.error != null && actual.tieneDatos && actual.departamento == nuevo.departamento) {
+                actual.copy(cargando = false, error = nuevo.error)
+            } else {
+                nuevo
+            }
         }
     }
 

@@ -1,9 +1,19 @@
 package pe.simpac.app.ui.mapa
 
+import android.view.View
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.SizeTransform
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -17,14 +27,21 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.Button
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
@@ -33,6 +50,10 @@ import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -56,10 +77,18 @@ import pe.simpac.app.dominio.PronosticoMapa
 import pe.simpac.app.dominio.Reportes
 import pe.simpac.app.dominio.Tiempo
 import pe.simpac.app.ui.Intents
+import pe.simpac.app.ui.componentes.Haptica
 import pe.simpac.app.ui.componentes.LineaFuente
 import pe.simpac.app.ui.componentes.PieReferencial
+import pe.simpac.app.ui.componentes.Transiciones
+import pe.simpac.app.ui.componentes.presionable
+import pe.simpac.app.ui.componentes.temaOscuro
 
-/** Hojas inferiores del mapa: texto en lenguaje claro, fuente con hora, sin HTML. */
+/**
+ * Hojas inferiores del mapa: texto en lenguaje claro, fuente con hora, sin HTML. Jerarquia fija:
+ * titulo (titleLarge), pastilla de estado, subtitulo (titleMedium), cuerpo (bodyMedium) y lineas de
+ * fuente con hora (bodySmall). Los botones llevan pulsado animado y respuesta tactil.
+ */
 
 @Composable
 private fun Hoja(contenido: @Composable () -> Unit) {
@@ -83,6 +112,24 @@ private fun Titulo(texto: String) = Text(texto, style = MaterialTheme.typography
 
 @Composable
 private fun Parrafo(texto: String) = Text(texto, style = MaterialTheme.typography.bodyMedium)
+
+/** Boton de una hoja (abrir el aviso, llamar, como llegar): se encoge al pulsar y vibra corto. */
+@Composable
+private fun BotonHoja(texto: String, secundario: Boolean = false, onClick: () -> Unit) {
+    val vista = LocalView.current
+    val fuente = remember { MutableInteractionSource() }
+    val accion = { Haptica.toque(vista); onClick() }
+    if (secundario) OutlinedButton(onClick = accion, interactionSource = fuente, modifier = Modifier.presionable(fuente)) { Text(texto) }
+    else Button(onClick = accion, interactionSource = fuente, modifier = Modifier.presionable(fuente)) { Text(texto) }
+}
+
+/** Boton de texto de una hoja (por ejemplo "Restablecer"), con el mismo pulsado. */
+@Composable
+private fun BotonTextoHoja(texto: String, enabled: Boolean = true, onClick: () -> Unit) {
+    val vista = LocalView.current
+    val fuente = remember { MutableInteractionSource() }
+    TextButton(onClick = { Haptica.toque(vista); onClick() }, enabled = enabled, interactionSource = fuente, modifier = Modifier.presionable(fuente)) { Text(texto) }
+}
 
 @Composable
 fun HojaSeleccion(sel: Seleccion, estado: EstadoMapa) {
@@ -122,7 +169,7 @@ private fun HojaAvisos(avisos: List<AvisoDibujo>, obtenidoEn: Long?) {
             if (a.departamentos.isNotEmpty()) LineaFuente("Departamentos: ${a.departamentos.joinToString(", ")}")
             if (a.tipo == "lluvia24h") LineaFuente("Aviso de lluvia acumulada en 24 h: puede llover en algún momento, no todo el día.")
             a.url?.takeIf { it.startsWith("https://") }?.let { url ->
-                Button(onClick = { Intents.abrirNavegador(contexto, url) }) { Text("Ver el aviso oficial") }
+                BotonHoja("Ver el aviso oficial") { Intents.abrirNavegador(contexto, url) }
             }
         }
         LineaFuente("Fuente: SENAMHI, aviso ${lista.joinToString(" y ") { "N.º ${it.numero ?: "?"}-${it.anio ?: ""}" }}. ${AvisosMapa.FIRMA} Leído el ${Tiempo.horaCorta(obtenidoEn)}.")
@@ -156,7 +203,7 @@ private fun HojaEstacionRio(e: EstacionRioDibujo, obtenidoEn: Long?) {
         FilasAna(e.t, e.caudal.unidad)
         LineaFuente("Medido: ${Cauces.lecturaRio(e.caudal) ?: "sin fecha"}")
         if (e.porAviso) e.aviso?.url?.takeIf { it.startsWith("https://") }?.let { url ->
-            Button(onClick = { Intents.abrirNavegador(contexto, url) }) { Text("Ver el aviso de SENAMHI") }
+            BotonHoja("Ver el aviso de SENAMHI") { Intents.abrirNavegador(contexto, url) }
         }
         LineaFuente("Fuente: niveles y umbrales de ANA, leídos el ${Tiempo.horaCorta(obtenidoEn)}${e.fuenteTrazo?.let { "; trazo del río: $it" } ?: ""}.")
     }
@@ -190,7 +237,7 @@ private fun HojaRio(r: RioDibujo, obtenidoEn: Long?) {
         }
         Parrafo("Si SIMPAC estimó zonas que este río podría afectar (con el relieve; no es un mapa oficial) se ven en la capa \"Zonas que podrían inundarse\" al acercarse (zoom ${Cauces.ZONAS_DESDE}).")
         aviso?.url?.takeIf { it.startsWith("https://") }?.let { url ->
-            Button(onClick = { Intents.abrirNavegador(contexto, url) }) { Text("Ver el aviso de SENAMHI") }
+            BotonHoja("Ver el aviso de SENAMHI") { Intents.abrirNavegador(contexto, url) }
         }
         LineaFuente("Trazo del río: ${r.fuente ?: "ANA - GeoSNIRH"}${r.licencia?.let { " (${Cauces.licenciaCorta(it)})" } ?: ""}${r.km?.let { "; ${Cauces.num(it)} km" } ?: ""}.")
         LineaFuente("Niveles de ANA leídos el ${Tiempo.horaCorta(obtenidoEn)}.")
@@ -215,7 +262,7 @@ private fun HojaMashcon(m: MashconDibujo, obtenidoEn: Long?) {
         if (c != null && t != null) { FilasAna(t, c.unidad); LineaFuente("Medido: ${Cauces.lecturaRio(c) ?: "sin fecha"}") }
         Parrafo("Las franjas junto al río marcan la zona que podría afectar si se desborda (capa \"Zonas que podrían inundarse\").")
         m.estado.avisoHidro?.url?.takeIf { it.startsWith("https://") }?.let { url ->
-            Button(onClick = { Intents.abrirNavegador(contexto, url) }) { Text("Ver el aviso de SENAMHI") }
+            BotonHoja("Ver el aviso de SENAMHI") { Intents.abrirNavegador(contexto, url) }
         }
         LineaFuente("Fuente: ANA (nivel) y SENAMHI (avisos), leídos el ${Tiempo.horaCorta(obtenidoEn)}. Trazo del río: ${m.fuenteCauce}.")
     }
@@ -260,7 +307,7 @@ private fun HojaZona(z: ZonaDibujo, obtenidoEn: Long?) {
         z.atribucion?.let { LineaFuente(it) }
         LineaFuente("Señales de ANA y SENAMHI leídas el ${Tiempo.horaCorta(obtenidoEn)}. Ante una emergencia sigue las indicaciones de Defensa Civil (INDECI).")
         z.estadoZona.avisoHidro?.url?.takeIf { it.startsWith("https://") }?.let { url ->
-            Button(onClick = { Intents.abrirNavegador(contexto, url) }) { Text("Ver el aviso de SENAMHI") }
+            BotonHoja("Ver el aviso de SENAMHI") { Intents.abrirNavegador(contexto, url) }
         }
     }
 }
@@ -287,8 +334,8 @@ private fun HojaAcudir(p: PuntoAcudir, obtenidoEn: Long?) {
         val donde = listOfNotNull(p.direccion, p.distrito?.takeIf { it != p.direccion }).joinToString(", ")
         if (donde.isNotBlank()) Parrafo("Dónde: $donde")
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            if (!p.telefono.isNullOrBlank()) Button(onClick = { Intents.marcar(contexto, p.telefono) }) { Text("Llamar ${p.telefono}") }
-            if (p.lat != null && p.lon != null) OutlinedButton(onClick = { Intents.comoLlegar(contexto, p.lat, p.lon, p.nombre) }) { Text("Cómo llegar") }
+            if (!p.telefono.isNullOrBlank()) BotonHoja("Llamar ${p.telefono}") { Intents.marcar(contexto, p.telefono) }
+            if (p.lat != null && p.lon != null) BotonHoja("Cómo llegar", secundario = true) { Intents.comoLlegar(contexto, p.lat, p.lon, p.nombre) }
         }
         if (p.telefono.isNullOrBlank()) LineaFuente("Sin teléfono en la fuente: si es urgente llama al 105 o al 116.")
         val fecha = p.actualizado?.let { " (${Tiempo.fechaLarga(it)})" } ?: ""
@@ -352,7 +399,7 @@ private fun HojaLocalidad(sel: Seleccion.Localidad, obtenidoEn: Long?) {
         }
         LineaFuente("Vale para esta localidad; a pocos kilómetros puede ser distinto.")
         (f.url ?: PronosticoMapa.urlLocalidad(f.codigo)).takeIf { it.startsWith("https://") }?.let { url ->
-            Button(onClick = { Intents.abrirNavegador(contexto, url) }) { Text("Ver el pronóstico en SENAMHI") }
+            BotonHoja("Ver el pronóstico en SENAMHI") { Intents.abrirNavegador(contexto, url) }
         }
         LineaFuente("Ícono y resumen de SIMPAC, basados en el texto de SENAMHI. Leído el ${Tiempo.horaCorta(obtenidoEn)}.")
     }
@@ -372,7 +419,7 @@ private fun HojaNowcast(sel: Seleccion.ManchaNowcast, estado: EstadoMapa) {
         Parrafo(Nowcast.ACLARA)
         val emision = Tiempo.parsearMs(m.mancha.emision)
         LineaFuente("Emitido ${Nowcast.hhmm(m.mancha.emision)}${emision?.let { " (${Nowcast.textoHace(System.currentTimeMillis() - it)})" } ?: ""}")
-        Button(onClick = { Intents.abrirNavegador(contexto, Nowcast.URL_VISOR) }) { Text("Ver el nowcasting en SENAMHI") }
+        BotonHoja("Ver el nowcasting en SENAMHI") { Intents.abrirNavegador(contexto, Nowcast.URL_VISOR) }
         LineaFuente("Basado en el nowcasting de SENAMHI; colores de SIMPAC. Leído el ${Tiempo.horaCorta(estado.nowcast?.obtenidoEn)}.")
     }
 }
@@ -434,7 +481,7 @@ private fun HojaIncidentes(sel: Seleccion.Incidentes, obtenidoEn: Long?) {
             } ?: emptyList()
             LineaFuente("Fuente: ${inc.fuente ?: "no indicada"}${if (otras.isNotEmpty()) " · También: ${otras.joinToString(" · ") { it.first }}" else ""}")
             inc.fuente_url?.takeIf { it.startsWith("https://") }?.let { url ->
-                OutlinedButton(onClick = { Intents.abrirNavegador(contexto, url) }) { Text("Ver la fuente") }
+                BotonHoja("Ver la fuente", secundario = true) { Intents.abrirNavegador(contexto, url) }
             }
         }
         Parrafo("Aquí el río ya causó daños: es una zona de peligro cuando el río crece. Que haya pasado antes no significa que esté pasando hoy; mira el color de la zona y los avisos de hoy.")
@@ -477,7 +524,7 @@ private fun HojaFranja(f: FranjaDibujo, obtenidoEn: Long?) {
         LineaFuente("Trazo del río: ${r.fuente ?: "ANA - GeoSNIRH"}${r.licencia?.let { " (${Cauces.licenciaCorta(it)})" } ?: ""}.")
         LineaFuente("Ante una emergencia sigue las indicaciones de Defensa Civil (INDECI). Señales leídas el ${Tiempo.horaCorta(obtenidoEn)}.")
         aviso?.url?.takeIf { it.startsWith("https://") }?.let { url ->
-            Button(onClick = { Intents.abrirNavegador(contexto, url) }) { Text("Ver el aviso de SENAMHI") }
+            BotonHoja("Ver el aviso de SENAMHI") { Intents.abrirNavegador(contexto, url) }
         }
     }
 }
@@ -493,36 +540,31 @@ class AccionesCapas(
     val elegirHorizonte: (Int) -> Unit,
     val elegirLluviaObservada: (String) -> Unit,
     val elegirFen: (String) -> Unit,
+    val restablecer: () -> Unit = {},
 )
 
 @Composable
 fun HojaCapas(estado: EstadoMapa, acciones: AccionesCapas) {
     val capas = estado.capas
+    val vista = LocalView.current
+    val deFabrica = remember { Capa.entries.filter { it.deFabrica }.toSet() }
     Hoja {
-        Titulo("Capas del mapa")
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Text("Capas del mapa", style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
+            BotonTextoHoja("Restablecer", enabled = capas != deFabrica) { acciones.restablecer() }
+        }
         LineaFuente("Arriba del mapa, Hoy / Mañana / Pasado mueve a la vez los avisos y el pronóstico.")
-        for (grupo in GruposCapa.ORDEN) {
+        for ((g, grupo) in GruposCapa.ORDEN.withIndex()) {
             val delGrupo = Capa.entries.filter { it.grupo == grupo }
             if (delGrupo.isEmpty()) continue
-            Text(grupo, style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 6.dp))
-            for (capa in delGrupo) {
-                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    Column(Modifier.weight(1f)) {
-                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                            // el texto cede ancho y la insignia no se parte letra por letra
-                            Text(capa.etiqueta, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f, fill = false))
-                            capa.insignia?.let { Insignia(it) }
-                        }
-                        if (capa.desdeZoom > 0) LineaFuente("Se ve al acercar el mapa (zoom ${capa.desdeZoom.toInt()} o más).")
-                    }
-                    Switch(checked = capa in capas, onCheckedChange = { acciones.alternar(capa) })
-                }
-                if (capa in capas) Selector(capa, estado, acciones)
-                estado.nota(capa)?.let { Text(it, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(start = 4.dp, bottom = 4.dp)) }
-                Leyenda(capa, estado)
-                HorizontalDivider()
+            if (g > 0) HorizontalDivider(Modifier.padding(top = 4.dp))
+            Text(grupo, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(top = 2.dp))
+            for ((i, capa) in delGrupo.withIndex()) {
+                if (i > 0) HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                FilaCapa(capa, estado, acciones, vista)
             }
         }
+        HorizontalDivider(Modifier.padding(top = 4.dp))
         Text("Fuentes", style = MaterialTheme.typography.labelLarge)
         (estado.fuentes + estado.avisosParciales).forEach { LineaFuente(it) }
         LineaFuente(Lluvia.ATRIBUCION_SENAMHI)
@@ -530,22 +572,102 @@ fun HojaCapas(estado: EstadoMapa, acciones: AccionesCapas) {
     }
 }
 
+/**
+ * Una fila de la hoja Capas: etiqueta, insignia, rueda chica mientras la capa pide datos e
+ * interruptor alineado a la derecha; toda la fila conmuta (rol Switch). Al prender la capa se
+ * despliegan su selector, su nota y su leyenda; al apagarla se pliegan.
+ */
+@Composable
+private fun FilaCapa(capa: Capa, estado: EstadoMapa, acciones: AccionesCapas, vista: View) {
+    val prendida = capa in estado.capas
+    Column {
+        Row(
+            Modifier.fillMaxWidth()
+                .toggleable(value = prendida, role = Role.Switch, onValueChange = { Haptica.toque(vista); acciones.alternar(capa) })
+                .padding(vertical = 6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(Modifier.weight(1f)) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    // el texto cede ancho y la insignia no se parte letra por letra
+                    Text(capa.etiqueta, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f, fill = false))
+                    capa.insignia?.let { Insignia(it) }
+                    AnimatedVisibility(
+                        visible = estado.cargandoCapa(capa),
+                        enter = fadeIn(tween(150, easing = FastOutSlowInEasing)),
+                        exit = fadeOut(tween(150, easing = FastOutSlowInEasing)),
+                    ) {
+                        CircularProgressIndicator(Modifier.size(14.dp).semantics { contentDescription = "Cargando" }, strokeWidth = 2.dp)
+                    }
+                }
+                if (capa.desdeZoom > 0) LineaFuente("Se ve al acercar el mapa (zoom ${capa.desdeZoom.toInt()} o más).")
+            }
+            Switch(checked = prendida, onCheckedChange = null)
+        }
+        AnimatedVisibility(visible = prendida, enter = Transiciones.aparecer, exit = Transiciones.desaparecer) {
+            Column {
+                Selector(capa, estado, acciones)
+                NotaCapa(estado.nota(capa))
+                Leyenda(capa, estado)
+            }
+        }
+    }
+}
+
+/** La nota bajo el interruptor: cambia con fundido (al mover Hoy / Manana / Pasado, el "Cuando" del nowcasting o al llegar el dato). */
+@Composable
+private fun NotaCapa(texto: String?) {
+    AnimatedContent(
+        targetState = texto,
+        transitionSpec = {
+            (fadeIn(tween(200, easing = FastOutSlowInEasing)) togetherWith fadeOut(tween(150, easing = FastOutSlowInEasing)))
+                .using(SizeTransform(clip = false) { _, _ -> tween(200, easing = FastOutSlowInEasing) })
+        },
+        label = "notaCapa",
+    ) { t ->
+        if (t != null) Text(t, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(start = 4.dp, bottom = 4.dp))
+        else Spacer(Modifier.height(0.dp))
+    }
+}
+
+/** Insignia "Oficial" (verde) o "Experimental" (violeta), con tintas para el tema claro y el oscuro. */
 @Composable
 private fun Insignia(texto: String) {
     val oficial = texto == "Oficial"
+    val oscuro = temaOscuro()
+    val fondo = when {
+        oficial && oscuro -> Color(0xFF14532D)
+        oficial -> Color(0xFFDCFCE7)
+        oscuro -> Color(0xFF4C1D95)
+        else -> Color(0xFFEDE9FE)
+    }
+    val tinta = when {
+        oficial && oscuro -> Color(0xFFBBF7D0)
+        oficial -> Color(0xFF166534)
+        oscuro -> Color(0xFFDDD6FE)
+        else -> Color(0xFF6D28D9)
+    }
     Text(
-        texto, style = MaterialTheme.typography.labelSmall, maxLines = 1, softWrap = false,
-        color = if (oficial) Color(0xFF166534) else Color(0xFF6D28D9),
-        modifier = Modifier.background(if (oficial) Color(0xFFDCFCE7) else Color(0xFFEDE9FE), RoundedCornerShape(999.dp)).padding(horizontal = 6.dp, vertical = 1.dp),
+        texto, style = MaterialTheme.typography.labelSmall, maxLines = 1, softWrap = false, color = tinta,
+        modifier = Modifier.background(fondo, RoundedCornerShape(999.dp)).padding(horizontal = 6.dp, vertical = 1.dp),
     )
 }
 
-/** Un selector de opciones (chips) con su etiqueta. */
+/** Un selector de opciones (chips) con su etiqueta: la elegida lleva marca ademas del color, y cambiar vibra corto. */
 @Composable
 private fun Opciones(etiqueta: String, valores: List<Pair<String, String>>, elegido: String, elegir: (String) -> Unit) {
+    val vista = LocalView.current
     Text(etiqueta, style = MaterialTheme.typography.labelMedium, modifier = Modifier.padding(start = 4.dp))
     Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-        for ((valor, texto) in valores) FilterChip(selected = valor == elegido, onClick = { elegir(valor) }, label = { Text(texto) })
+        for ((valor, texto) in valores) {
+            val sel = valor == elegido
+            FilterChip(
+                selected = sel,
+                onClick = { if (!sel) { Haptica.toque(vista); elegir(valor) } },
+                label = { Text(texto) },
+                leadingIcon = if (sel) ({ Icon(Icons.Filled.Check, contentDescription = null, modifier = Modifier.size(FilterChipDefaults.IconSize)) }) else null,
+            )
+        }
     }
 }
 
@@ -566,8 +688,9 @@ private fun Muestra(color: Long, texto: String, linea: Boolean = false, zona: Bo
             linea -> Box(Modifier.width(18.dp).height(5.dp).background(Color(color), RoundedCornerShape(3.dp)))
             zona -> Box(Modifier.size(16.dp).background(Color(color).copy(alpha = 0.55f), RoundedCornerShape(3.dp)).border(1.dp, Color(color), RoundedCornerShape(3.dp)))
             rombo -> Box(Modifier.size(14.dp).rotate(45f).background(Color(color), RoundedCornerShape(2.dp)))
-            anillo -> Box(Modifier.size(14.dp).border(3.dp, Color(color), CircleShape))
-            punteado -> Box(Modifier.size(14.dp).border(2.dp, Color(color), CircleShape).background(Color.White, CircleShape))
+            // el disco blanco de adentro es el del icono del mapa: asi el aro se lee tambien en el tema oscuro
+            anillo -> Box(Modifier.size(14.dp).background(Color.White, CircleShape).border(3.dp, Color(color), CircleShape))
+            punteado -> Box(Modifier.size(14.dp).background(Color(color).copy(alpha = 0.14f), CircleShape).border(2.dp, Color(color), CircleShape))
             else -> Box(Modifier.size(14.dp).background(Color(color), CircleShape))
         }
         Spacer(Modifier.width(8.dp))
@@ -579,8 +702,9 @@ private fun Muestra(color: Long, texto: String, linea: Boolean = false, zona: Bo
 private fun MuestraGlifo(glifo: String, texto: String, punteado: Boolean = false) {
     Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(vertical = 2.dp)) {
         Box(
+            // disco blanco como el del mapa (los glifos estan dibujados para ese fondo); borde del tema
             Modifier.size(26.dp).background(Color.White, CircleShape)
-                .border(if (punteado) 2.dp else 1.dp, if (punteado) Color(0xFF475569) else Color(0xFFCBD5E1), CircleShape),
+                .border(if (punteado) 2.dp else 1.dp, if (punteado) Color(0xFF475569) else MaterialTheme.colorScheme.outline, CircleShape),
             contentAlignment = Alignment.Center,
         ) { GlifoTiempo(glifo, 18) }
         Spacer(Modifier.width(8.dp))

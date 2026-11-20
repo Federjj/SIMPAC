@@ -26,6 +26,7 @@ data class EstadoNuevo(
     val aviso: String? = null,
     val enviando: String? = null,     // null | "foto" | "reporte"
     val creadoId: String? = null,     // al terminar: id del reporte para abrir su detalle
+    val rechazos: Int = 0,            // cuantas veces fallo un envio (validacion o red), para la vibracion de rechazo
 )
 
 /**
@@ -64,17 +65,20 @@ class ReporteNuevoViewModel(app: Application) : AndroidViewModel(app) {
     fun enviar() {
         val e = _estado.value
         if (e.enviando != null) return
-        if (!sesion.conSesion) { _estado.value = e.copy(aviso = "Entra para reportar."); return }
+        if (!sesion.conSesion) { _estado.value = e.copy(aviso = "Entra para reportar.", rechazos = e.rechazos + 1); return }
         val errores = Comunidad.validarReporte(e.tipo, e.subtipo, e.descripcion, e.lat, e.lon)
+        if (errores.isNotEmpty()) { _estado.value = e.copy(errores = errores, aviso = null, rechazos = e.rechazos + 1); return }
         _estado.value = e.copy(errores = errores, aviso = null)
-        if (errores.isNotEmpty()) return
         viewModelScope.launch {
             try {
                 var fotoUrl: String? = null
                 if (e.fotoUri != null) {
                     _estado.value = _estado.value.copy(enviando = "foto")
                     val jpeg = try { Fotos.reducirJpeg(getApplication(), e.fotoUri) } catch (ex: Exception) {
-                        _estado.value = _estado.value.copy(enviando = null, aviso = "No se pudo procesar la foto. Prueba con otra o envía el reporte sin foto.")
+                        _estado.value = _estado.value.copy(
+                            enviando = null, rechazos = _estado.value.rechazos + 1,
+                            aviso = "No se pudo procesar la foto. Prueba con otra o envía el reporte sin foto.",
+                        )
                         return@launch
                     }
                     val uid = sesion.usuarioId ?: throw pe.simpac.app.data.ErrorConsulta(Comunidad.SESION_VENCIDA)
@@ -84,7 +88,10 @@ class ReporteNuevoViewModel(app: Application) : AndroidViewModel(app) {
                 val creado = repo.crearReporte(e.tipo!!, e.subtipo, e.descripcion.trim().ifBlank { null }, fotoUrl, e.lat!!, e.lon!!)
                 _estado.value = _estado.value.copy(enviando = null, creadoId = creado.id)
             } catch (ex: Exception) {
-                _estado.value = _estado.value.copy(enviando = null, aviso = ex.message ?: "No se pudo enviar el reporte. Inténtalo de nuevo en un momento.")
+                _estado.value = _estado.value.copy(
+                    enviando = null, rechazos = _estado.value.rechazos + 1,
+                    aviso = ex.message ?: "No se pudo enviar el reporte. Inténtalo de nuevo en un momento.",
+                )
             }
         }
     }

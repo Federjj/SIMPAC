@@ -1,10 +1,13 @@
 package pe.simpac.app.ui.componentes
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -21,10 +24,13 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -82,48 +88,120 @@ fun Chip(texto: String, modifier: Modifier = Modifier, color: Color? = null) {
     }
 }
 
+/**
+ * Rueda con texto para esperas cortas sin silueta conocida (por ejemplo "Revisando tu sesión...").
+ * Para el primer cargado de una pantalla usar `ContenidoConEstado` con un esqueleto (Esqueletos.kt).
+ */
 @Composable
 fun Cargando(texto: String = "Cargando...") {
-    Column(Modifier.fillMaxWidth().padding(32.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+    Column(
+        Modifier.fillMaxWidth().padding(32.dp).semantics(mergeDescendants = true) {},
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
         CircularProgressIndicator()
         Spacer(Modifier.height(12.dp))
-        Text(texto, style = MaterialTheme.typography.bodyMedium)
+        Text(texto, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 
+/** Verdadero si la superficie del tema es oscura (para elegir tintas de franjas y esqueletos). */
 @Composable
-fun ErrorReintentar(mensaje: String, onReintentar: () -> Unit) {
-    Column(Modifier.fillMaxWidth().padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-        Text("No se pudo cargar", style = MaterialTheme.typography.titleMedium)
-        Spacer(Modifier.height(6.dp))
-        Text(mensaje, style = MaterialTheme.typography.bodyMedium, textAlign = TextAlign.Center)
-        Spacer(Modifier.height(12.dp))
-        Button(onClick = onReintentar) { Text("Reintentar") }
-    }
-}
+fun temaOscuro(): Boolean = MaterialTheme.colorScheme.surface.luminance() < 0.5f
 
-/** Franja de aviso sobre el dato: sin conexion (copia guardada) o desactualizado (mas de 3 h). */
+/**
+ * Franja de aviso sobre el dato: sin conexion (copia guardada, `fuerte`) o desactualizado (mas de 3 h).
+ * Ambar o naranja claros sobre tinta oscura en el tema claro; en el oscuro, fondo apagado y tinta clara.
+ */
 @Composable
 fun AvisoDato(texto: String, modifier: Modifier = Modifier, fuerte: Boolean = false) {
-    val fondo = if (fuerte) Color(0xFFFFEDD5) else Color(0xFFFEF9C3)
-    val tinta = if (fuerte) Color(0xFF9A3412) else Color(0xFF854D0E)
-    Box(modifier.fillMaxWidth().background(fondo, RoundedCornerShape(10.dp)).padding(12.dp)) {
+    val oscuro = temaOscuro()
+    val fondo = when {
+        fuerte && oscuro -> Color(0xFF431407)
+        fuerte -> Color(0xFFFFEDD5)
+        oscuro -> Color(0xFF422006)
+        else -> Color(0xFFFEF9C3)
+    }
+    val tinta = when {
+        fuerte && oscuro -> Color(0xFFFDBA74)
+        fuerte -> Color(0xFF9A3412)
+        oscuro -> Color(0xFFFDE68A)
+        else -> Color(0xFF854D0E)
+    }
+    Box(modifier.fillMaxWidth().background(fondo, MaterialTheme.shapes.small).padding(12.dp)) {
         Text(texto, color = tinta, style = MaterialTheme.typography.bodyMedium)
     }
 }
 
-/** Tarjeta con titulo para una seccion de la pantalla. */
+/**
+ * Borde fino de las tarjetas de la app (Seccion y esqueletos): 1 dp de `outlineVariant`, el gris suave
+ * del tema. `outline` es mas oscuro y queda para los controles (interruptores, campos, chips con borde).
+ */
 @Composable
-fun Seccion(titulo: String, modifier: Modifier = Modifier, contenido: @Composable () -> Unit) {
+fun bordeTarjeta(): BorderStroke = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+
+/**
+ * Tarjeta con titulo para una seccion de la pantalla: forma `medium` (14 dp), sin sombra y con borde
+ * fino, igual en claro y oscuro. `accion` va a la derecha del titulo (por ejemplo un `TextButton`
+ * "Ver todo" o "Actualizar"); si es nula el titulo ocupa todo el ancho.
+ */
+@Composable
+fun Seccion(
+    titulo: String,
+    modifier: Modifier = Modifier,
+    accion: (@Composable () -> Unit)? = null,
+    contenido: @Composable () -> Unit,
+) {
     Card(
         modifier = modifier.fillMaxWidth(),
+        shape = MaterialTheme.shapes.medium,
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+        border = bordeTarjeta(),
     ) {
         Column(Modifier.padding(14.dp)) {
-            Text(titulo, style = MaterialTheme.typography.titleMedium)
+            if (accion == null) {
+                Text(titulo, style = MaterialTheme.typography.titleMedium)
+            } else {
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Text(titulo, style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
+                    accion()
+                }
+            }
             Spacer(Modifier.height(8.dp))
             contenido()
+        }
+    }
+}
+
+/**
+ * Enlace de texto alineado con el contenido ("Ver las alertas de Cajamarca", "Cómo llegar", "Olvidé mi
+ * contraseña"): un `TextButton` sin el relleno horizontal de 12 dp que trae Material, asi el texto
+ * empieza donde empieza el parrafo o la tarjeta de arriba, con la misma respuesta al pulsar que el
+ * resto de botones (`presionable`). Conserva la altura minima del boton (40 dp) para tocarlo bien; con
+ * etiquetas de menos de 58 dp (el ancho minimo de Material) el texto queda centrado en ese ancho.
+ * `iconoFinal` va a la derecha del texto (por ejemplo una flecha que gira al abrir). La vibracion la
+ * pone quien llama (`Haptica.toque`), como en los demas botones de la app.
+ */
+@Composable
+fun BotonEnlace(
+    texto: String,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+    iconoFinal: (@Composable () -> Unit)? = null,
+    onClick: () -> Unit,
+) {
+    val fuente = remember { MutableInteractionSource() }
+    TextButton(
+        onClick = onClick,
+        modifier = modifier.presionable(fuente),
+        enabled = enabled,
+        interactionSource = fuente,
+        contentPadding = PaddingValues(horizontal = 0.dp, vertical = 8.dp),
+    ) {
+        Text(texto)
+        if (iconoFinal != null) {
+            Spacer(Modifier.width(4.dp))
+            iconoFinal()
         }
     }
 }
