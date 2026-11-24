@@ -1,10 +1,10 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
-  agruparIncidentes, anioCorto, avisoEsDeEstacion, caudalDelRio, distanciaAZona, estacionDeAviso, estadoCauce, estadoZona, fraseCorta, metrosEntre, notaZonas,
-  pasoAntes, simular,
+  agruparIncidentes, anioCorto, avisoEsDeEstacion, caudalDelRio, distanciaAZona, estacionDeAviso, estadoCauce, estadoZona, fraseCorta, metrosEntre, notaCuenca,
+  notaZonas, pasoAntes, simular,
 } from "./zonaRio.js";
-import { textoRio } from "./lenguaje.js";
+import { etiquetaEstacion, minusculaInicial, textoRio } from "./lenguaje.js";
 
 const RIO = { id: "mashcon", nombre: "Río Mashcón", estacion_ana: "Mashcón", rio_ana: "Mashcon" };
 // datos reales del 2026-10-02/03 (caudal_actual, aviso_vigente id 296, lluvia_senamhi_actual)
@@ -43,6 +43,71 @@ test("hoy (caso real): río tranquilo + aviso naranja de lluvia sobre la cuenca 
   assert.match(e.senales[0].texto, /^Vigente hasta el 3 de octubre( de 2026)?, 1:00\sp\.\sm\.$/); // un solo punto al final
   // el aviso es un pronóstico: no se dice que llueve fuerte
   assert.equal(fraseCorta(RIO, e).texto, "Río Mashcón: tranquilo, pero hay aviso de SENAMHI por lluvia fuerte sobre su cuenca.");
+});
+
+test("notaCuenca: la línea 'Cuenca: ...' bajo la medición, con el aviso de hoy, el de mañana y el enlace", () => {
+  // el caso real del titular: río tranquilo (ANA) y aviso naranja por lluvias sobre la cuenca
+  const rojoManana = { ...AVISO_NARANJA_MANANA, nivel: 4 };
+  const e = estadoZona({ caudal: CAUDAL, senal: senal({ avisos_lluvia: [AVISO_NARANJA_HOY, rojoManana] }), ahora: AHORA });
+  const n = notaCuenca(e, AHORA);
+  assert.match(n.texto, /^Cuenca: aviso naranja de SENAMHI por lluvias vigente hoy \(hasta el 3 de octubre( de 2026)?, 1:00\sp\.\sm\.\); el caudal puede subir\. Desde mañana, aviso rojo\.$/);
+  assert.equal(n.texto, `Cuenca: ${n.cuerpo}`);
+  assert.equal(n.corto, "aviso naranja de SENAMHI por lluvias sobre su cuenca, el caudal puede subir");
+  assert.equal(n.url, "https://www.senamhi.gob.pe/?p=aviso-24H");
+  assert.equal(n.sube, true);
+  // mañana sigue el mismo color: no se anuncia como un cambio
+  const sigue = notaCuenca(estadoZona({ caudal: CAUDAL, senal: senal({ avisos_lluvia: [AVISO_NARANJA_HOY, AVISO_NARANJA_MANANA] }), ahora: AHORA }), AHORA);
+  assert.match(sigue.texto, /puede subir\. Mañana sigue con aviso naranja\.$/);
+  // el río ya pasó su nivel de alerta: "seguir subiendo"; una estación de nivel habla de "el nivel"
+  const ya = notaCuenca(estadoZona({ caudal: { ...CAUDAL, valor: 15.4 }, senal: senal({ avisos_lluvia: [AVISO_NARANJA_HOY] }), ahora: AHORA }), AHORA);
+  assert.match(ya.texto, /; el caudal puede seguir subiendo\.$/);
+  const metros = notaCuenca(estadoZona({ caudal: { ...CAUDAL, unidad: "m", valor: 1.2, umbral_alerta: 3, umbral_emergencia: 4 }, senal: senal({ avisos_lluvia: [AVISO_NARANJA_HOY] }), ahora: AHORA }), AHORA);
+  assert.match(metros.texto, /; el nivel puede subir\.$/);
+  // sin medición de ANA: "el río"
+  assert.match(notaCuenca(estadoZona({ senal: senal({ avisos_lluvia: [AVISO_NARANJA_HOY] }), ahora: AHORA }), AHORA).texto, /; el río puede subir\.$/);
+});
+
+test("notaCuenca: lluvia medida (sin enlace), solo amarillo o solo mañana (no dicen que sube); nada o solo aviso hidrológico = null", () => {
+  const gore = { ...GORE_SECO, pp_1h: 7.2, pp_6h: 7.2 };
+  const l = notaCuenca(estadoZona({ caudal: CAUDAL, senal: senal({ lluvia_cuenca: [gore] }), ahora: AHORA }), AHORA);
+  assert.equal(l.texto, "Cuenca: la estación RIO GRANDE GORE midió más lluvia que su referencia de SENAMHI; el caudal puede subir.");
+  assert.equal(l.corto, "llovió fuerte en su cuenca, el caudal puede subir");
+  assert.equal(l.url, null);
+  // aviso de hoy y lluvia medida a la vez, en una sola oración
+  const dos = notaCuenca(estadoZona({ caudal: CAUDAL, senal: senal({ avisos_lluvia: [AVISO_NARANJA_HOY], lluvia_cuenca: [gore, { ...gore, clave: "otra", nombre: "OTRA" }] }), ahora: AHORA }), AHORA);
+  assert.match(dos.texto, /vigente hoy \(hasta el [^)]+\) y 2 estaciones de la cuenca midieron más lluvia que su referencia de SENAMHI; el caudal puede subir\.$/);
+  assert.equal(dos.corto, "aviso naranja de SENAMHI por lluvias sobre su cuenca y lluvia fuerte medida en su cuenca, el caudal puede subir");
+  // amarillo de hoy: se dice, sin "puede subir" y con el enlace oficial
+  const am = notaCuenca(estadoZona({ caudal: CAUDAL, senal: senal({ avisos_lluvia: [AVISO_AMARILLO_HOY] }), ahora: AHORA }), AHORA);
+  assert.equal(am.texto, "Cuenca: aviso amarillo de SENAMHI por lluvias vigente hoy.");
+  assert.equal(am.sube, false);
+  assert.equal(am.url, "https://www.senamhi.gob.pe/?p=aviso-24H");
+  // solo el de mañana
+  const man = notaCuenca(estadoZona({ caudal: CAUDAL, senal: senal({ avisos_lluvia: [AVISO_NARANJA_MANANA] }), ahora: AHORA }), AHORA);
+  assert.equal(man.texto, "Cuenca: desde mañana, aviso naranja.");
+  assert.equal(man.corto, "aviso naranja de SENAMHI por lluvias sobre su cuenca desde mañana");
+  assert.equal(man.url, "https://www.senamhi.gob.pe/?p=aviso-meteorologico");
+  // uno que empieza en dos días: la fecha
+  const dosDias = notaCuenca(estadoZona({ caudal: CAUDAL, senal: senal({ avisos_lluvia: [{ ...AVISO_NARANJA_MANANA, inicio: "2026-10-05T05:00:00+00:00", fin: "2026-10-06T04:59:59+00:00" }] }), ahora: AHORA }), AHORA);
+  assert.match(dosDias.texto, /^Cuenca: desde el 5 de octubre( de 2026)?, aviso naranja\.$/);
+  // nada en la cuenca, o solo el aviso hidrológico (que ya titula el popup): null
+  assert.equal(notaCuenca(estadoZona({ caudal: CAUDAL, ahora: AHORA }), AHORA), null);
+  const h = { ca: 1, numero: 1700, sentido: "crecida", nivel: 3, fin: "2026-10-03T21:00:00Z", url: "https://www.senamhi.gob.pe/?p=x" };
+  assert.equal(notaCuenca(estadoZona({ caudal: CAUDAL, senal: senal({ avisos_hidro: [h] }), ahora: AHORA }), AHORA), null);
+  assert.equal(notaCuenca(null), null);
+});
+
+test("etiquetaEstacion: la medición dice de qué estación es y qué mide, sin confundirse con la cuenca", () => {
+  assert.equal(etiquetaEstacion(CAUDAL), "Estación Mashcón (ANA): río tranquilo");
+  assert.equal(etiquetaEstacion({ ...CAUDAL, valor: 11.5 }), "Estación Mashcón (ANA): río cerca de su nivel de alerta");
+  assert.equal(etiquetaEstacion({ ...CAUDAL, valor: 15.4 }), "Estación Mashcón (ANA): río en alerta");
+  assert.equal(etiquetaEstacion({ ...CAUDAL, valor: 19 }), "Estación Mashcón (ANA): río en emergencia");
+  assert.equal(etiquetaEstacion({ ...CAUDAL, valor: 1, umbral_alerta: 3, umbral_emergencia: 2 }), "Estación Mashcón (ANA): río muy bajo");
+  assert.equal(etiquetaEstacion({ ...CAUDAL, valor: null }), "Estación Mashcón (ANA): sin medición reciente");
+  assert.equal(etiquetaEstacion({ ...CAUDAL, umbral_alerta: null }), "Estación Mashcón (ANA): sin nivel de alerta publicado");
+  assert.equal(etiquetaEstacion({ estacion: "Puno", rio: "Titicaca", valor: 3810.2, unidad: "m s. n. m.", umbral_alerta: 3811 }), "Estación Puno (ANA): lago tranquilo");
+  assert.equal(minusculaInicial("Tranquilo. Lleva 0,13 m³/s."), "tranquilo. Lleva 0,13 m³/s.");
+  assert.equal(minusculaInicial("ANA no publica un nivel de alerta."), "ANA no publica un nivel de alerta.");
 });
 
 test("solo aviso amarillo de lluvia o aviso naranja de mañana: no sube, se menciona", () => {
@@ -147,6 +212,24 @@ test("simular: aviso hidrológico vigente falso (valor 15, url #) y lluvia fuert
   // varias a la vez
   const dos = simular({ rio: RIO_SIM, caudal: CAUDAL, senal: null }, "mashcon:19,mashcon:hidro2", AHORA);
   assert.equal(estadoZona({ caudal: dos.caudal, senal: dos.senal, ahora: AHORA }).nivel, "emergencia");
+});
+
+test("simular: aviso de lluvia falso en curso (aviso3) y desde mañana (manana4): la zona queda en atentos y la cuenca lo dice", () => {
+  const a = simular({ rio: RIO_SIM, caudal: CAUDAL, senal: null }, "mashcon:aviso3,mashcon:manana4", AHORA);
+  assert.equal(a.activa, true);
+  assert.equal(a.senal.avisos_lluvia.length, 2);
+  const e = estadoZona({ caudal: a.caudal, senal: a.senal, ahora: AHORA });
+  assert.equal(e.nivel, "atentos");
+  assert.deepEqual(e.senales.map((s) => s.clave), ["aviso_lluvia"]);
+  assert.deepEqual(e.menciones.map((m) => m.clave), ["aviso_manana"]);
+  const n = notaCuenca(e, AHORA);
+  assert.match(n.texto, /^Cuenca: aviso naranja de SENAMHI por lluvias vigente hoy \(hasta el 4 de octubre( de 2026)?, 1:00\sa\.\sm\.\); el caudal puede subir\. Desde mañana, aviso rojo\.$/);
+  assert.equal(n.url, "https://www.senamhi.gob.pe/?p=aviso-meteorologico");
+  // el aviso amarillo falso no sube la zona, solo se menciona
+  const am = simular({ rio: RIO_SIM, caudal: CAUDAL, senal: null }, "mashcon:aviso2", AHORA);
+  const ea = estadoZona({ caudal: am.caudal, senal: am.senal, ahora: AHORA });
+  assert.equal(ea.nivel, "sin_senales");
+  assert.equal(notaCuenca(ea, AHORA).texto, "Cuenca: aviso amarillo de SENAMHI por lluvias vigente hoy.");
 });
 
 test("incidentes cercanos: con un radio en metros se juntan en el punto del más nuevo", () => {

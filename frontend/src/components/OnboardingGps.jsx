@@ -3,6 +3,7 @@ import { LocateFixed, MapPin } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import CitySelector from "@/components/CitySelector";
 import { marcarGpsVisto } from "@/lib/zonaAhora";
+import { sePuedeReintentar, textoBuscando, textoFalloCorto } from "@/lib/geolocalizacion";
 import { useAltoHoja } from "@/hooks/useAltoHoja";
 
 // Una pantalla antes de pedir el permiso del GPS: explica para qué sirve la ubicación y que no se
@@ -10,21 +11,26 @@ import { useAltoHoja } from "@/hooks/useAltoHoja";
 // simpac.gps = "visto"; sin localStorage vuelve a salir, aceptable); el botón "Mi ubicación" de la
 // derecha sigue siempre. Si el navegador ya tenía el permiso, App pide el GPS solo y esto no sale.
 //   ciudad     la ciudad elegida (para decir qué se muestra mientras tanto)
-//   city/pickCity   el selector de ciudad (CitySelector)
+//   city/pickCity   el selector de ciudad (CitySelector); el pickCity que pasa Mapa cancela la
+//              búsqueda del GPS en curso, así "Elegir mi ciudad" sirve también mientras se busca
+//              (quien ya sabe que su GPS no responde no espera medio minuto) y la lectura que
+//              llegara después no mueve el mapa a otro lado
 //   geolocate  () -> Promise<[lat, lon] | null>  (App)
-//   status     idle | pending | granted | denied | unavailable (useGeolocation)
+//   status     idle | pending | granted | denied | unavailable | timeout | insecure (useGeolocation)
 //   onCerrar   () -> la hoja se va (concedido, ciudad elegida o "Ahora no")
 export default function OnboardingGps({ ciudad, city, pickCity, geolocate, status, onCerrar }) {
   const [paso, setPaso] = useState("inicio"); // inicio | ciudad | fallo
   const pidiendo = status === "pending";
   const hojaRef = useRef(null);
   useAltoHoja(hojaRef);
-  // el mensaje del fallo se arma al dibujar, con el status ya actualizado (denegado o sin GPS)
-  const mensaje =
-    paso === "fallo"
-      ? status === "denied" || typeof navigator === "undefined" || !navigator.geolocation
-        ? "No pudimos usar tu ubicación. Elige tu ciudad."
-        : `Tu GPS tarda o no responde; mientras tanto te mostramos ${ciudad?.name ?? "Cajamarca"}. Elige tu ciudad si es otra.`
+  // mientras se busca (desde el primer intento, no solo al reintentar) se avisa que puede tardar
+  // hasta medio minuto: bajo techo el GPS frío ocupa los 6 s de la rápida más los 22 s del afinado
+  // y no debe verse un botón girando sin explicación. El mensaje del fallo se arma al dibujar, con
+  // el status ya actualizado (negado, sin señal, GPS que tarda o página sin https).
+  const mensaje = pidiendo
+    ? { texto: textoBuscando(paso === "fallo"), tono: "buscando" }
+    : paso === "fallo" && status !== "granted"
+      ? { texto: textoFalloCorto(status, ciudad?.name ?? "Cajamarca"), tono: "fallo" }
       : null;
 
   const usar = async () => {
@@ -70,8 +76,15 @@ export default function OnboardingGps({ ciudad, city, pickCity, geolocate, statu
         </div>
 
         {mensaje && (
-          <p role="status" className="mt-3 rounded-lg bg-nivel-alerta/10 px-3 py-2 text-sm font-medium text-nivel-alerta">
-            {mensaje}
+          <p
+            role="status"
+            className={
+              mensaje.tono === "fallo"
+                ? "mt-3 rounded-lg bg-nivel-alerta/10 px-3 py-2 text-sm font-medium text-nivel-alerta"
+                : "mt-3 rounded-lg bg-muted px-3 py-2 text-sm text-muted-foreground"
+            }
+          >
+            {mensaje.texto}
           </p>
         )}
 
@@ -84,6 +97,13 @@ export default function OnboardingGps({ ciudad, city, pickCity, geolocate, statu
                 onCerrar();
               }}
             />
+            {paso === "fallo" && (pidiendo || sePuedeReintentar(status)) && (
+              <Button variant="outline" size="sm" onClick={usar} disabled={pidiendo}>
+                <LocateFixed className="h-4 w-4" />
+                {pidiendo ? "Buscando…" : "Volver a intentar"}
+              </Button>
+            )}
+            {/* como "Ahora no": se puede salir aunque se siga buscando (si la lectura llega, el mapa se centra igual) */}
             <Button variant="ghost" size="sm" onClick={onCerrar}>
               Seguir con {ciudad?.name ?? "la ciudad elegida"}
             </Button>
@@ -92,9 +112,9 @@ export default function OnboardingGps({ ciudad, city, pickCity, geolocate, statu
           <div className="mt-3 flex flex-wrap items-center gap-2">
             <Button className="h-10 flex-1 font-semibold" onClick={usar} disabled={pidiendo}>
               <LocateFixed className="h-4 w-4" />
-              {pidiendo ? "Buscando tu ubicación…" : "Usar mi ubicación"}
+              {pidiendo ? "Buscando…" : "Usar mi ubicación"}
             </Button>
-            <Button variant="outline" className="h-10" onClick={elegirCiudad} disabled={pidiendo}>
+            <Button variant="outline" className="h-10" onClick={elegirCiudad}>
               <MapPin className="h-4 w-4" />
               Elegir mi ciudad
             </Button>

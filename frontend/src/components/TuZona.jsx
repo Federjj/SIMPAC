@@ -5,6 +5,7 @@ import { cn } from "@/lib/utils";
 import { useContador } from "@/hooks/useContador";
 import { ETIQUETA_NIVEL, PIE_OFICIAL, TELEFONOS, textoMetros } from "@/lib/zonaAhora";
 import { FRASES_RIO_PAIS } from "@/lib/lenguaje";
+import { textoSinGps } from "@/lib/geolocalizacion";
 
 // "Tu zona ahora": lo que se lee en 5 segundos al abrir la app. De arriba abajo: 1 el semáforo
 // (color + ícono + etiqueta, nunca solo color), 2 el titular corto (lib/zonaAhora.js titularCorto),
@@ -80,7 +81,10 @@ export default function TuZona({ zona, depto, gps, plegado = false, onAccion, on
   const { nivel, titular, instruccion, chips, boton, fuentes, cercano, verRio, porGps, hayRios, hayTrazadosDepto, fuerte, origen } = zona;
   const sinGps = !porGps;
   const gpsPidiendo = gps?.status === "pending";
-  const gpsNoDisponible = gps?.status === "denied" || gps?.status === "unavailable";
+  // qué pasó con la ubicación y qué enlace va (lib/geolocalizacion.js textoSinGps): "Usar mi
+  // ubicación" si no se pidió, "Volver a intentar" si el GPS tardó o no hubo señal, ninguno con el
+  // permiso negado o sin https (ahí primero hay que cambiar algo)
+  const sinUbicacion = textoSinGps(gps?.status);
 
   return (
     <section className={cn("px-4 pt-3", className)} aria-label="Tu zona ahora">
@@ -121,13 +125,11 @@ export default function TuZona({ zona, depto, gps, plegado = false, onAccion, on
         <div className="tz-chip mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[0.8rem] text-muted-foreground" style={{ "--i": 2 }}>
           <span className="inline-flex items-center gap-1.5">
             <LocateFixed className="h-3.5 w-3.5 shrink-0" />
-            {gpsNoDisponible
-              ? "No pudimos usar tu ubicación: las distancias van desde el centro de la ciudad."
-              : "Activa tu ubicación para ver a qué distancia estás tú del río."}
+            {sinUbicacion.texto}
           </span>
-          {gps?.geolocate && !gpsNoDisponible && (
+          {gps?.geolocate && sinUbicacion.enlace && (
             <button type="button" onClick={gps.geolocate} disabled={gpsPidiendo} className="font-medium text-foreground underline underline-offset-2 disabled:opacity-60">
-              {gpsPidiendo ? "Buscando tu ubicación…" : "Usar mi ubicación"}
+              {gpsPidiendo ? "Buscando tu ubicación…" : sinUbicacion.enlace}
             </button>
           )}
         </div>

@@ -1,11 +1,16 @@
 package pe.simpac.app.ui.mapa
 
 import android.content.Context
+import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.ColorMatrix
 import android.graphics.ColorMatrixColorFilter
 import android.graphics.DashPathEffect
 import android.graphics.Paint
+import android.graphics.Path
+import android.graphics.Point
+import android.os.SystemClock
+import android.provider.Settings
 import org.osmdroid.config.Configuration
 import org.osmdroid.events.DelayedMapListener
 import org.osmdroid.events.MapListener
@@ -20,6 +25,7 @@ import org.osmdroid.util.GeoPoint
 import org.osmdroid.util.MapTileIndex
 import org.osmdroid.views.CustomZoomButtonsController
 import org.osmdroid.views.MapView
+import org.osmdroid.views.Projection
 import org.osmdroid.views.overlay.FolderOverlay
 import org.osmdroid.views.overlay.Marker
 import org.osmdroid.views.overlay.Overlay
@@ -41,12 +47,16 @@ import pe.simpac.app.dominio.GeoJson
 import pe.simpac.app.dominio.Geometria
 import pe.simpac.app.dominio.Incidentes
 import pe.simpac.app.dominio.Lluvia
+import pe.simpac.app.dominio.NivelZona
 import pe.simpac.app.dominio.Nowcast
 import pe.simpac.app.dominio.Paleta
 import pe.simpac.app.dominio.PronosticoMapa
 import pe.simpac.app.dominio.Reportes
 import pe.simpac.app.ubicacion.Posicion
 import java.io.File
+import kotlin.math.abs
+import kotlin.math.roundToInt
+import kotlin.math.sin
 
 /** Lo que la persona toco en el mapa: la hoja inferior lo explica en lenguaje claro. */
 sealed class Seleccion {
@@ -156,10 +166,22 @@ class GestorMapa(
         val PERU = BoundingBox(0.5, -68.0, -18.6, -81.8)
         /** Duracion de los movimientos de camara (centrar, volar): corta, nunca bloquea el gesto. */
         const val MOVIMIENTO_MS = 500L
+        /** Halo que late bajo un rio con senales: periodo de la onda, lapso entre cuadros (~11 por segundo) y alfa minimo y maximo. */
+        const val PULSO_PERIODO_MS = 2500L
+        const val PULSO_CUADRO_MS = 90L
+        const val PULSO_ALFA_MIN = 0.25f
+        const val PULSO_ALFA_MAX = 0.75f
     }
 
-    private class Trazo(val rio: RioDibujo, val halo: Polyline, val linea: Polyline, var detalle: String)
+    /** Un trazo de un rio del pais: halo blanco, linea del color de ANA y, si la zona del rio tiene senales, el halo que late debajo. */
+    private class Trazo(val rio: RioDibujo, val halo: Polyline, val linea: Polyline, val pulso: Pulso?, var detalle: String)
+    /** Un halo que late: los puntos de una parte del cauce (con el detalle del zoom), el color del nivel de la zona y si toca la vista. Lo dibuja Latido. */
+    private class Pulso(var puntos: List<GeoPoint>, val color: Int) { var habilitado = true }
     private val trazos = ArrayList<Trazo>()
+    private val latido = Latido()
+    // los pulsos del Mashcon (una parte por tramo del cauce de OSM) y la caja de su cauce, para apagarlos fuera de la vista
+    private var pulsosMashcon: List<Pulso> = emptyList()
+    private var cajaMashcon: Caja? = null
     // los trazos de cada rio (varios si el grueso tiene varias partes) y los rios con trazo, en su orden
     private var trazosPorRio: Map<String, List<Trazo>> = emptyMap()
     private var riosDibujados: List<RioDibujo> = emptyList()
@@ -326,16 +348,126 @@ class GestorMapa(
     }
 
     // ---- rios ----
+
+    /**
+     * El halo que late. Va primero en la capa de rios y dibuja el mismo los pulsos (no son overlays de la
+     * capa): en cada cuadro calcula el alfa (una onda de PULSO_ALFA_MIN a PULSO_ALFA_MAX cada
+     * PULSO_PERIODO_MS) y pinta con el un solo Path por color con todas las partes habilitadas, en pixeles
+     * de pantalla. Dentro de un mismo drawPath el trazo no se suma donde las partes se solapan (el cauce del
+     * Mashcon llega de OSM en varias), asi el alfa es el de la onda y no mas, sin abrir una capa fuera de
+     * pantalla (saveLayerAlpha costaba medio cuadro en el emulador). Los Path se rehacen solo cuando cambia
+     * la vista (zoom, desplazamiento, giro, tamano) o los pulsos (puntos, habilitados, ancho); con el mapa
+     * quieto cada cuadro es un drawPath por color. Todo queda debajo del halo blanco y de la linea, que se
+     * dibujan despues. Luego pide el siguiente cuadro con postInvalidateDelayed (~11 por segundo, no un
+     * ValueAnimator a 60). Si el mapa no se dibuja (pestana cerrada, app detras, capa de rios apagada) o
+     * ningun pulso esta habilitado (ninguno toca la vista: revisarVista los apaga) no se dibuja ni se pide
+     * nada y la cadena se corta sola; vuelve a arrancar con el primer dibujo. Con la escala de animaciones
+     * del sistema en 0 el halo queda fijo a medio alfa; esa escala se vuelve a leer al llegar rios y cuando
+     * la cadena arranca tras una pausa.
+     */
+    private inner class Latido : Overlay() {
+        val pulsos = ArrayList<Pulso>()
+        /** Ancho del cuadro (anchoPulso), el mismo para todos los pulsos. */
+        var ancho = 18f * densidad
+        private var animar = true
+        private var ultimoCuadroMs = 0L
+        private val pintura = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            style = Paint.Style.STROKE
+            strokeCap = Paint.Cap.ROUND
+            strokeJoin = Paint.Join.ROUND
+        }
+        // un Path por color, en pixeles de la vista con la que se construyo
+        private val caminos = HashMap<Int, Path>()
+        private var vista: List<Any> = emptyList()
+        private var sucio = true
+        private val punto = Point()
+
+        /** Cambiaron los pulsos (puntos, habilitados o ancho): los Path se rehacen en el proximo cuadro. */
+        fun cambiaron() { sucio = true }
+
+        fun revisarAjustes() {
+            animar = try {
+                Settings.Global.getFloat(mapa.context.contentResolver, Settings.Global.ANIMATOR_DURATION_SCALE, 1f) > 0f
+            } catch (_: Exception) {
+                true
+            }
+        }
+
+        override fun draw(canvas: Canvas, mapView: MapView, shadow: Boolean) {
+            if (shadow || pulsos.none { it.habilitado }) return
+            val ahora = SystemClock.uptimeMillis()
+            if (ahora - ultimoCuadroMs > 1000L) revisarAjustes()
+            ultimoCuadroMs = ahora
+            val alfa = if (animar) alfaPulso(ahora) else ((PULSO_ALFA_MIN + PULSO_ALFA_MAX) / 2f * 255f).roundToInt()
+            // MapView crea una Projection nueva en cada dibujo: la vista se compara por sus valores, no por el objeto
+            val vistaAhora = listOf<Any>(mapView.zoomLevelDouble, mapView.mapScrollX, mapView.mapScrollY, mapView.mapOrientation, mapView.width, mapView.height)
+            if (sucio || vistaAhora != vista) {
+                construir(mapView.projection)
+                vista = vistaAhora
+                sucio = false
+            }
+            pintura.strokeWidth = ancho
+            for ((color, camino) in caminos) {
+                if (camino.isEmpty) continue
+                pintura.color = color
+                pintura.alpha = alfa
+                canvas.drawPath(camino, pintura)
+            }
+            if (animar) mapView.postInvalidateDelayed(PULSO_CUADRO_MS)
+        }
+
+        /** Un Path por color con todas las partes habilitadas; los vertices que caen en el pixel del anterior se saltan. */
+        private fun construir(pj: Projection) {
+            for (c in caminos.values) c.rewind()
+            for (p in pulsos) {
+                if (!p.habilitado) continue
+                val camino = caminos.getOrPut(p.color) { Path() }
+                var ux = 0; var uy = 0; var primero = true
+                for (g in p.puntos) {
+                    pj.toPixels(g, punto)
+                    val x = punto.x; val y = punto.y
+                    if (primero) { camino.moveTo(x.toFloat(), y.toFloat()); primero = false }
+                    else if (abs(x - ux) + abs(y - uy) < 2) continue
+                    else camino.lineTo(x.toFloat(), y.toFloat())
+                    ux = x; uy = y
+                }
+            }
+        }
+    }
+
+    /** Alfa (0 a 255) del cuadro: una onda seno suave entre PULSO_ALFA_MIN y PULSO_ALFA_MAX con periodo PULSO_PERIODO_MS. */
+    private fun alfaPulso(t: Long): Int {
+        val fase = (t % PULSO_PERIODO_MS).toDouble() / PULSO_PERIODO_MS
+        val onda = 0.5 + 0.5 * sin(2.0 * Math.PI * fase)
+        return ((PULSO_ALFA_MIN + (PULSO_ALFA_MAX - PULSO_ALFA_MIN) * onda) * 255.0).roundToInt()
+    }
+
+    /** El halo que late bajo un cauce: del color del nivel de la zona (ámbar atentos, naranja alerta, rojo emergencia); lo dibuja Latido con el alfa y el ancho del cuadro, no va en la capa. */
+    private fun pulso(parte: List<Coord>, nivel: NivelZona): Pulso {
+        val p = Pulso(puntos(parte), Paleta.zona(nivel).toInt())
+        latido.pulsos += p
+        return p
+    }
+
+    /** Ancho del halo que late: mas que el halo blanco (10 dp) para verse por fuera; mas fino con el mapa lejos. */
+    private fun anchoPulso(zoom: Double, pais: Boolean): Float = (if (pais) 9f else if (zoom < 10) 13f else 18f) * densidad
+
     fun mostrarRios(rios: List<RioDibujo>, mashcon: MashconDibujo?) {
         vaciar(capaRios)
         trazos.clear()
         rotulosHechos.clear()
+        latido.pulsos.clear()
+        latido.revisarAjustes()
         mashconDibujado = mashcon
-        // los halos de los rios van debajo de todas las lineas (afluentes, Mashcon y rios): se juntan
-        // en dos listas y la capa se llena de una vez, ya en ese orden
+        // debajo de todo, Latido con los halos que laten (rios cuya zona tiene senales), que dibuja el mismo;
+        // encima los halos blancos y al final las lineas (afluentes, Mashcon y rios): se juntan en listas y
+        // la capa se llena de una vez
         val halos = ArrayList<Overlay>()
         val lineas = ArrayList<Overlay>()
+        pulsosMashcon = emptyList()
+        cajaMashcon = mashcon?.let { m -> m.caja ?: GeoJson.cajaDe(m.cauce.asSequence().flatten()) }
         mashcon?.let { m ->
+            if (m.estado.nivel != NivelZona.SIN_SENALES) pulsosMashcon = m.cauce.map { pulso(it, m.estado.nivel) }
             for (parte in m.afluentes) {
                 val a = Polyline(mapa)
                 a.setPoints(puntos(parte))
@@ -354,17 +486,20 @@ class GestorMapa(
         }
         for (r in rios) {
             val color = Paleta.cauce(r.estado.cauce.estado).toInt()
+            val nivelZona = r.estado.zona.nivel
             for (parte in r.grueso) {
+                val pulso = if (nivelZona != NivelZona.SIN_SENALES) pulso(parte, nivelZona) else null
                 val halo = linea(parte, Paleta.HALO.toInt(), 10f, 230)
                 val l = linea(parte, color, 4.5f, 255)
                 l.setOnClickListener { _, _, _ -> alTocar(Seleccion.Rio(r)); true }
                 halos += halo; lineas += l
-                trazos += Trazo(r, halo, l, "grueso")
+                trazos += Trazo(r, halo, l, pulso, "grueso")
             }
         }
         trazosPorRio = trazos.groupBy { it.rio.rioAna }
         riosDibujados = trazosPorRio.values.map { it.first().rio }
-        poner(capaRios, halos + lineas)
+        latido.cambiaron()
+        poner(capaRios, listOf<Overlay>(latido) + halos + lineas)
         revisarVista()
     }
 
@@ -416,7 +551,7 @@ class GestorMapa(
                 if (t.detalle == quiere) continue
                 val parte = partes.getOrNull(i) ?: continue
                 val pts = puntos(parte)
-                t.halo.setPoints(pts); t.linea.setPoints(pts)
+                t.halo.setPoints(pts); t.linea.setPoints(pts); t.pulso?.puntos = pts
                 t.detalle = quiere
             }
             // partes extra del detalle (el fino puede traer mas partes): se omiten (la primera parte alcanza para verlo)
@@ -429,9 +564,15 @@ class GestorMapa(
             val visible = GeoJson.cajasSeCruzan(t.rio.caja, conMargen)
             t.linea.isEnabled = visible
             t.halo.isEnabled = visible && (!pais || fuerte)
+            t.pulso?.habilitado = visible && (!pais || fuerte)
             t.linea.outlinePaint.strokeWidth = (if (pais && !fuerte) 1.5f else if (zoom < 10) 3f else 4.5f) * densidad
             t.linea.outlinePaint.color = if (pais && !fuerte) Paleta.cauce(pe.simpac.app.dominio.EstadoCauce.SD).toInt() else Paleta.cauce(t.rio.estado.cauce.estado).toInt()
         }
+        // el pulso del Mashcon tambien se apaga fuera de la vista: si no, Latido seguiria pidiendo cuadros con el cauce a 50 km
+        val mashconVisible = GeoJson.cajasSeCruzan(cajaMashcon, conMargen)
+        for (p in pulsosMashcon) p.habilitado = mashconVisible
+        latido.ancho = anchoPulso(zoom, pais)
+        latido.cambiaron()
     }
 
     private fun rotulos(zoom: Double, vista: Caja) {

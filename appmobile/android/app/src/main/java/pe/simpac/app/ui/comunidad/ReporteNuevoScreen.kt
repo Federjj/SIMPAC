@@ -1,7 +1,10 @@
 package pe.simpac.app.ui.comunidad
 
 import android.Manifest
+import android.content.ActivityNotFoundException
+import android.content.Intent
 import android.net.Uri
+import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
@@ -50,6 +53,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -66,6 +70,9 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.AsyncImage
@@ -73,6 +80,7 @@ import coil.request.ImageRequest
 import pe.simpac.app.data.EstadoSesion
 import pe.simpac.app.dominio.Comunidad
 import pe.simpac.app.dominio.TipoReporte
+import pe.simpac.app.ubicacion.Ubicacion
 import pe.simpac.app.ui.componentes.AparecerEscalonado
 import pe.simpac.app.ui.componentes.Cargando
 import pe.simpac.app.ui.componentes.Haptica
@@ -107,6 +115,19 @@ fun ReporteNuevoScreen(volver: () -> Unit, abrirReporte: (String) -> Unit, irCue
         if (estado.rechazos > rechazosVistos) { rechazosVistos = estado.rechazos; Haptica.rechazar(vista) }
     }
     LaunchedEffect(sesion) { if (sesion is EstadoSesion.ConSesion) vm.buscarUbicacion() }
+    // ubicacion solo en primer plano: al irse la app al fondo se deja de pedir la posicion; al volver se retoma lo interrumpido
+    val ciclo = LocalLifecycleOwner.current
+    DisposableEffect(ciclo) {
+        val observador = LifecycleEventObserver { _, evento ->
+            when (evento) {
+                Lifecycle.Event.ON_STOP -> vm.detenerBusqueda()
+                Lifecycle.Event.ON_START -> vm.reanudarBusqueda()
+                else -> {}
+            }
+        }
+        ciclo.lifecycle.addObserver(observador)
+        onDispose { ciclo.lifecycle.removeObserver(observador) }
+    }
 
     val pedirUbicacion = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { vm.buscarUbicacion() }
     var uriCamara by remember { mutableStateOf<Uri?>(null) }
@@ -174,11 +195,25 @@ fun ReporteNuevoScreen(volver: () -> Unit, abrirReporte: (String) -> Unit, irCue
     }
 }
 
-/** Estado del GPS: cada caso se cruza con fundido; "lista" lleva icono y tinta verde legible en ambos temas. */
+/**
+ * Estado del GPS: cada caso se cruza con fundido; "lista" lleva icono, tinta verde legible en ambos temas
+ * y la precision ("Precision: unos 12 m"). Mientras se afina se ve una rueda con texto; si la posicion
+ * puede mejorar (peor que 30 m) hay un boton "Mejorar precision". Cada causa de no tener posicion trae
+ * su accion: dar el permiso, activar la ubicacion del telefono (ajustes del sistema) o volver a buscar.
+ */
 @Composable
 private fun BloqueUbicacion(estado: EstadoNuevo, vm: ReporteNuevoViewModel, enviando: Boolean, pedirPermiso: () -> Unit) {
     val vista = LocalView.current
+    val contexto = LocalContext.current
+    val avisador = LocalAvisador.current
     val verde = if (temaOscuro()) Color(0xFF86EFAC) else Color(0xFF166534)
+    fun abrirAjustes(intencion: Intent) {
+        try {
+            contexto.startActivity(intencion)
+        } catch (_: ActivityNotFoundException) {
+            avisador.avisar("No se pudieron abrir los ajustes del teléfono")
+        }
+    }
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Text("Tu ubicación", style = MaterialTheme.typography.titleMedium)
         AnimatedContent(
@@ -190,13 +225,41 @@ private fun BloqueUbicacion(estado: EstadoNuevo, vm: ReporteNuevoViewModel, envi
             label = "gps",
         ) { gps ->
             when (gps) {
-                EstadoGps.LISTA -> Row(verticalAlignment = Alignment.Top) {
-                    Icon(Icons.Outlined.CheckCircle, contentDescription = null, tint = verde, modifier = Modifier.padding(top = 2.dp).size(18.dp))
-                    Spacer(Modifier.width(6.dp))
-                    Text(
-                        "Ubicación lista (${String.format(Locale.US, "%.4f, %.4f", estado.lat, estado.lon)}). El reporte se marcará ahí.",
-                        style = MaterialTheme.typography.bodyMedium, color = verde,
-                    )
+                EstadoGps.LISTA -> Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Row(verticalAlignment = Alignment.Top) {
+                        Icon(Icons.Outlined.CheckCircle, contentDescription = null, tint = verde, modifier = Modifier.padding(top = 2.dp).size(18.dp))
+                        Spacer(Modifier.width(6.dp))
+                        val precision = estado.precisionM?.let { Ubicacion.textoMetros(it) } ?: "sin dato"
+                        Text(
+                            "Ubicación lista (${String.format(Locale.US, "%.4f, %.4f", estado.lat, estado.lon)}). Precisión: $precision. El reporte se marcará ahí.",
+                            style = MaterialTheme.typography.bodyMedium, color = verde,
+                        )
+                    }
+                    if (estado.afinando) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp)
+                            Spacer(Modifier.width(8.dp))
+                            Text(
+                                "Afinando la posición (hasta ${Ubicacion.ESPERA_REPORTE_MS / 1000} s). Puedes enviar cuando quieras.",
+                                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    } else if (estado.puedeMejorar) {
+                        OutlinedButton(onClick = { Haptica.toque(vista); vm.mejorarPrecision() }, enabled = !enviando) { Text("Mejorar precisión") }
+                    }
+                    if (estado.soloAproximada) {
+                        Text(
+                            "La app solo tiene permiso de ubicación aproximada (unos 2 km). Para marcar el reporte donde estás, cambia el permiso de SIMPAC a \"Precisa\" en los ajustes del teléfono.",
+                            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        OutlinedButton(
+                            onClick = {
+                                Haptica.toque(vista)
+                                abrirAjustes(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.fromParts("package", contexto.packageName, null)))
+                            },
+                            enabled = !enviando,
+                        ) { Text("Abrir ajustes de la app") }
+                    }
                 }
                 EstadoGps.BUSCANDO -> Row(verticalAlignment = Alignment.CenterVertically) {
                     CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp)
@@ -210,8 +273,24 @@ private fun BloqueUbicacion(estado: EstadoNuevo, vm: ReporteNuevoViewModel, envi
                     )
                     OutlinedButton(onClick = { Haptica.toque(vista); pedirPermiso() }, enabled = !enviando) { Text("Dar permiso de ubicación") }
                 }
+                EstadoGps.UBICACION_APAGADA -> Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        "La ubicación del teléfono está apagada. Préndela en los ajustes del sistema y vuelve a buscar.",
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        OutlinedButton(
+                            onClick = { Haptica.toque(vista); abrirAjustes(Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS)) },
+                            enabled = !enviando,
+                        ) { Text("Activar la ubicación") }
+                        OutlinedButton(onClick = { Haptica.toque(vista); vm.buscarUbicacion() }, enabled = !enviando) { Text("Volver a buscar") }
+                    }
+                }
                 EstadoGps.SIN_SENAL -> Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("No se pudo obtener tu ubicación. Revisa que el GPS esté prendido y vuelve a intentar.", style = MaterialTheme.typography.bodyMedium)
+                    Text(
+                        "No se pudo obtener tu posición. Prueba a cielo abierto o cerca de una ventana y vuelve a intentar.",
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
                     OutlinedButton(onClick = { Haptica.toque(vista); vm.buscarUbicacion() }, enabled = !enviando) { Text("Volver a buscar mi ubicación") }
                 }
                 EstadoGps.FUERA_DEL_PERU -> Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -220,6 +299,7 @@ private fun BloqueUbicacion(estado: EstadoNuevo, vm: ReporteNuevoViewModel, envi
                 }
             }
         }
+        estado.notaGps?.let { LineaFuente(it) }
         AvisoAccion(estado.errores["pos"])
     }
 }

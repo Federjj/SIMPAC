@@ -327,10 +327,21 @@ object Cauces {
         return peor
     }
 
-    /** Estado de un rio con trazo: zona (ANA + aviso hidrologico) y cauce (color del trazo). */
-    fun estadoRio(lecturas: List<CaudalActual>, avisosHidro: List<AvisoHidro> = emptyList(), ahoraMs: Long = System.currentTimeMillis()): EstadoRio {
+    /**
+     * Estado de un rio con trazo: zona (ANA, aviso hidrologico y, si llegan, las senales de la cuenca: avisos
+     * de lluvia y lluvia medida, con la misma regla que el Mashcon) y cauce (color del trazo). Hoy
+     * rio_cauce_senal no trae `avisos_lluvia` ni `lluvia_cuenca`; si el backend los llena, el mapa (halo que
+     * late, hoja) dira lo mismo que Inicio (Rios.resumir).
+     */
+    fun estadoRio(
+        lecturas: List<CaudalActual>,
+        avisosHidro: List<AvisoHidro> = emptyList(),
+        avisosLluvia: List<AvisoLluviaSenal> = emptyList(),
+        lluviaCuenca: List<LluviaCuenca> = emptyList(),
+        ahoraMs: Long = System.currentTimeMillis(),
+    ): EstadoRio {
         val peor = peorLectura(lecturas)
-        val zona = estadoZona(caudal = peor, avisosHidro = avisosHidro, ahoraMs = ahoraMs)
+        val zona = estadoZona(peor, avisosHidro, avisosLluvia, lluviaCuenca, ahoraMs)
         val t = peor?.let { textoRio(it) }
         return EstadoRio(peor, t, zona, estadoCauce(t, zona.avisoHidro))
     }

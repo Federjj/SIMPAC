@@ -10,21 +10,25 @@ import { useGeolocation } from "@/hooks/useGeolocation";
 import { REPORT_TYPES } from "@/lib/reportTypes";
 import { crearReporte, subirFotoReporte } from "@/lib/queries";
 import { AVISO_REPORTE, MAX_DESCRIPCION, ewkt, mensajeErrorBD, reducirFoto, validarReporte } from "@/lib/comunidad";
+import { TEXTO_ESTADO, avisoPrecision, calidadPrecision, textoPrecision } from "@/lib/geolocalizacion";
 import { cn } from "@/lib/utils";
 
+// Qué pasó con la ubicación, por estado (lib/geolocalizacion.js), más la razón de que aquí sea
+// obligatoria: solo se reporta desde donde uno está, así se evitan reportes falsos.
 const TEXTO_GPS = {
-  pending: "Buscando tu ubicación…",
-  denied: "No diste permiso de ubicación. Sin ella no se puede reportar: es la decisión del equipo para evitar reportes falsos (solo se reporta desde donde uno está). Actívala en tu navegador y vuelve a intentar.",
-  unavailable: "No se pudo obtener tu ubicación. Revisa que el GPS esté prendido y vuelve a intentar.",
+  ...TEXTO_ESTADO,
+  denied: `Sin ubicación no se puede reportar: es la decisión del equipo para evitar reportes falsos (solo se reporta desde donde uno está). ${TEXTO_ESTADO.denied}`,
 };
 
 // Crear un reporte: solo con sesión y solo con la posición GPS real (sin pin manual). Tipo,
 // subtipo si es un atasco, descripción corta y foto opcional (se reduce a 1280 px antes de
-// subir). La BD pone autor, confianza, estado y vencimiento, y aplica los límites.
+// subir). La BD pone autor, confianza, estado y vencimiento, y aplica los límites. La ubicación
+// llega con su precisión ("Precisión: unos 25 m") y, si es regular o baja, "Mejorar precisión"
+// sigue afinando con el GPS hasta 22 s más.
 export default function ReporteNuevo() {
   const navigate = useNavigate();
   const { conSesion, cargando, usuario } = useSesion();
-  const { pos, status, locate } = useGeolocation();
+  const { pos, precision, status, afinando, locate, afinar } = useGeolocation();
   const [tipo, setTipo] = useState(null);
   const [subtipo, setSubtipo] = useState(null);
   const [descripcion, setDescripcion] = useState("");
@@ -104,14 +108,27 @@ export default function ReporteNuevo() {
           <section>
             <h2 className="text-sm font-semibold">Tu ubicación</h2>
             {status === "granted" && pos ? (
-              <p className="mt-1 flex items-center gap-1.5 text-sm text-green-800">
-                <LocateFixed className="h-4 w-4" />
-                Ubicación lista ({pos[0].toFixed(4)}, {pos[1].toFixed(4)}). El reporte se marcará ahí.
-              </p>
+              <div className="mt-1 text-sm">
+                <p className="flex items-center gap-1.5 text-green-800">
+                  <LocateFixed className="h-4 w-4 shrink-0" />
+                  Ubicación lista ({pos[0].toFixed(4)}, {pos[1].toFixed(4)}). El reporte se marcará ahí.
+                </p>
+                <p className="mt-1 text-muted-foreground" aria-live="polite">
+                  {textoPrecision(precision)}
+                  {afinando && " · afinando con el GPS…"}
+                </p>
+                {avisoPrecision(precision) && <p className="mt-1 text-nivel-alerta">{avisoPrecision(precision)}</p>}
+                {calidadPrecision(precision) !== "buena" && (
+                  <Button type="button" variant="outline" size="sm" className="mt-2" onClick={afinar} disabled={afinando}>
+                    <LocateFixed className="h-4 w-4" />
+                    {afinando ? "Mejorando la precisión…" : "Mejorar precisión"}
+                  </Button>
+                )}
+              </div>
             ) : (
               <div className="mt-1 text-sm text-muted-foreground">
-                <p>{TEXTO_GPS[status] ?? "Se necesita tu ubicación para reportar."}</p>
-                {status !== "pending" && (
+                <p aria-live="polite">{TEXTO_GPS[status] ?? TEXTO_GPS.idle}</p>
+                {status !== "pending" && status !== "insecure" && (
                   <Button type="button" variant="outline" size="sm" className="mt-2" onClick={locate}>
                     <LocateFixed className="h-4 w-4" />
                     Volver a buscar mi ubicación

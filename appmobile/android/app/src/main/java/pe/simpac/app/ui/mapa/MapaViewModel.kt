@@ -59,6 +59,7 @@ import pe.simpac.app.dominio.Nowcast
 import pe.simpac.app.dominio.PronosticoMapa
 import pe.simpac.app.dominio.TextoRio
 import pe.simpac.app.dominio.Tiempo
+import pe.simpac.app.ubicacion.Lectura
 import pe.simpac.app.ubicacion.Posicion
 import pe.simpac.app.ubicacion.Ubicacion
 import java.io.IOException
@@ -674,13 +675,16 @@ class MapaViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    /** Vuelve a leer la ubicacion (boton "centrar"); null si no hay permiso o no responde. Fuera del Peru no se guarda. */
-    suspend fun ubicacionAhora(): Posicion? {
-        val app = getApplication<Application>()
-        if (!Ubicacion.tienePermiso(app)) return null
-        val p = Ubicacion.actual(app)
-        if (p != null && Ubicacion.enPeru(p)) _estado.update { it.copy(ubicacion = p) }
-        return p
+    /**
+     * Vuelve a leer la ubicacion (boton "Centrar en tu ubicacion"): una lectura activa de alta precision
+     * de hasta 20 s. Devuelve la posicion o el motivo exacto de que no la haya (sin permiso, ubicacion
+     * del telefono apagada, sin senal), para que la pantalla diga y ofrezca lo justo. Si llega y esta en
+     * el Peru, se guarda para el punto azul. Quien llama cancela la espera al irse la app al fondo.
+     */
+    suspend fun ubicacionAhora(): Lectura {
+        val lectura = Ubicacion.leer(getApplication<Application>(), Ubicacion.ESPERA_BOTON_MS)
+        if (lectura is Lectura.Hecha && Ubicacion.enPeru(lectura.posicion)) _estado.update { it.copy(ubicacion = lectura.posicion) }
+        return lectura
     }
 
     /**
@@ -865,14 +869,15 @@ class MapaViewModel(app: Application) : AndroidViewModel(app) {
 
             // rios del pais
             val emparejados = Cauces.emparejarCauces(cauces, caudales, vigilados)
-            val avisosPorRio = senalesCauces.associateBy { it.rio_ana }
+            val senalesPorRio = senalesCauces.associateBy { it.rio_ana }
             val rios = mutableListOf<RioDibujo>()
             val estados = HashMap<String, EstadoRio>()
             val nombres = HashMap<String, String>()
             val cajas = HashMap<String, Caja>()
             for (r in emparejados.rios) {
-                val hidro = avisosPorRio[r.fila.rio_ana]?.avisos_hidro ?: emptyList()
-                val est = Cauces.estadoRio(r.lecturas, hidro, ahora)
+                // las senales de la cuenca (avisos de lluvia, lluvia medida) van tambien al mapa, como en Inicio (Rios.resumir)
+                val senal = senalesPorRio[r.fila.rio_ana]
+                val est = Cauces.estadoRio(r.lecturas, senal?.avisos_hidro ?: emptyList(), senal?.avisos_lluvia ?: emptyList(), senal?.lluvia_cuenca ?: emptyList(), ahora)
                 if (r.lecturas.isEmpty() && est.zona.avisoHidro == null) continue   // la web tampoco lo resalta
                 val geo = GeoJson.parsear(r.fila.cauce_lejos) as? Geometria.Lineas ?: continue
                 val caja = GeoJson.caja(geo) ?: continue

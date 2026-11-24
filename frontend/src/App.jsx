@@ -10,6 +10,7 @@ import Mapa from "@/pages/Mapa";
 import { CITIES, DEFAULT_CITY, nearestCity } from "@/data/cities";
 import { LAYERS } from "@/map/layers";
 import { departamentoEn } from "@/lib/ubicacion";
+import { haversineKm } from "@/lib/geo";
 import { centroCiudad } from "@/lib/pronostico";
 import { guardarZonaLocal, leerZonaLocal } from "@/lib/sesion";
 import { usePanorama } from "@/hooks/usePanorama";
@@ -95,7 +96,7 @@ function Marco() {
   const [city, setCity] = useState(() => leerZonaLocal() ?? DEFAULT_CITY.name);
   const inicial = CITIES.find((c) => c.name === city) ?? DEFAULT_CITY;
   const [focus, setFocus] = useState({ lat: inicial.lat, lon: inicial.lon, zoom: 14 });
-  const { pos: userPos, status: gpsStatus, locate } = useGeolocation();
+  const { pos: userPos, status: gpsStatus, afinando: gpsAfinando, locate, cancelar: gpsCancelar } = useGeolocation();
   // Zona del usuario: el departamento de la ciudad elegida o el de su GPS.
   const [depto, setDepto] = useState(inicial.depto);
   const [porGps, setPorGps] = useState(false);
@@ -126,17 +127,32 @@ function Marco() {
     setFocus({ lat: c.lat, lon: c.lon, zoom: 14 });
   }, []);
 
-  // Ubicación real (con permiso); si falla, el mapa se queda en la ciudad elegida.
+  // Ubicación real (con permiso); si falla, el mapa se queda en la ciudad elegida. La primera
+  // lectura llega rápido pero puede ser gruesa (la red, a cientos de metros); el GPS la afina
+  // después (hooks/useGeolocation.js) y userPos se reemplaza por la mejor.
+  const centradoEn = useRef(null); // [lat, lon] donde se centró el mapa por el GPS
   const geolocate = useCallback(async () => {
     const lugar = await locate();
     if (!lugar) return;
     const [lat, lon] = lugar;
+    centradoEn.current = lugar;
     setFocus({ lat, lon, zoom: 15 });
     const cercana = nearestCity(lat, lon);
     setCity(cercana.name);
     setDepto((await departamentoEn(lat, lon).catch(() => null)) ?? cercana.depto);
     setPorGps(true);
+    return lugar; // OnboardingGps cierra la hoja con esto
   }, [locate]);
+  // Mientras el GPS afina, si la lectura mejor queda a más de 100 m de donde se centró el mapa,
+  // se vuelve a centrar (si no, el punto de la persona se iría fuera de la vista). Terminado el
+  // afinado no se toca más el encuadre.
+  useEffect(() => {
+    if (!gpsAfinando || !porGps || !userPos || !centradoEn.current) return;
+    const [lat, lon] = userPos;
+    if (haversineKm(lat, lon, centradoEn.current[0], centradoEn.current[1]) * 1000 < 100) return;
+    centradoEn.current = userPos;
+    setFocus((f) => ({ lat, lon, zoom: Math.max(f.zoom, 15) }));
+  }, [userPos, gpsAfinando, porGps]);
 
   // Al arrancar solo se usa el GPS si el navegador ya tenía el permiso concedido: nadie ve un pedido
   // de permiso sin explicación. La primera vez lo pide la pantalla de bienvenida del mapa
@@ -288,6 +304,7 @@ function Marco() {
                 userPos={userPos}
                 gpsStatus={gpsStatus}
                 geolocate={geolocate}
+                gpsCancelar={gpsCancelar}
                 ciudad={ciudad}
                 depto={depto}
                 porGps={porGps}

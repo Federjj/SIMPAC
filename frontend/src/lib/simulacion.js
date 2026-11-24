@@ -5,6 +5,8 @@ import { simular } from "./zonaRio.js"; // con extensión: lo importan las prueb
 // existe. Se pide en la dirección de la página:
 //   ?simular=mashcon:15.4     caudal de ANA (m³/s)
 //   ?simular=mashcon:hidro3   aviso hidrológico vigente falso (hidro2 amarillo, hidro3 naranja, hidro4 rojo)
+//   ?simular=mashcon:aviso3   aviso de SENAMHI por lluvias falso en curso sobre la cuenca (aviso2 amarillo, aviso3 naranja, aviso4 rojo)
+//   ?simular=mashcon:manana4  aviso de lluvia falso que empieza mañana a las 00:00 de Lima (manana3 naranja, manana4 rojo)
 //   ?simular=mashcon:lluvia   RIO GRANDE GORE con 7,2 mm en la última hora
 //   ?simular=mashcon:calma    sin avisos ni lluvia sobre la cuenca (un día sin señales)
 // (varias con coma). La aplican las capas `rio` y `zona` y useRiosVigilados con simular() de

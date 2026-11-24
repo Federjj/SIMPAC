@@ -883,6 +883,26 @@ estaciones evaluadas, 1 alerta real de 6 h en Cotahuasi, Arequipa)
       verde, sin crashes ni ANR en logcat, modo oscuro en las cinco pestañas. Pendiente medir en un
       teléfono real: la hoja Capas y la primera apertura del mapa saltan cuadros en el emulador con GPU
       por software. Detalle en `appmobile/README.md` ("Interfaz: esqueletos, animaciones y estados").
+- [x] **Río tranquilo con aviso sobre su cuenca y ubicación precisa (23-11-2026)**: la medición de ANA
+      y el aviso de SENAMHI por lluvias sobre la cuenca ya no se contradicen. Web y app etiquetan la
+      medición como «Estación Mashcón (ANA): río tranquilo» y debajo ponen «Cuenca: aviso naranja de
+      SENAMHI por lluvias vigente hoy (hasta ...); el caudal puede subir.» con enlace al aviso, en
+      la tarjeta del medidor, los popups y hojas del río y de la estación, el tooltip, el chip de
+      Inicio de la app (que ahora arma el río vigilado con `rio_vigilado_mapa` + `rio_senal` +
+      `caudal_actual`, porque el Mashcón no tiene fila en `rio_cauce`) y la leyenda de la capa Ríos.
+      En el mapa, el río cuya zona tiene señales lleva un **halo que late** (ámbar, naranja o rojo
+      según el nivel; en la web `.rio-luz` con CSS y `prefers-reduced-motion`, en la app
+      `GestorMapa.Latido` con un Path por color a ~11 cuadros por segundo, solo con el río a la
+      vista y respetando la escala de animaciones del sistema). Ubicación: en la app
+      `Ubicacion.leer/afinar/paraZona` hacen una lectura activa de alta precisión con el motivo exacto
+      si falla (sin permiso: lo pide ahí mismo; ubicación apagada: "Activar" abre los ajustes; sin
+      señal: reintentar) y el reporte muestra "Precisión: unos N m" con "Mejorar precisión" (desapareció
+      el falso "Activa tu ubicación en Inicio"); en la web `lib/geolocalizacion.js` lee rápido y afina
+      con el GPS hasta 22 s, con estados denied/unavailable/timeout/insecure, textos por causa,
+      cancelación al elegir ciudad y precisión visible en el formulario de reporte. Verificado en el
+      navegador (184 pruebas en verde) y en el emulador (74 pruebas JVM, sin crashes). Pendientes:
+      `rio_cauce_senal` no trae `avisos_lluvia` ni `lluvia_cuenca`, así que la línea de cuenca y el
+      halo por lluvia solo salen para el río vigilado; probar la precisión en un teléfono real.
 
 **Despliegue en la nube (preparado el 04-11-2026; ejecutado el 05-11-2026)**
 - [x] **En producción**: web `https://simpac-v7nf.vercel.app` (Vercel, Root Directory `frontend`,

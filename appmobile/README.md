@@ -18,7 +18,7 @@ repo el 24-10-2026.
 
 | Pestaña | Qué muestra | De dónde sale |
 |---|---|---|
-| **Inicio** | Semáforo grande del departamento (elegido o detectado por GPS), `titular_corto` y detalle con "Generado el <hora>" y origen (reglas o modelo), chips con cuántas alertas oficiales hay y el río con señales, estado El Niño del ENFEN, pronóstico de 3 días de la localidad más cercana, botones "Llamar 105" y "Llamar 116", la sección **"A dónde acudir"** (antes era una pestaña: los 3 puntos más cercanos, salud 24 h si está a menos de 15 km o el más cercano, comisaría y bomberos, en 30 km alrededor de la posición, con distancia en línea recta, teléfono, "Cómo llegar", fuente y fecha, y los números 105, 116, 115 y 106), la tarjeta "Comunidad" con el botón **"Reportar"** (lleva al formulario de reporte), fuentes con hora y el pie "Información referencial..." | `titular_zona`, `alerta_actual`, `rio_cauce_mapa` + `rio_cauce_senal`, `pronostico_vigente` (caja alrededor de la posición), `estacion` (para saber el departamento por GPS), `punto_acudir` y `GET /api/snapshot` (contexto ENFEN) |
+| **Inicio** | Semáforo grande del departamento (elegido o detectado por GPS), `titular_corto` y detalle con "Generado el <hora>" y origen (reglas o modelo), chips con cuántas alertas oficiales hay y el río con señales (primero el río vigilado del departamento, el Mashcón, que no tiene fila en `rio_cauce` y se arma con `rio_vigilado_mapa`, `rio_senal` y su lectura en `caudal_actual`; en empate de nivel manda el río con señal de cuenca, el mismo que nombra el titular. Si su cuenca tiene un aviso de lluvias de SENAMHI en curso o lluvia medida sobre la referencia, el chip dice la medición con su estación, «Río Mashcón · Estación Mashcón (ANA): tranquila (0.34 m³/s)», y debajo va la línea «Cuenca: aviso naranja de SENAMHI por lluvias vigente hoy; el caudal puede subir.» con «Ver el aviso oficial»: las dos cosas son ciertas a la vez), estado El Niño del ENFEN, pronóstico de 3 días de la localidad más cercana, botones "Llamar 105" y "Llamar 116", la sección **"A dónde acudir"** (antes era una pestaña: los 3 puntos más cercanos, salud 24 h si está a menos de 15 km o el más cercano, comisaría y bomberos, en 30 km alrededor de la posición, con distancia en línea recta, teléfono, "Cómo llegar", fuente y fecha, y los números 105, 116, 115 y 106), la tarjeta "Comunidad" con el botón **"Reportar"** (lleva al formulario de reporte), fuentes con hora y el pie "Información referencial..." | `titular_zona`, `alerta_actual`, `rio_cauce_mapa` + `rio_cauce_senal`, `rio_vigilado_mapa` + `rio_senal` + `caudal_actual` (el río vigilado), `pronostico_vigente` (caja alrededor de la posición), `estacion` (para saber el departamento por GPS), `punto_acudir` y `GET /api/snapshot` (contexto ENFEN) |
 | **Alertas** | Lista ordenada emergencia > alerta > aviso, oficiales primero; la "Lluvia medida" va aparte y marcada como no oficial; filtro "Mi zona / Todo el país"; cada tarjeta con color + etiqueta, referencia, zona, detalle, hora y fuente; vacío amable con la hora de la revisión | `alerta_actual` |
 | **Mapa** | Mapa **nativo** con osmdroid (ver "Mapa nativo"): chip arriba con el nivel de tu zona, 5 capas con interruptor (avisos de SENAMHI, ríos, zonas que podrían inundarse, estaciones de SENAMHI, a dónde acudir), nombres de los ríos desde zoom 11, punto azul de tu ubicación y botón "centrar"; al tocar un área, un río, una zona o un punto se abre una hoja inferior de Material 3 en lenguaje claro con su fuente y hora; "Ver el aviso oficial" y "Ver el aviso de SENAMHI" abren el navegador. Solo la barra inferior de la app: no hay barras duplicadas | `aviso_vigente`, `caudal_actual`, `rio_vigilado_mapa`, `rio_zona_mapa`, `rio_senal`, `rio_cauce_mapa` (`cauce_lejos` y `cauce`), `rio_cauce_senal`, `rio_cauce_zona_mapa`, `estacion`, `punto_acudir`, `titular_zona`; tiles de Stadia Maps (o de OSM sin llave) |
 | **Comunidad** | Reportes de vecinos vigentes (12 h) ordenados por confianza y cercanía, cada uno con el glifo y color de su tipo, descripción, foto, "hace X", distancia, estado según la comunidad y vencimiento, votos a favor / en contra (con sesión) y "Ver en el mapa"; "Reportar incidente" (formulario con GPS real, tipo, subtipo del atasco, descripción, foto por cámara o galería); detalle con comentarios y caja para comentar (con sesión). Sin sesión se consulta todo y se invita a entrar para reportar, votar y comentar (ver "Comunidad y cuentas") | `report`, `comentario`, `voto`, bucket `reportes` (Storage) |
@@ -51,7 +51,7 @@ ciclo de vida y `onDetach` al salir), que replica la lógica y los colores de la
 | Zonas que podrían inundarse (prendida) | `rio_zona_mapa` (Mashcón: estimadas bajo_2m rayada con borde oscuro y bajo_3m lisa tenue; estudio INDECI-PNUD 2005 lisa) y `rio_cauce_zona_mapa` (40 zonas de 20 ríos), con el color del nivel de la zona de hoy; se piden solo por los ríos cuya caja toca la vista (nunca el país entero). Hoja: "Zona que podría inundarse si el río se desborda - estimación de SIMPAC con el relieve (Copernicus), no es un mapa oficial", método, fuente, licencia y atribución | SIMPAC con Copernicus GLO-30; INDECI-PNUD 2005 | 12 |
 | Estaciones de SENAMHI (apagada) | Puntos pequeños (M azul claro `#3BA5EB`, H azul `#3B3BEB`) por caja alrededor de la vista. Hoja: nombre, tipo, departamento, código | SENAMHI | 10 |
 | A dónde acudir (apagada) | Marcadores por tipo con glifo (cruz, escudo, llama) por caja alrededor de la vista. Hoja: nombre, categoría, "Atiende las 24 horas, según la fuente" solo si la fuente lo dice, dónde, "Llamar" (`ACTION_DIAL`), "Cómo llegar" (`geo:`), fuente y fecha | SUSALUD RENIPRESS, MININTER vía CENEPRED, CGBVP | 11 |
-| Tu ubicación | Punto azul con halo (permiso pedido en Inicio) y botón flotante "centrar"; al abrir, el mapa centra en tu punto o en la capital del departamento elegido (zoom 13). Desde Inicio, "Ver el río en el mapa" lleva a la pestaña Mapa encuadrando tu punto y el cauce del río destacado | GPS del teléfono | - |
+| Tu ubicación | Punto azul con halo y botón flotante "Centrar en tu ubicación": lectura activa de alta precisión de hasta 20 s con rueda de progreso en el propio botón (no se puede tocar dos veces) y zoom 15 si la posición es precisa (100 m o menos). Cada causa tiene su mensaje y su acción: sin permiso lo pide ahí mismo y al concederlo centra (ya no manda a Inicio); con la ubicación del teléfono apagada, aviso con "Activar" (ajustes del sistema); sin señal, "No se pudo obtener tu posición; prueba a cielo abierto" con "Reintentar". Al abrir, el mapa centra en tu punto o en la capital del departamento elegido (zoom 13). Desde Inicio, "Ver el río en el mapa" lleva a la pestaña Mapa encuadrando tu punto y el cauce del río destacado | GPS del teléfono (ver "Ubicación del teléfono") | - |
 
 Los interruptores se recuerdan en DataStore (`Ajustes.capasMapa`; de fábrica avisos, zonas y ríos, como
 la web). Todo el trabajo de red y parseo va fuera del hilo principal (`MapaViewModel`, `viewModelScope`
@@ -60,6 +60,49 @@ El parser GeoJSON (`dominio/GeoJson.kt`: Point, LineString, MultiLineString, Pol
 Feature y FeatureCollection; caja, centroide, punto en polígono, simplificación Douglas-Peucker) y la
 lógica de ríos (`dominio/Cauces.kt`) tienen pruebas JVM con los mismos casos que `lib/cauces.test.js`.
 Caché en disco con plazo: 10 min para ríos, zonas, estaciones y acudir; 5 min para avisos y señales.
+
+**Río tranquilo que puede subir (23-11-2026).** El estado "Tranquilo" de un río es la medición de ANA en
+su estación; el aviso naranja de SENAMHI por lluvias sobre su cuenca es un pronóstico: las dos cosas son
+ciertas a la vez y antes la hoja y el chip solo decían la primera. Ahora `dominio/Rios.kt` redacta la señal
+de la cuenca a partir de las señales de `Cauces.estadoZona` (`Rios.cuenca`: el aviso de lluvias en curso
+naranja o rojo o, si no hay, la lluvia medida sobre la referencia) y `Rios.medicion` la medición con su
+estación. En las hojas del río, del Mashcón y de la estación de ANA, con una señal en la cuenca la medición
+va como «Estación Mashcón (ANA): tranquila» (el valor con paréntesis solo lo lleva el chip de Inicio, porque
+en las hojas ya va en el título) y debajo la línea «Cuenca: aviso naranja de SENAMHI
+por lluvias vigente hoy; el caudal puede subir.» con punto ámbar y el botón «Ver el aviso oficial de
+lluvias»; la pastilla y el color del cauce siguen siendo el estado de ANA. En el mapa, los ríos cuya zona
+tiene señales (`NivelZona` distinto de `SIN_SENALES`: aviso de lluvia o lluvia medida sobre la cuenca,
+cerca del nivel de alerta, alerta o emergencia) llevan debajo del halo blanco un **halo que late**: un
+trazo ancho (18 dp; 13 dp bajo zoom 10; 9 dp en vista país y solo si el río está fuerte) del color del
+nivel de la zona (ámbar `#EAB308`, naranja, rojo) cuyo alfa va de 0,25 a 0,75 en una onda de ~2,5 s. Lo
+dibuja `GestorMapa.Latido`, un `Overlay` que va primero en la capa de ríos: los pulsos no son overlays de
+la capa (ni `Polyline`), Latido los pinta él mismo como un solo `Path` por color con todas las partes a la
+vista, en píxeles de pantalla y con una pintura translúcida con el alfa del cuadro; dentro de un mismo
+`drawPath` el trazo no se suma donde las partes se solapan (el cauce del Mashcón llega de OSM en varias), y
+no hace falta una capa fuera de pantalla (`saveLayerAlpha` costaba medio cuadro en el emulador). Los `Path`
+se rehacen solo cuando cambia la vista o los pulsos; después pide el siguiente cuadro con
+`postInvalidateDelayed(90)` (~11 cuadros por segundo, sin `ValueAnimator`). `revisarVista` apaga los pulsos
+cuyo río no toca la vista, también los del Mashcón (antes estos nunca se apagaban y el mapa seguía
+redibujándose a ~9 cuadros por segundo con el cauce a 50 km): si ninguno queda prendido no se dibuja ni se
+pide otro cuadro, y si el mapa no se dibuja (otra pestaña, app detrás, capa de ríos apagada) tampoco, así la
+cadena se corta sola y arranca con el primer dibujo; con la escala de animaciones del sistema en 0
+(`Settings.Global.ANIMATOR_DURATION_SCALE`) el halo queda fijo. La leyenda de la capa Ríos lo explica
+("Halo que late: aviso de lluvia o lluvia medida sobre su cuenca, el río puede subir"). Las señales de la
+cuenca solo las trae `rio_senal` (río vigilado: el Mashcón), y el Mashcón no tiene fila en `rio_cauce` (su
+trazo es el de OSM revisado a mano y el cargador lo salta), así que antes nunca llegaba al chip de Inicio y
+el chip decía el Marañón «muy bajo» en Borja mientras el titular hablaba del Mashcón. Ahora `InicioViewModel`
+pide también `rio_vigilado_mapa`, `rio_senal` y `caudal_actual` (las consultas del mapa, con la misma caché
+en disco) y `Rios.resumirZona` arma el vigilado del departamento con `Rios.deVigilado` (un `RioCauceSenal`
+con la lectura de su estación de ANA y los campos opcionales `avisos_lluvia` y `lluvia_cuenca`), lo pone
+primero en la lista sin repetir un trazo del mismo río, y `Rios.destacado` desempata a favor del río con
+señal de cuenca: el chip dice «Río Mashcón · Estación Mashcón (ANA): tranquila (0.34 m³/s)» y debajo la línea
+de la cuenca con «Ver el aviso oficial». Si fallan `rio_senal` o `caudal_actual`, el vigilado sale sin
+cuenca o sin medición y la pantalla lo avisa abajo. Pruebas en `app/src/test/.../RiosTest.kt`. En las hojas
+del mapa la línea «Estación Mashcón (ANA): tranquila» va sin el valor entre paréntesis porque el título ya lo
+dice («Río Mashcón - tranquilo 0.34 m³/s (ANA, hoy 18:00)»); el chip de Inicio sí lo lleva. `Cauces.estadoRio`
+(ríos con trazo del mapa) recibe también `avisos_lluvia` y `lluvia_cuenca` de `rio_cauce_senal` (hoy vacíos)
+con la misma regla que el Mashcón, para que el halo y la hoja digan lo mismo que Inicio si el backend los
+llena algún día (prueba en `CaucesTest.kt`).
 
 **Tiles.** Con `BuildConfig.STADIA_KEY` (propiedad de Gradle `simpac.stadiaKey` o variable de entorno
 `SIMPAC_STADIA_KEY`) usa Stadia Maps *Alidade Smooth*
@@ -142,8 +185,13 @@ km) y, en empate, el más nuevo primero; distancias desde el GPS o desde la capi
 elegido ("Distancias desde ...").
 
 **Reglas de la pantalla de reporte.** Solo con sesión y con la **posición GPS real** (sin pin manual):
-sin permiso explica que no se puede reportar sin ubicación y ofrece dar el permiso; fuera del Perú no
-deja enviar. Chips de tipo con glifo y color (`inundacion`, `huayco`, `lluvia_intensa`,
+sin permiso explica que no se puede reportar sin ubicación y ofrece dar el permiso; con la ubicación del
+teléfono apagada ofrece "Activar la ubicación" (ajustes del sistema); sin señal, volver a buscar; fuera
+del Perú no deja enviar. La posición se **afina** (`Ubicacion.afinar`): se usa la primera que llega y se
+siguen pidiendo hasta 25 s quedándose con la de mejor precisión (para antes si baja de 30 m); la pantalla
+dice "Precisión: unos N m", muestra "Afinando la posición..." mientras tanto y ofrece "Mejorar precisión"
+si quedó peor que 30 m. Si la app solo tiene permiso de ubicación aproximada (Android 12+, unos 2 km) lo
+dice y lleva a los ajustes de la app. Chips de tipo con glifo y color (`inundacion`, `huayco`, `lluvia_intensa`,
 `via_bloqueada`, `atasco` con leve / moderado / detenido, `bache`, `accidente`, `otro`), descripción
 de hasta 500 letras con contador, foto opcional, el aviso fijo **"Es un reporte comunitario, no
 oficial. Para emergencias llama al 105 o 116."**, estados "Subiendo la foto..." / "Enviando..." y, al
@@ -168,6 +216,37 @@ reporte, votar, quitar voto, comentar, foto, rpc y perfil; parseo de la respuest
 vuelta por el almacén; registro con confirmación y con correo repetido; traducción de errores de la BD
 y de Auth; orden por confianza y distancia; textos de distancia y vencimiento; validaciones del
 reporte, de la cuenta y del comentario.
+
+## Ubicación del teléfono (`ubicacion/Ubicacion.kt`)
+
+Solo en **primer plano**: se lee cuando una pantalla la necesita y toda espera se cancela al irse la
+app al fondo (`ON_STOP` en Mapa y en el reporte nuevo) o al limpiarse el ViewModel; la cancelación corta
+el pedido al teléfono (`CancellationToken`, `CancellationSignal`, `removeLocationUpdates`). Nunca en
+segundo plano.
+
+- `leer(contexto, maxEsperaMs)` devuelve una `Lectura`: la `Posicion` (con `precisionM` y `tomadaEnMs`,
+  opcionales para que `Posicion(lat, lon)` siga valiendo) o el **motivo** exacto de que no la haya
+  (`SIN_PERMISO`, `UBICACION_APAGADA` con `LocationManagerCompat.isLocationEnabled`, `SIN_SENAL`).
+  Primero Google Play Services (fused): la última posición conocida si es fresca (menos de 2 min) y
+  precisa (100 m o menos); si no, `getCurrentLocation(PRIORITY_HIGH_ACCURACY)` hasta el plazo; sin
+  Play Services, `LocationManagerCompat.getCurrentLocation` con GPS y red a la vez. Si la lectura activa
+  no responde pero hay una última posición de menos de 10 min, vale esa.
+- Plazos: 10 s para las pantallas que cargan datos (Inicio, Mapa al abrir, Comunidad, Acudir), 20 s para
+  el botón "Centrar en tu ubicación", 25 s para afinar un reporte.
+- `afinar(contexto)` (reportes) emite cada posición mejor que la anterior con `requestLocationUpdates` de
+  alta precisión y termina al bajar de 30 m o al cumplirse el plazo.
+- `paraZona(contexto)` (Inicio): si la primera posición es peor que 2 km (solo red celular) y la app
+  tiene permiso preciso, espera hasta 6 s por una mejor antes de decidir el departamento.
+- Inicio: con "Usar mi ubicación" elegido y el permiso dado pero el interruptor del teléfono apagado,
+  `InicioViewModel` lo detecta con `ubicacionActiva` (`EstadoInicio.ubicacionApagada`), muestra el
+  departamento guardado y lo dice arriba ("La ubicación del teléfono está apagada...") con "Activar"
+  (ajustes del sistema); al volver con la ubicación prendida la pantalla recarga sola (`LifecycleResumeEffect`).
+- Antes (hasta el 23-11-2026) `actual()` devolvía null cuando ninguna app había pedido la posición hace
+  poco (`lastLocation` vacío y 8 s de espera) y el mapa decía "Activa tu ubicación en Inicio" aunque el
+  permiso estaba dado; ese mensaje ya no existe.
+
+Prueba en el emulador: `adb emu geo fix -78.5003 -7.1638` (Cajamarca) y tocar el botón de ubicación del
+mapa; con la ubicación del sistema apagada debe salir el aviso con "Activar".
 
 ## Estructura
 
@@ -205,7 +284,8 @@ appmobile/android/
                                        AuthSupabase (GoTrue REST), Sesion (estado de la sesion),
                                        ComunidadSupabase (escrituras con sesion), Repositorio (consultas)
     push/                              PushSimpac (temas "pais" y "zona_<slug>"), ServicioMensajes
-    ubicacion/                         una lectura de ubicacion en primer plano (fused o LocationManager)
+    ubicacion/                         ubicacion en primer plano (fused o LocationManager): lectura con
+                                       motivo, afinado por precision, posicion para la zona
     ui/                                Navegacion (barra de 5 y rutas de comunidad), tema, componentes y
                                        las pantallas: inicio (con la seccion de acudir), alertas, mapa,
                                        comunidad (lista, reporte nuevo, detalle, fotos), cuenta
@@ -494,8 +574,9 @@ Google Play exige que el AAB vaya firmado con una llave propia (la "upload key")
   solo en la web.
 - El departamento por GPS se decide con la estación de SENAMHI más cercana (como la web) y, si esa
   consulta falla, con la capital más cercana (aproximado en zonas de frontera como Jaén).
-- Los chips de ríos salen de `rio_cauce_senal` (ríos con trazo de ANA); el Mashcón vigilado
-  (`rio_vigilado`) se ve en el mapa, no en el chip.
+- Los chips de ríos salen de `rio_cauce_senal` (ríos con trazo de ANA) más el río vigilado del
+  departamento (`rio_vigilado_mapa` + `rio_senal` + `caudal_actual`: el Mashcón, sin fila en `rio_cauce`);
+  otro río vigilado solo necesita su fila en `rio_vigilado`.
 - La tarea del worker que envía por FCM (`push`, cada 5 min) ya existe y está verificada (24-10-2026);
   en otro servidor hay que montar la cuenta de servicio (`FIREBASE_CREDENCIALES_ARCHIVO`). Falta la
   política de privacidad pública que pide Play, la firma (keystore) y la cuenta de Play Console. La

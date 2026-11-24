@@ -2,9 +2,10 @@ import { useEffect, useRef, useState } from "react";
 import { ArrowDown, ArrowUp, Minus } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useContador } from "@/hooks/useContador";
-import { lecturaRio, textoRio } from "@/lib/lenguaje";
+import { lecturaRio, minusculaInicial, textoRio } from "@/lib/lenguaje";
 import { COLOR_ESTADO, GRIS, anguloAguja, escalaMedidor, puntoArco, trazoArco } from "@/lib/medidor";
 import { diaLegible, horasDesde } from "@/lib/tiempo";
+import { notaCuenca } from "@/lib/zonaRio";
 
 // Medidor del caudal (o nivel) de la estación de ANA de un río vigilado frente a sus umbrales:
 // un arco de 180 grados con los tramos verde (hasta el 80 % del nivel de alerta), ámbar, naranja
@@ -13,6 +14,10 @@ import { diaLegible, horasDesde } from "@/lib/tiempo";
 // escala y los tramos salen de lib/medidor.js (con prueba); los textos, de textoRio (lenguaje.js).
 //   c       fila de caudal_actual (con la simulación de desarrollo aplicada, si la hay)
 //   rio     el río vigilado (nombre)
+//   estado  estadoZona del río (lib/zonaRio.js), si se tiene: con señales en la cuenca (aviso de
+//           SENAMHI por lluvias, lluvia medida) va la línea "Cuenca: ..." debajo de la medición
+//           (notaCuenca), con su enlace. La medición se etiqueta "Estación Mashcón (ANA): ..." para
+//           que las dos cosas no se confundan: el río está bajo ahora y puede subir.
 //   viejo   true si la ingesta está atrasada (p.desactualizado): la hora se pinta en naranja
 const CX = 160;
 const CY = 150;
@@ -20,25 +25,50 @@ const R = 120;
 const GROSOR = 18;
 const TENDENCIA = { Ascendente: ["subiendo", ArrowUp], Descendente: ["bajando", ArrowDown], Estable: ["estable", Minus] };
 const DIA_MS = 86_400_000;
+// el viewBox del medidor y lo que ocupa un rótulo de marca (10 px de fuente: unos 5,8 px por
+// carácter, de sobra, para saber si cabe antes del borde)
+const ANCHO_SVG = 320;
+const MARGEN = 4;
+const PX_CARACTER = 5.8;
 
+// Marca "alerta 14" / "emergencia 18": una rayita por fuera del arco y el rótulo más afuera, hacia
+// el lado que le toca. La escala (lib/medidor.js) pone la marca más alta al 80 % del arco, y ahí
+// "emergencia 18" arrancaba en x~282 de 320 y se cortaba por el borde ("emergen"); un rótulo que no
+// cabe en una línea va en dos (la palabra y el número), pegado al borde y por fuera del arco, con
+// la rayita debajo. Cerca de arriba (fracción ~0,5) el rótulo no sube de y=9: no se corta por el
+// borde superior.
 function Marca({ m }) {
   const [x1, y1] = puntoArco(CX, CY, R + GROSOR / 2 + 2, m.fraccion);
   const [x2, y2] = puntoArco(CX, CY, R + GROSOR / 2 + 9, m.fraccion);
   const [tx, ty] = puntoArco(CX, CY, R + GROSOR / 2 + 22, m.fraccion);
   const izquierda = m.fraccion < 0.5;
+  const ancho = m.texto.length * PX_CARACTER;
+  const cabe = izquierda ? tx - ancho >= MARGEN : tx + ancho <= ANCHO_SVG - MARGEN;
+  const palabras = m.texto.split(" ");
+  const lineas = !cabe && palabras.length > 1 ? [palabras.slice(0, -1).join(" "), palabras.at(-1)] : [m.texto];
+  const x = cabe ? tx : izquierda ? MARGEN : ANCHO_SVG - MARGEN;
+  const anclaje = izquierda ? (cabe ? "end" : "start") : cabe ? "start" : "end";
+  const base = Math.max(ty + 3, 9);
   return (
     <g>
       <line x1={x1} y1={y1} x2={x2} y2={y2} stroke="currentColor" strokeWidth="1.5" />
-      <text x={tx} y={ty + 3} fontSize="10" fill="currentColor" textAnchor={izquierda ? "end" : "start"} className="fill-current">
-        {m.texto}
+      <text x={x} y={base} fontSize="10" fill="currentColor" textAnchor={anclaje} className="fill-current">
+        {lineas.length === 1
+          ? m.texto
+          : lineas.map((linea, i) => (
+              <tspan key={i} x={x} y={i === 0 ? base - 6 : base + 5}>
+                {linea}
+              </tspan>
+            ))}
       </text>
     </g>
   );
 }
 
-export default function MedidorCaudal({ c, rio, viejo = false, className }) {
+export default function MedidorCaudal({ c, rio, estado = null, viejo = false, className }) {
   const t = c ? textoRio(c) : null;
   const e = escalaMedidor(c);
+  const cuenca = estado ? notaCuenca(estado) : null;
   const color = t ? COLOR_ESTADO[t.estado] ?? GRIS : GRIS;
   const fuerte = t && !t.bajo && (t.estado === "alerta" || t.estado === "emergencia");
   // el arco se dibuja al entrar en pantalla (IntersectionObserver) y cada vez que cambia el valor
@@ -146,9 +176,24 @@ export default function MedidorCaudal({ c, rio, viejo = false, className }) {
         </svg>
       </div>
       <p className="mt-1 text-sm leading-snug">
-        {t?.frase ?? "ANA no tiene una medición reciente de esta estación."}
+        {c && <span className="font-semibold">Estación {c.estacion} (ANA):</span>}
+        {c ? " " : ""}
+        {t ? minusculaInicial(t.frase) : "ANA no tiene una medición reciente de esta estación."}
         {t?.accion && fuerte && <span className="block font-semibold">{t.accion}</span>}
       </p>
+      {cuenca && (
+        <p className="mt-1 text-sm leading-snug">
+          <span className="font-semibold">Cuenca:</span> {cuenca.cuerpo}
+          {cuenca.url && (
+            <>
+              {" "}
+              <a href={cuenca.url} target="_blank" rel="noopener noreferrer" className="whitespace-nowrap text-xs text-muted-foreground underline">
+                Ver el aviso de SENAMHI
+              </a>
+            </>
+          )}
+        </p>
+      )}
       <p className={cn("mt-1 text-[0.7rem]", atrasado ? "font-medium text-nivel-alerta" : "text-muted-foreground")}>
         {lectura ? (atrasado ? `Último dato: ${c.fecha ? diaLegible(c.fecha) : ""} ${c.hora ?? ""} (ANA); puede haber cambiado.` : lectura) : "ANA: sin hora de lectura."}
         {t?.estado === "atento" && !t.bajo && <span className="block">“Cerca” es un criterio de SIMPAC (80 % del caudal de alerta), no un aviso de ANA.</span>}

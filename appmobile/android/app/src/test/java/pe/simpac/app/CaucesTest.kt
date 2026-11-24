@@ -7,6 +7,7 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import pe.simpac.app.data.AvisoHidro
+import pe.simpac.app.data.AvisoLluviaSenal
 import pe.simpac.app.data.AvisoVigente
 import pe.simpac.app.data.CaudalActual
 import pe.simpac.app.data.RioCauceMapa
@@ -89,24 +90,45 @@ class CaucesTest {
         assertEquals(EstadoCauce.NORMAL, tranquilo.cauce.estado)
         assertEquals(NivelZona.SIN_SENALES, tranquilo.zona.nivel)
         assertFalse(Cauces.esFuerte(tranquilo))
-        val aviso = Cauces.estadoRio(listOf(LAGUNAS, PICOTA, TINGO), listOf(AVISO_NARANJA), AHORA)
+        val aviso = Cauces.estadoRio(listOf(LAGUNAS, PICOTA, TINGO), listOf(AVISO_NARANJA), ahoraMs = AHORA)
         assertEquals(EstadoCauce.ALERTA, aviso.cauce.estado)
         assertTrue(aviso.cauce.porAviso)
         assertEquals("naranja", aviso.cauce.color)
         assertEquals(NivelZona.ALERTA, aviso.zona.nivel)
         assertEquals(1645, aviso.zona.avisoHidro?.numero)
         assertTrue(Cauces.esFuerte(aviso))
-        val vencido = Cauces.estadoRio(listOf(PICOTA), listOf(AVISO_NARANJA.copy(fin = "2026-10-13T00:00:00Z")), AHORA)
+        val vencido = Cauces.estadoRio(listOf(PICOTA), listOf(AVISO_NARANJA.copy(fin = "2026-10-13T00:00:00Z")), ahoraMs = AHORA)
         assertEquals(EstadoCauce.NORMAL, vencido.cauce.estado)
         // ANA en emergencia por encima de un aviso naranja: manda ANA
-        val peorAna = Cauces.estadoRio(listOf(PICOTA.copy(valor = 9900.0)), listOf(AVISO_NARANJA), AHORA)
+        val peorAna = Cauces.estadoRio(listOf(PICOTA.copy(valor = 9900.0)), listOf(AVISO_NARANJA), ahoraMs = AHORA)
         assertEquals(EstadoCauce.EMERGENCIA, peorAna.cauce.estado)
         assertFalse(peorAna.cauce.porAviso)
         // sin estacion (rio solo con aviso SENAMHI): sd sin aviso, el aviso si lo hay
         assertEquals(EstadoCauce.SD, Cauces.estadoRio(emptyList(), ahoraMs = AHORA).cauce.estado)
-        assertEquals(EstadoCauce.ALERTA, Cauces.estadoRio(emptyList(), listOf(AVISO_NARANJA), AHORA).cauce.estado)
+        assertEquals(EstadoCauce.ALERTA, Cauces.estadoRio(emptyList(), listOf(AVISO_NARANJA), ahoraMs = AHORA).cauce.estado)
         // un aviso en descenso (vaciante) no sube
-        assertEquals(EstadoCauce.NORMAL, Cauces.estadoRio(listOf(PICOTA), listOf(AVISO_NARANJA.copy(sentido = "descenso")), AHORA).cauce.estado)
+        assertEquals(EstadoCauce.NORMAL, Cauces.estadoRio(listOf(PICOTA), listOf(AVISO_NARANJA.copy(sentido = "descenso")), ahoraMs = AHORA).cauce.estado)
+    }
+
+    @Test
+    fun estadoRio_con_senal_de_lluvia_sobre_la_cuenca_deja_la_zona_atenta_y_el_cauce_tranquilo() {
+        // la misma regla que el Mashcon (estadoZona): el aviso naranja de lluvias en curso deja "atentos", el color del
+        // trazo sigue siendo el de ANA; asi el halo que late y la hoja dicen lo mismo que el chip de Inicio (Rios.resumir)
+        val naranja = AvisoLluviaSenal(tipo = "meteorologico", numero = 412, nivel = 3, en_curso = true, inicio = "2026-10-14T05:00:00+00:00", fin = null, url = "https://www.senamhi.gob.pe/?p=aviso-meteorologico-detalle&a=2026&b=412")
+        val est = Cauces.estadoRio(listOf(PICOTA), avisosLluvia = listOf(naranja), ahoraMs = AHORA)
+        assertEquals(EstadoCauce.NORMAL, est.cauce.estado)
+        assertFalse(est.cauce.porAviso)
+        assertEquals(NivelZona.ATENTOS, est.zona.nivel)
+        assertEquals("aviso_lluvia", est.zona.senales.first().clave)
+        assertFalse(Cauces.esFuerte(est))
+        // amarillo o de manana no cambia nada, igual que sin senales (lo que trae hoy rio_cauce_senal)
+        assertEquals(NivelZona.SIN_SENALES, Cauces.estadoRio(listOf(PICOTA), avisosLluvia = listOf(naranja.copy(nivel = 2)), ahoraMs = AHORA).zona.nivel)
+        assertEquals(NivelZona.SIN_SENALES, Cauces.estadoRio(listOf(PICOTA), avisosLluvia = listOf(naranja.copy(en_curso = false)), ahoraMs = AHORA).zona.nivel)
+        assertEquals(NivelZona.SIN_SENALES, Cauces.estadoRio(listOf(PICOTA), ahoraMs = AHORA).zona.nivel)
+        // el aviso hidrologico sigue mandando por encima de la senal de la cuenca
+        val conHidro = Cauces.estadoRio(listOf(PICOTA), listOf(AVISO_NARANJA), listOf(naranja), ahoraMs = AHORA)
+        assertEquals(NivelZona.ALERTA, conHidro.zona.nivel)
+        assertEquals(EstadoCauce.ALERTA, conHidro.cauce.estado)
     }
 
     @Test

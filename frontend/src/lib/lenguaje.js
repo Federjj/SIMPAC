@@ -22,6 +22,10 @@ export const TENDENCIA = { Ascendente: "subiendo", Descendente: "bajando", Estab
 const num = (v) => Number(v).toLocaleString("es-PE", { maximumFractionDigits: 2 });
 const signo = (v) => (v >= 0 ? "+" : "") + num(v);
 
+// "Tranquilo. Lleva..." -> "tranquilo. Lleva..." para seguir a "Estación Mashcón (ANA): ". Una sigla
+// ("ANA no publica...") se queda como está.
+export const minusculaInicial = (t) => (/^[A-ZÁÉÍÓÚÑ][a-záéíóúñü]/.test(t ?? "") ? t.charAt(0).toLowerCase() + t.slice(1) : t ?? "");
+
 // "2026-07" -> "julio 2026"
 export function mesLegible(periodo) {
   const m = /^(\d{4})-(\d{2})/.exec(periodo ?? "");
@@ -148,7 +152,7 @@ export function textoRio(c) {
   const va = tendencia ? ` Está ${tendencia}.` : "";
   const ua = c.umbral_alerta;
   const ue = c.umbral_emergencia;
-  const base = { titulo, esCaudal, bajo: false, accion: null, ua, ue };
+  const base = { titulo, que, esCaudal, bajo: false, accion: null, ua, ue };
 
   if (c.valor == null) {
     return { ...base, estado: "sd", etiqueta: "Sin medición", frase: "ANA no tiene una medición reciente de esta estación." };
@@ -201,6 +205,21 @@ export function textoRio(c) {
 
 function distancia(metros) {
   return metros < 1 ? `${Math.round(metros * 100)} cm` : `${num(metros)} m`;
+}
+
+// La medición etiquetada como lo que es, para que no se confunda con lo que pasa en la cuenca
+// (lib/zonaRio.js notaCuenca): "Estación Mashcón (ANA): río tranquilo", "...: río cerca de su nivel
+// de alerta", "...: río en alerta", "...: río muy bajo", "...: sin nivel de alerta publicado",
+// "...: sin medición reciente". Es la lectura de ANA en esa estación, nada más.
+export function etiquetaEstacion(c, t = textoRio(c)) {
+  const que = t.que.toLowerCase();
+  let estado;
+  if (c.valor == null) estado = "sin medición reciente";
+  else if (t.estado === "sd") estado = "sin nivel de alerta publicado";
+  else if (t.bajo && (t.estado === "alerta" || t.estado === "emergencia")) estado = `${que} muy bajo`;
+  else if (t.estado === "atento") estado = `${que} cerca de su nivel de alerta${t.bajo ? " por nivel bajo" : ""}`;
+  else estado = `${que} ${t.etiqueta.toLowerCase()}`; // tranquilo | en alerta | en emergencia
+  return `Estación ${c.estacion} (ANA): ${estado}`;
 }
 
 export function lecturaRio(c) {

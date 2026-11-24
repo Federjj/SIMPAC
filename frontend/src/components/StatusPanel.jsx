@@ -227,7 +227,7 @@ export default function StatusPanel({
               {/* en alerta o emergencia, a dónde acudir va primero */}
               {fuerte && acudir}
               {principal && (zona.caudal || principal.rio) && (
-                <MedidorCaudal c={zona.caudal} rio={principal.rio} viejo={p.desactualizado} />
+                <MedidorCaudal c={zona.caudal} rio={principal.rio} estado={principal.estado ?? principal.est?.zona ?? null} viejo={p.desactualizado} />
               )}
               <BarrasLluvia
                 origen={origen}

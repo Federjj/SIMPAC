@@ -1,6 +1,11 @@
 package pe.simpac.app.ui.mapa
 
+import android.content.ActivityNotFoundException
+import android.content.Intent
+import android.provider.Settings
 import android.view.ViewGroup
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
@@ -80,12 +85,15 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import org.osmdroid.util.GeoPoint
 import org.osmdroid.views.MapView
 import pe.simpac.app.dominio.DiaMapa
 import pe.simpac.app.dominio.Lluvia
+import pe.simpac.app.ubicacion.Lectura
+import pe.simpac.app.ubicacion.MotivoSinPosicion
 import pe.simpac.app.ubicacion.Posicion
 import pe.simpac.app.ubicacion.Ubicacion
 import pe.simpac.app.ui.EstadoCompartido
@@ -125,6 +133,9 @@ fun MapaScreen(compartido: EstadoCompartido, vm: MapaViewModel = viewModel()) {
     var hojaCapas by remember { mutableStateOf(false) }
     // centro ya aplicado: se vuelve a centrar solo si el ViewModel manda otro (cambio de ciudad o de ubicacion)
     var centradoEn by remember { mutableStateOf<Posicion?>(null) }
+    // boton "Centrar en tu ubicacion": la espera en curso (para cortarla al irse la app al fondo) y si se esta buscando
+    val trabajoUbicacion = remember { mutableStateOf<Job?>(null) }
+    var buscandoUbicacion by remember { mutableStateOf(false) }
 
     val gestor = remember {
         OsmdroidSimpac.preparar(contexto)
@@ -150,6 +161,8 @@ fun MapaScreen(compartido: EstadoCompartido, vm: MapaViewModel = viewModel()) {
             when (evento) {
                 Lifecycle.Event.ON_RESUME -> gestor.mapa.onResume()
                 Lifecycle.Event.ON_PAUSE -> gestor.mapa.onPause()
+                // ubicacion solo en primer plano: al irse la app al fondo se corta la espera del boton "centrar"
+                Lifecycle.Event.ON_STOP -> trabajoUbicacion.value?.cancel()
                 else -> {}
             }
         }
@@ -323,29 +336,87 @@ fun MapaScreen(compartido: EstadoCompartido, vm: MapaViewModel = viewModel()) {
                 }
             }
 
+            // Boton "Centrar en tu ubicacion": lectura activa de hasta 20 s con progreso en el propio boton (no se
+            // puede tocar dos veces) y un mensaje exacto por causa. Sin permiso se pide aqui mismo y al concederlo
+            // se centra; con la ubicacion del telefono apagada, aviso con "Activar" (ajustes del sistema); sin
+            // senal, aviso con "Reintentar". El permiso no depende de "Usar mi ubicacion" de Inicio (eso solo
+            // decide el departamento). Solo en primer plano: ON_STOP cancela la espera.
+            val alConcederPermiso = remember { arrayOfNulls<() -> Unit>(1) }
+            val pedirPermiso = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { r ->
+                if (r.values.any { it }) {
+                    alConcederPermiso[0]?.invoke()
+                } else {
+                    Haptica.rechazar(vista)
+                    avisador.avisar("Sin permiso de ubicación no se puede centrar el mapa en ti", duracion = SnackbarDuration.Long)
+                }
+            }
+            fun abrirAjustesUbicacion() {
+                try {
+                    contexto.startActivity(Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS))
+                } catch (_: ActivityNotFoundException) {
+                    avisador.avisar("No se pudieron abrir los ajustes de ubicación del teléfono")
+                }
+            }
+            fun centrarEnMi() {
+                if (buscandoUbicacion) return
+                trabajoUbicacion.value = ambito.launch {
+                    buscandoUbicacion = true
+                    try {
+                        when (val lectura = vm.ubicacionAhora()) {
+                            is Lectura.Hecha -> {
+                                val p = lectura.posicion
+                                if (!Ubicacion.enPeru(p)) {
+                                    // el mapa solo cubre el Perú: fuera de esa caja el mapa se iria al borde (mar) sin nada que ver
+                                    Haptica.rechazar(vista)
+                                    avisador.avisar("Tu ubicación está fuera del Perú: el mapa de SIMPAC solo cubre el país", duracion = SnackbarDuration.Long)
+                                } else {
+                                    // con una posicion precisa (100 m o menos) se acerca a zoom 15 para ver la cuadra; si no, 13
+                                    val precisa = (p.precisionM ?: Float.MAX_VALUE) <= 100f
+                                    gestor.centrar(p, maxOf(gestor.mapa.zoomLevelDouble, if (precisa) 15.0 else 13.0))
+                                    val precision = p.textoPrecision()
+                                    if (precision != null && (p.precisionM ?: 0f) > 500f) avisador.avisar("Posición aproximada: precisión de $precision")
+                                }
+                            }
+                            is Lectura.Fallida -> when (lectura.motivo) {
+                                MotivoSinPosicion.SIN_PERMISO -> pedirPermiso.launch(Ubicacion.PERMISOS)
+                                MotivoSinPosicion.UBICACION_APAGADA -> {
+                                    Haptica.rechazar(vista)
+                                    avisador.avisar(
+                                        "La ubicación del teléfono está apagada. Actívala para centrar el mapa en ti",
+                                        accion = "Activar", duracion = SnackbarDuration.Long, onAccion = { abrirAjustesUbicacion() },
+                                    )
+                                }
+                                MotivoSinPosicion.SIN_SENAL -> {
+                                    Haptica.rechazar(vista)
+                                    avisador.avisar(
+                                        "No se pudo obtener tu posición; prueba a cielo abierto",
+                                        accion = "Reintentar", duracion = SnackbarDuration.Long, onAccion = { centrarEnMi() },
+                                    )
+                                }
+                            }
+                        }
+                    } finally {
+                        buscandoUbicacion = false
+                    }
+                }
+            }
+            alConcederPermiso[0] = { centrarEnMi() }
+
             val fuenteUbicacion = remember { MutableInteractionSource() }
             SmallFloatingActionButton(
-                onClick = {
-                    Haptica.toque(vista)
-                    ambito.launch {
-                        val p = vm.ubicacionAhora() ?: estado.ubicacion
-                        when {
-                            p == null -> {
-                                Haptica.rechazar(vista)
-                                avisador.avisar("Activa tu ubicación en Inicio (\"Usar mi ubicación\") para centrar el mapa en ti", duracion = SnackbarDuration.Long)
-                            }
-                            // el mapa solo cubre el Perú: fuera de esa caja el mapa se iria al borde (mar) sin nada que ver
-                            !Ubicacion.enPeru(p) -> {
-                                Haptica.rechazar(vista)
-                                avisador.avisar("Tu ubicación está fuera del Perú: el mapa de SIMPAC solo cubre el país", duracion = SnackbarDuration.Long)
-                            }
-                            else -> gestor.centrar(p, maxOf(gestor.mapa.zoomLevelDouble, 13.0))
-                        }
-                    }
-                },
+                onClick = { if (!buscandoUbicacion) { Haptica.toque(vista); centrarEnMi() } },
                 interactionSource = fuenteUbicacion,
                 modifier = Modifier.align(Alignment.BottomEnd).padding(end = 12.dp, bottom = 30.dp).presionable(fuenteUbicacion, escala = 0.92f),
-            ) { Icon(Icons.Filled.LocationOn, contentDescription = "Centrar en tu ubicación") }
+            ) {
+                if (buscandoUbicacion) {
+                    CircularProgressIndicator(
+                        Modifier.size(20.dp).semantics { contentDescription = "Buscando tu ubicación" },
+                        strokeWidth = 2.dp, color = MaterialTheme.colorScheme.onPrimaryContainer,
+                    )
+                } else {
+                    Icon(Icons.Filled.LocationOn, contentDescription = "Centrar en tu ubicación")
+                }
+            }
 
             // atribucion visible abajo: una sola linea, chica y legible, como la atribucion corta del celular en la web
             val extra = remember(estado.capas) {

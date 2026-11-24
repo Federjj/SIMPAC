@@ -129,12 +129,18 @@ data class AvisoHidro(
     val visto_en: String? = null,
 )
 
-/** rio_cauce_senal: las senales de hoy de un rio con trazo. */
+/**
+ * rio_cauce_senal: las senales de hoy de un rio con trazo. La vista trae lecturas y avisos_hidro; las
+ * senales de la cuenca (avisos_lluvia y lluvia_cuenca, opcionales) solo existen en rio_senal, la del rio
+ * vigilado: quien arma el estado puede copiarlas aqui para que Rios.resumir diga que el rio puede subir.
+ */
 @Serializable
 data class RioCauceSenal(
     val rio_ana: String,
     val lecturas: List<LecturaRio> = emptyList(),
     val avisos_hidro: List<AvisoHidro> = emptyList(),
+    val avisos_lluvia: List<AvisoLluviaSenal> = emptyList(),
+    val lluvia_cuenca: List<LluviaCuenca> = emptyList(),
 )
 
 /** Una estacion de SENAMHI (tabla estacion): para saber en que departamento esta la persona. */

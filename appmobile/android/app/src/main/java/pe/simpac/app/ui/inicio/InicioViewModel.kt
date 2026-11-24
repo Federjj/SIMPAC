@@ -13,6 +13,7 @@ import pe.simpac.app.data.AlertaActual
 import pe.simpac.app.data.ComunicadoEnfen
 import pe.simpac.app.data.PronosticoVigente
 import pe.simpac.app.data.Resultado
+import pe.simpac.app.data.RioCauceSenal
 import pe.simpac.app.data.TitularZona
 import pe.simpac.app.dominio.Alertas
 import pe.simpac.app.dominio.Departamentos
@@ -28,6 +29,9 @@ import pe.simpac.app.ubicacion.Ubicacion
 /** Una fuente con su hora, para el pie de la pantalla. */
 data class Fuente(val nombre: String, val hora: String)
 
+/** Los rios con trazo del departamento: sus senales de hoy (rio_cauce_senal) y el nombre de cada uno (rio_cauce_mapa). */
+private data class CaucesZona(val senales: List<RioCauceSenal>, val nombres: Map<String, String>)
+
 /** Todo lo que pinta la pantalla Inicio. Es un dato puro: la prueba de Compose lo arma a mano. */
 data class EstadoInicio(
     val cargando: Boolean = true,
@@ -36,6 +40,7 @@ data class EstadoInicio(
     val leyendoAjustes: Boolean = false,        // aun no se leyeron los ajustes: no se sabe si toca explicar el GPS, asi que no se dibuja nada (ni el esqueleto)
     val departamento: String = Departamentos.POR_DEFECTO.nombre,
     val porGps: Boolean = false,
+    val ubicacionApagada: Boolean = false,      // "Usar mi ubicacion" con permiso, pero el interruptor de ubicacion del telefono esta apagado: se muestra el departamento guardado
     val nivel: Nivel = Nivel.SIN_DATO,
     val titular: TitularZona? = null,
     val titularGeneradoMs: Long? = null,
@@ -105,11 +110,16 @@ class InicioViewModel(app: Application) : AndroidViewModel(app) {
             // ya se sabe que no toca explicar el GPS: recien ahora se ve el esqueleto (solo pasa en el primer cargado)
             if (_estado.value.leyendoAjustes) _estado.value = _estado.value.copy(leyendoAjustes = false)
             val app = getApplication<Application>()
-            val posicion: Posicion? = (if (conf.usarGps && Ubicacion.tienePermiso(app)) Ubicacion.actual(app) else null)?.takeIf { Ubicacion.enPeru(it) }
+            // paraZona: si la primera posicion es peor que 2 km (solo red celular) espera unos segundos por
+            // una mejor antes de decidir el departamento; con una precisa o sin permiso preciso no espera
+            val usarGps = conf.usarGps && Ubicacion.tienePermiso(app)
+            // con el interruptor de ubicacion del telefono apagado no habra posicion: la pantalla lo dice y ofrece "Activar"
+            val ubicacionApagada = usarGps && !Ubicacion.ubicacionActiva(app)
+            val posicion: Posicion? = (if (usarGps && !ubicacionApagada) Ubicacion.paraZona(app) else null)?.takeIf { Ubicacion.enPeru(it) }
             val departamento = posicion?.let { repo.departamentoDe(it.lat, it.lon) } ?: conf.departamento
             val centro = posicion ?: Departamentos.porNombre(departamento)?.let { Posicion(it.lat, it.lon) }
                 ?: Posicion(Departamentos.POR_DEFECTO.lat, Departamentos.POR_DEFECTO.lon)
-            val nuevo = armar(departamento, posicion != null, centro, conf.apiUrl)
+            val nuevo = armar(departamento, posicion != null, ubicacionApagada, centro, conf.apiUrl)
             val actual = _estado.value
             // Si la recarga de la misma zona falla con datos ya en pantalla, se conservan y el error va
             // aparte (la pantalla lo avisa abajo con "Reintentar"); con otra zona si se muestra el error.
@@ -121,31 +131,40 @@ class InicioViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    private suspend fun armar(departamento: String, porGps: Boolean, centro: Posicion, apiUrl: String): EstadoInicio = coroutineScope {
+    private suspend fun armar(departamento: String, porGps: Boolean, ubicacionApagada: Boolean, centro: Posicion, apiUrl: String): EstadoInicio = coroutineScope {
         val tTitular = async { runCatching { repo.titular(departamento) } }
         val tAlertas = async { runCatching { repo.alertas() } }
         val tPronostico = async { runCatching { repo.pronostico(Geo.cajaAlrededor(centro.lat, centro.lon, 80.0)) } }
+        // rios con trazo del departamento (rio_cauce_senal) con su nombre
         val tRios = async {
             runCatching {
                 val rios = repo.riosDelDepartamento(departamento)
                 val senales = repo.senalesRios(rios.dato.map { it.rio_ana })
                 val nombres = rios.dato.associate { it.rio_ana to (it.nombre ?: it.rio_ana) }
-                Resultado(senales.dato.map { Rios.resumir(it, nombres[it.rio_ana] ?: it.rio_ana) }, senales.obtenidoEn, rios.deCache || senales.deCache)
+                Resultado(CaucesZona(senales.dato, nombres), senales.obtenidoEn, rios.deCache || senales.deCache)
             }
         }
+        // el rio vigilado de la zona (el Mashcon, que no tiene fila en rio_cauce) con la lectura de su estacion de ANA
+        // y las senales de su cuenca (rio_senal: avisos de lluvias, lluvia medida); son las consultas del mapa, con su cache
+        val tVigilados = async { runCatching { repo.riosVigilados() } }
+        val tSenalesVig = async { runCatching { repo.senalesRioVigilado() } }
+        val tCaudales = async { runCatching { repo.caudales() } }
         val tSnapshot = async { runCatching { repo.snapshot(apiUrl) } }
 
         val rTitular = tTitular.await()
         val rAlertas = tAlertas.await()
         val rPronostico = tPronostico.await()
         val rRios = tRios.await()
+        val rVigilados = tVigilados.await()
+        val rSenalesVig = tSenalesVig.await()
+        val rCaudales = tCaudales.await()
         val rSnapshot = tSnapshot.await()
 
         val titular = rTitular.getOrNull()
         val alertas = rAlertas.getOrNull()
         if (titular == null && alertas == null) {
             val motivo = rTitular.exceptionOrNull()?.message ?: rAlertas.exceptionOrNull()?.message ?: "sin respuesta"
-            return@coroutineScope EstadoInicio(cargando = false, error = "No se pudo leer SIMPAC ($motivo). Revisa tu conexión.", departamento = departamento, porGps = porGps)
+            return@coroutineScope EstadoInicio(cargando = false, error = "No se pudo leer SIMPAC ($motivo). Revisa tu conexión.", departamento = departamento, porGps = porGps, ubicacionApagada = ubicacionApagada)
         }
 
         val avisos = mutableListOf<String>()
@@ -153,11 +172,20 @@ class InicioViewModel(app: Application) : AndroidViewModel(app) {
         rAlertas.exceptionOrNull()?.let { avisos += "No se pudieron leer las alertas (${it.message})." }
         rPronostico.exceptionOrNull()?.let { avisos += "No se pudo leer el pronóstico de SENAMHI." }
         rRios.exceptionOrNull()?.let { avisos += "No se pudieron leer los ríos del departamento." }
+        // sin las senales o la lectura del vigilado el chip lo diria sin su cuenca o sin su medicion: se avisa (solo donde hay uno)
+        val vigilados = rVigilados.getOrNull()?.dato?.let { Rios.vigiladosDe(it, departamento) } ?: emptyList()
+        if (vigilados.isNotEmpty() && (rSenalesVig.isFailure || rCaudales.isFailure)) {
+            avisos += "No se pudieron leer las señales de hoy del " + vigilados.joinToString(" y del ") { (it.nombre ?: it.id).replaceFirstChar { c -> c.lowercase() } } + "."
+        }
         val errorApi = rSnapshot.exceptionOrNull()?.let { "Sin contexto El Niño: la API de SIMPAC no respondió (${it.message}). Dirección: $apiUrl" }
 
         val datoTitular = titular?.dato
         val alertasZona = alertas?.let { Alertas.ordenar(Alertas.deZona(it.dato, departamento)) } ?: emptyList()
-        val rios = rRios.getOrNull()?.dato ?: emptyList()
+        val cauces = rRios.getOrNull()?.dato
+        val rios = Rios.resumirZona(
+            departamento, vigilados, rSenalesVig.getOrNull()?.dato ?: emptyList(), rCaudales.getOrNull()?.dato ?: emptyList(),
+            cauces?.senales ?: emptyList(), cauces?.nombres ?: emptyMap(),
+        )
         val pron = rPronostico.getOrNull()?.dato ?: emptyList()
         val codigo = Pronostico.localidadCercana(pron, centro.lat, centro.lon)
         val franja = Pronostico.franja(pron, codigo)
@@ -173,15 +201,20 @@ class InicioViewModel(app: Application) : AndroidViewModel(app) {
         }
         if (franja.isNotEmpty()) fuentes += Fuente("Pronóstico de SENAMHI, localidad ${franja.first().nombre ?: codigo}", "emisión " + Tiempo.fechaLarga(franja.first().emision))
         snapshot?.enfen?.let { fuentes += Fuente("ENFEN, comunicado ${it.numero}-${it.anio}", Tiempo.fechaLarga(it.fecha)) }
-        rRios.getOrNull()?.let { if (rios.isNotEmpty()) fuentes += Fuente("Ríos con estación (ANA y SENAMHI)", "leídos " + Tiempo.horaCorta(it.obtenidoEn)) }
+        val obtenidoRios = listOfNotNull(rRios.getOrNull()?.obtenidoEn, rSenalesVig.getOrNull()?.obtenidoEn, rCaudales.getOrNull()?.obtenidoEn).minOrNull()
+        if (rios.isNotEmpty() && obtenidoRios != null) fuentes += Fuente("Ríos con estación (ANA y SENAMHI)", "leídos " + Tiempo.horaCorta(obtenidoRios))
 
-        val deCache = listOfNotNull(titular?.deCache, alertas?.deCache, rPronostico.getOrNull()?.deCache, rRios.getOrNull()?.deCache, rSnapshot.getOrNull()?.deCache).any { it }
+        val deCache = listOfNotNull(
+            titular?.deCache, alertas?.deCache, rPronostico.getOrNull()?.deCache, rRios.getOrNull()?.deCache,
+            rVigilados.getOrNull()?.deCache, rSenalesVig.getOrNull()?.deCache, rCaudales.getOrNull()?.deCache, rSnapshot.getOrNull()?.deCache,
+        ).any { it }
         val obtenidoEn = listOfNotNull(titular?.obtenidoEn, alertas?.obtenidoEn).minOrNull()
 
         EstadoInicio(
             cargando = false,
             departamento = departamento,
             porGps = porGps,
+            ubicacionApagada = ubicacionApagada,
             nivel = if (datoTitular != null) Nivel.desde(datoTitular.nivel) else Nivel.SIN_DATO,
             titular = datoTitular,
             titularGeneradoMs = generadoMs,

@@ -669,6 +669,52 @@
 [data-zoom-banda="z16"] .rio-cauce {
   stroke-width: 9px;
 }
+/* luz suave que late debajo del halo (layers/rios.js luzDe, .rio-luz): del color del nivel de la
+   zona del río (ámbar: aviso de lluvia o lluvia medida sobre la cuenca, o el río cerca de su nivel de
+   alerta, puede subir; naranja o rojo: alerta o emergencia). No existe sin señales y no cambia el
+   color del cauce (sigue siendo el de ANA). La leyenda y el tooltip lo dicen con texto. Un ciclo de
+   2,6 s entre 0,25 y 0,8 de opacidad; con prefers-reduced-motion queda fija a 0,55. */
+.rio-luz {
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 26px;
+  animation: rio-luz 2.6s ease-in-out infinite;
+}
+@keyframes rio-luz {
+  0%,
+  100% {
+    stroke-opacity: 0.25;
+  }
+  50% {
+    stroke-opacity: 0.8;
+  }
+}
+[data-zoom-banda="z10"] .rio-luz {
+  stroke-width: 14px;
+}
+[data-zoom-banda="z12"] .rio-luz {
+  stroke-width: 19px;
+}
+[data-zoom-banda="z13"] .rio-luz {
+  stroke-width: 22px;
+}
+[data-zoom-banda="z14"] .rio-luz {
+  stroke-width: 26px;
+}
+[data-zoom-banda="z16"] .rio-luz {
+  stroke-width: 32px;
+}
+/* con el mapa en vista país o región el río mide pocos píxeles: la luz, más angosta */
+[data-escala="pais"] .rio-luz,
+[data-escala="region"] .rio-luz {
+  stroke-width: 10px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .rio-luz {
+    animation: none;
+    stroke-opacity: 0.55;
+  }
+}
 .rio-nombre {
   font: 600 12px/1 Geist, Inter, sans-serif;
   letter-spacing: 0.04em;
@@ -1295,7 +1341,8 @@
    emergencia) conservan su color; en región (7 y 8) todos van más finos. El nombre (.rio-nombre.nac)
    lo escribe la capa solo desde zoom 10, así que no se oculta por banda como el del Mashcón. El aura
    de un río del país (.zona-aura.nac) se ve a todo zoom (no tiene polígonos que la reemplacen). */
-[data-escala="pais"] .rio-halo.rio-nac:not(.fuerte) {
+[data-escala="pais"] .rio-halo.rio-nac:not(.fuerte),
+[data-escala="pais"] .rio-luz.rio-nac:not(.fuerte) {
   display: none;
 }
 [data-escala="pais"] .rio-cauce.rio-nac:not(.fuerte) {

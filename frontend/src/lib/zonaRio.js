@@ -15,7 +15,7 @@
 // lluvia sola deja "atentos". Un aviso amarillo de lluvia o uno de mañana se menciona, no sube. La
 // zona refleja siempre hoy (no sigue el selector de día). Ningún nivel dice hasta dónde llegará el
 // agua: no hay relación entre m³/s y la extensión de la zona.
-import { referenciaLluvia, textoRio } from "./lenguaje.js";
+import { minusculaInicial, referenciaLluvia, textoRio } from "./lenguaje.js";
 import { MESES } from "./tiempo.js";
 
 // los colores viven en la paleta del mapa; se reexportan para quien solo importa este módulo
@@ -101,14 +101,17 @@ export function estadoZona({ caudal = null, senal = null, ahora = new Date() } =
   // 3. avisos de lluvia sobre la cuenca
   const lluvia = senal?.avisos_lluvia ?? [];
   const fuerteHoy = lluvia.filter((a) => a.en_curso && a.nivel >= 3).sort((a, b) => b.nivel - a.nivel)[0];
+  // color y fechas van también como datos (notaCuenca arma con ellos la línea "Cuenca: ...")
   if (fuerteHoy)
     senales.push({ clave: "aviso_lluvia", nivel: "atentos", titulo: `Aviso ${COLOR[fuerteHoy.nivel]} de SENAMHI por lluvias sobre la cuenca`,
-      texto: conPunto(`Vigente hasta el ${diaHora(fuerteHoy.fin)}`), url: urlAvisoLluvia(fuerteHoy) });
+      texto: conPunto(`Vigente hasta el ${diaHora(fuerteHoy.fin)}`), url: urlAvisoLluvia(fuerteHoy), color: COLOR[fuerteHoy.nivel], hasta: fuerteHoy.fin });
   const manana = lluvia.filter((a) => !a.en_curso && a.nivel >= 3).sort((a, b) => b.nivel - a.nivel)[0];
   if (manana)
-    menciones.push({ clave: "aviso_manana", texto: `Desde el ${diaHora(manana.inicio)} rige un aviso ${COLOR[manana.nivel]} de SENAMHI por lluvias sobre la cuenca.`, url: urlAvisoLluvia(manana) });
-  if (!fuerteHoy && lluvia.some((a) => a.en_curso && a.nivel === 2))
-    menciones.push({ clave: "aviso_amarillo", texto: "Hay un aviso amarillo de SENAMHI por lluvias sobre la cuenca." });
+    menciones.push({ clave: "aviso_manana", texto: `Desde el ${diaHora(manana.inicio)} rige un aviso ${COLOR[manana.nivel]} de SENAMHI por lluvias sobre la cuenca.`,
+      url: urlAvisoLluvia(manana), color: COLOR[manana.nivel], desde: manana.inicio });
+  const amarilloHoy = !fuerteHoy ? lluvia.find((a) => a.en_curso && a.nivel === 2) : null;
+  if (amarilloHoy)
+    menciones.push({ clave: "aviso_amarillo", texto: "Hay un aviso amarillo de SENAMHI por lluvias sobre la cuenca.", url: urlAvisoLluvia(amarilloHoy) });
 
   // 4. lluvia medida en la cuenca sobre la referencia de SENAMHI
   const pasan = (senal?.lluvia_cuenca ?? []).filter((e) => referenciaLluvia(e).pasa);
@@ -120,7 +123,10 @@ export function estadoZona({ caudal = null, senal = null, ahora = new Date() } =
         : `${e.nombre}: ${num(e.pp_6h)} mm en 6 horas (referencia de SENAMHI: ${num(e.umbral_6h)} mm)`;
     };
     senales.push({ clave: "lluvia_medida", nivel: "atentos", titulo: "Lluvia fuerte medida en la cuenca",
-      texto: `${pasan.slice(0, 2).map(una).join("; ")}${pasan.length > 2 ? ` y ${pasan.length - 2} más` : ""}. No es un aviso oficial.` });
+      texto: `${pasan.slice(0, 2).map(una).join("; ")}${pasan.length > 2 ? ` y ${pasan.length - 2} más` : ""}. No es un aviso oficial.`,
+      corto: pasan.length === 1
+        ? `la estación ${pasan[0].nombre} midió más lluvia que su referencia de SENAMHI`
+        : `${pasan.length} estaciones de la cuenca midieron más lluvia que su referencia de SENAMHI` });
   }
 
   senales.sort((a, b) => ORDEN.indexOf(b.nivel) - ORDEN.indexOf(a.nivel));
@@ -158,6 +164,66 @@ export function estacionDeAviso(aviso) {
 export function avisoEsDeEstacion(aviso, estacion) {
   const de = estacionDeAviso(aviso);
   return Boolean(de) && de === sinTildes(estacion).replace(/\s+/g, " ");
+}
+
+// "mañana" si el aviso empieza mañana (fecha de Perú), "hoy" si ya es hoy; si no, "el 4 de octubre"
+// (sin la hora: los avisos meteorológicos empiezan a las 00:00 de Lima)
+const diaPeru = (f) => new Date(f).toLocaleDateString("en-CA", { timeZone: PERU });
+function desdeCuando(inicio, ahora) {
+  if (diaPeru(inicio) === diaPeru(new Date(ahora).getTime() + 86_400_000)) return "mañana";
+  if (diaPeru(inicio) === diaPeru(ahora)) return "hoy";
+  return `el ${diaHora(inicio).split(",")[0]}`;
+}
+
+// Lo que pasa en la cuenca aunque la estación mida tranquilo, en una línea para la tarjeta del río
+// (MedidorCaudal), el popup del cauce y el de la estación (siempre debajo de la medición, así una
+// cosa no tapa a la otra): "Cuenca: aviso naranja de SENAMHI por lluvias vigente hoy (hasta el 3 de
+// octubre, 1:00 p. m.); el caudal puede subir. Desde mañana, aviso rojo." Sale de las señales y
+// menciones de estadoZona (misma regla, no otra): aviso de lluvia naranja o rojo en curso, lluvia
+// medida sobre la referencia, el aviso amarillo en curso y el aviso que empieza después
+// (rio_senal.avisos_lluvia trae los que no terminaron, en curso o no). El aviso hidrológico no va
+// aquí: es del río mismo y ya titula el popup. null sin nada en la cuenca.
+// -> { texto: "Cuenca: ...", cuerpo: "..." (sin el "Cuenca: "), corto (para el tooltip), url, sube }
+export function notaCuenca(estado, ahora = new Date()) {
+  const { senales = [], menciones = [], t = null } = estado ?? {};
+  const hoy = senales.find((s) => s.clave === "aviso_lluvia");
+  const lluvia = senales.find((s) => s.clave === "lluvia_medida");
+  const amarillo = menciones.find((m) => m.clave === "aviso_amarillo");
+  const luego = menciones.find((m) => m.clave === "aviso_manana");
+  if (!hoy && !lluvia && !amarillo && !luego) return null;
+  const partes = [];
+  const cortas = [];
+  if (hoy) {
+    partes.push(`aviso ${hoy.color} de SENAMHI por lluvias vigente hoy (hasta el ${diaHora(hoy.hasta)})`);
+    cortas.push(`aviso ${hoy.color} de SENAMHI por lluvias sobre su cuenca`);
+  } else if (amarillo) {
+    partes.push("aviso amarillo de SENAMHI por lluvias vigente hoy");
+    cortas.push("aviso amarillo de SENAMHI por lluvias sobre su cuenca");
+  }
+  if (lluvia) {
+    partes.push(lluvia.corto);
+    cortas.push(hoy || amarillo ? "lluvia fuerte medida en su cuenca" : "llovió fuerte en su cuenca");
+  }
+  // solo lo naranja o rojo de hoy, o la lluvia medida, dicen que puede subir (el amarillo y el de
+  // mañana se mencionan, como en estadoZona)
+  const sube = Boolean(hoy || lluvia);
+  const que = !t ? "el río" : t.esCaudal ? "el caudal" : "el nivel";
+  const yaSubio = t && !t.bajo && (t.estado === "alerta" || t.estado === "emergencia");
+  const oraciones = [];
+  if (partes.length) oraciones.push(`${partes.join(" y ")}${sube ? `; ${que} puede ${yaSubio ? "seguir subiendo" : "subir"}` : ""}.`);
+  if (luego) {
+    const cuando = desdeCuando(luego.desde, ahora);
+    oraciones.push(hoy && hoy.color === luego.color ? `${cuando.charAt(0).toUpperCase()}${cuando.slice(1)} sigue con aviso ${luego.color}.` : `Desde ${cuando}, aviso ${luego.color}.`);
+    if (!partes.length) cortas.push(`aviso ${luego.color} de SENAMHI por lluvias sobre su cuenca desde ${cuando}`);
+  }
+  const cuerpo = minusculaInicial(oraciones.join(" "));
+  return {
+    texto: `Cuenca: ${cuerpo}`,
+    cuerpo,
+    corto: `${cortas.join(" y ")}${sube ? `, ${que} puede ${yaSubio ? "seguir subiendo" : "subir"}` : ""}`,
+    url: hoy?.url ?? luego?.url ?? amarillo?.url ?? null,
+    sube,
+  };
 }
 
 const ACCION = {
@@ -293,10 +359,21 @@ function avisoFalso(rio, nivel, ahora) {
   };
 }
 
-// Aplica `param` ("mashcon:15.4", "mashcon:hidro2" a "hidro4", "mashcon:lluvia", "mashcon:calma";
-// varios separados por comas) al río: cambia el caudal de ANA, agrega un aviso hidrológico vigente
-// falso (valor 15) o la estación RIO GRANDE GORE con 7,2 mm, o quita todas las señales de la cuenca
-// (un día sin señales). Devuelve { rio, caudal, senal, activa }.
+// Aviso de SENAMHI por lluvias falso que toca la cuenca: en curso (24 h desde ahora) o desde las
+// 00:00 de Lima de mañana (hasta las 23:59). Sirve para ver la línea "Cuenca: ..." y la luz del río.
+function avisoLluviaFalso(nivel, ahora, enCurso) {
+  const t = new Date(ahora).getTime();
+  const inicio = enCurso ? new Date(t) : new Date(`${diaPeru(t + 86_400_000)}T00:00:00-05:00`);
+  const fin = enCurso ? new Date(t + 86_400_000) : new Date(inicio.getTime() + 86_400_000 - 1000);
+  return { id: -nivel, tipo: "meteorologico", numero: 0, mapa: null, nivel, titulo: "SIMULACIÓN", inicio: inicio.toISOString(), fin: fin.toISOString(), en_curso: enCurso, url: null };
+}
+
+// Aplica `param` ("mashcon:15.4", "mashcon:hidro2" a "hidro4", "mashcon:aviso2" a "aviso4",
+// "mashcon:manana3" o "manana4", "mashcon:lluvia", "mashcon:calma"; varios separados por comas) al
+// río: cambia el caudal de ANA, agrega un aviso hidrológico vigente falso (valor 15), un aviso de
+// SENAMHI por lluvias falso sobre la cuenca (en curso, o desde mañana) o la estación RIO GRANDE GORE
+// con 7,2 mm, o quita todas las señales de la cuenca (un día sin señales).
+// Devuelve { rio, caudal, senal, activa }.
 export function simular({ rio, caudal = null, senal = null }, param, ahora = new Date()) {
   let c = caudal;
   let s = senal;
@@ -310,6 +387,10 @@ export function simular({ rio, caudal = null, senal = null }, param, ahora = new
       c = { ...c, valor: Number(que) };
     } else if (/^hidro[234]$/.test(que)) {
       s = { ...base, avisos_hidro: [avisoFalso(rio, Number(que.slice(5)), ahora), ...base.avisos_hidro] };
+    } else if (/^aviso[234]$/.test(que)) {
+      s = { ...base, avisos_lluvia: [avisoLluviaFalso(Number(que.slice(5)), ahora, true), ...base.avisos_lluvia] };
+    } else if (/^manana[34]$/.test(que)) {
+      s = { ...base, avisos_lluvia: [avisoLluviaFalso(Number(que.slice(6)), ahora, false), ...base.avisos_lluvia] };
     } else if (que === "calma") {
       s = { ...base, avisos_lluvia: [], lluvia_cuenca: [], avisos_hidro: [] }; // un día sin señales
     } else if (que === "lluvia") {

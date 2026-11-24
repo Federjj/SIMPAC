@@ -4,15 +4,18 @@ import android.app.Application
 import android.net.Uri
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import pe.simpac.app.SimpacApp
 import pe.simpac.app.dominio.Comunidad
+import pe.simpac.app.ubicacion.MotivoSinPosicion
 import pe.simpac.app.ubicacion.Ubicacion
 
 /** Como va la ubicacion del reporte. */
-enum class EstadoGps { BUSCANDO, LISTA, SIN_PERMISO, SIN_SENAL, FUERA_DEL_PERU }
+enum class EstadoGps { BUSCANDO, LISTA, SIN_PERMISO, UBICACION_APAGADA, SIN_SENAL, FUERA_DEL_PERU }
 
 data class EstadoNuevo(
     val tipo: String? = null,
@@ -22,16 +25,28 @@ data class EstadoNuevo(
     val lat: Double? = null,
     val lon: Double? = null,
     val gps: EstadoGps = EstadoGps.BUSCANDO,
+    val precisionM: Float? = null,     // radio de error de la posicion (m), si el telefono lo dice
+    val afinando: Boolean = false,     // se siguen pidiendo posiciones para mejorar la precision
+    val soloAproximada: Boolean = false,   // la app solo tiene permiso de ubicacion aproximada (Android 12+): no va a llegar nada mejor que ~2 km
+    val notaGps: String? = null,       // aviso corto bajo la ubicacion ("No llego una posicion mas precisa...")
     val errores: Map<String, String> = emptyMap(),
     val aviso: String? = null,
     val enviando: String? = null,     // null | "foto" | "reporte"
     val creadoId: String? = null,     // al terminar: id del reporte para abrir su detalle
     val rechazos: Int = 0,            // cuantas veces fallo un envio (validacion o red), para la vibracion de rechazo
-)
+) {
+    /** La posicion ya sirve pero podria mejorar (peor que 30 m o sin dato de precision): se ofrece "Mejorar precision". */
+    val puedeMejorar: Boolean get() = gps == EstadoGps.LISTA && !afinando && !soloAproximada && (precisionM == null || precisionM > Ubicacion.PRECISION_REPORTE_M)
+}
 
 /**
  * Formulario de un reporte nuevo: solo con sesion y con la posicion GPS real (sin pin manual, como
  * la web). La BD pone autor, confianza, estado y vencimiento, y aplica el limite de 5 por hora.
+ *
+ * Ubicacion: en vez de una sola lectura, un afinado (`Ubicacion.afinar`) de alta precision de hasta 25 s
+ * que se queda con la mejor posicion que llega (la primera se usa enseguida; para antes si baja de 30 m).
+ * Solo en primer plano: la pantalla lo detiene al irse la app al fondo (onStop) y lo reanuda al volver;
+ * al limpiarse el ViewModel se cancela con viewModelScope y se dejan de pedir posiciones al telefono.
  */
 class ReporteNuevoViewModel(app: Application) : AndroidViewModel(app) {
     private val contenedor = (app as SimpacApp).contenedor
@@ -41,17 +56,75 @@ class ReporteNuevoViewModel(app: Application) : AndroidViewModel(app) {
     private val _estado = MutableStateFlow(EstadoNuevo())
     val estado: StateFlow<EstadoNuevo> = _estado
 
-    /** Una lectura nueva del GPS (la pantalla la pide al abrir y al conceder el permiso). */
-    fun buscarUbicacion() {
+    private var trabajoGps: Job? = null
+    private var generacion = 0          // cada busqueda nueva sube el numero: una vieja que termina tarde no toca el estado
+    private var interrumpida = false
+
+    /** Busca la posicion desde cero (la pantalla la pide al abrir, al conceder el permiso y en "Volver a buscar"). */
+    fun buscarUbicacion() = afinarPosicion(mantener = false)
+
+    /** Con una posicion ya lista, sigue pidiendo hasta 25 s por una mas precisa sin perder la que hay (boton "Mejorar precision"). */
+    fun mejorarPrecision() = afinarPosicion(mantener = true)
+
+    /** La app se fue al fondo: no se pide ubicacion en segundo plano. Se conserva la posicion que ya habia. */
+    fun detenerBusqueda() {
+        if (trabajoGps?.isActive == true) interrumpida = true
+        trabajoGps?.cancel()
+        trabajoGps = null
+        if (_estado.value.afinando) _estado.value = _estado.value.copy(afinando = false)
+    }
+
+    /** La app volvio al frente: solo retoma lo que se habia interrumpido al irse al fondo. */
+    fun reanudarBusqueda() {
+        if (!interrumpida) return
+        interrumpida = false
+        afinarPosicion(mantener = _estado.value.gps == EstadoGps.LISTA)
+    }
+
+    private fun afinarPosicion(mantener: Boolean) {
         val app = getApplication<Application>()
-        if (!Ubicacion.tienePermiso(app)) { _estado.value = _estado.value.copy(gps = EstadoGps.SIN_PERMISO, lat = null, lon = null); return }
-        _estado.value = _estado.value.copy(gps = EstadoGps.BUSCANDO)
-        viewModelScope.launch {
-            val p = Ubicacion.actual(app)
-            _estado.value = when {
-                p == null -> _estado.value.copy(gps = EstadoGps.SIN_SENAL, lat = null, lon = null)
-                !Comunidad.dentroDelPeru(p.lat, p.lon) -> _estado.value.copy(gps = EstadoGps.FUERA_DEL_PERU, lat = p.lat, lon = p.lon)
-                else -> _estado.value.copy(gps = EstadoGps.LISTA, lat = p.lat, lon = p.lon, errores = _estado.value.errores - "pos")
+        trabajoGps?.cancel()
+        interrumpida = false
+        val soloAproximada = Ubicacion.tienePermiso(app) && !Ubicacion.tienePermisoPreciso(app)
+        when (Ubicacion.motivoSinPosicion(app)) {
+            MotivoSinPosicion.SIN_PERMISO -> { _estado.value = _estado.value.copy(gps = EstadoGps.SIN_PERMISO, lat = null, lon = null, precisionM = null, afinando = false, notaGps = null, soloAproximada = false); return }
+            MotivoSinPosicion.UBICACION_APAGADA -> { _estado.value = _estado.value.copy(gps = EstadoGps.UBICACION_APAGADA, lat = null, lon = null, precisionM = null, afinando = false, notaGps = null, soloAproximada = soloAproximada); return }
+            MotivoSinPosicion.SIN_SENAL -> {}
+        }
+        _estado.value = if (mantener && _estado.value.gps == EstadoGps.LISTA) {
+            _estado.value.copy(afinando = true, notaGps = null, soloAproximada = soloAproximada)
+        } else {
+            _estado.value.copy(gps = EstadoGps.BUSCANDO, lat = null, lon = null, precisionM = null, afinando = true, notaGps = null, soloAproximada = soloAproximada)
+        }
+        val precisionAntes = _estado.value.precisionM
+        val mia = ++generacion
+        trabajoGps = viewModelScope.launch {
+            var llego = false
+            try {
+                Ubicacion.afinar(app).collect { p ->
+                    if (mia != generacion) return@collect
+                    val actual = _estado.value
+                    if (mantener && actual.gps == EstadoGps.LISTA && precisionAntes != null && (p.precisionM ?: Float.MAX_VALUE) >= precisionAntes) return@collect
+                    llego = true
+                    _estado.value = if (!Comunidad.dentroDelPeru(p.lat, p.lon)) {
+                        actual.copy(gps = EstadoGps.FUERA_DEL_PERU, lat = p.lat, lon = p.lon, precisionM = p.precisionM)
+                    } else {
+                        actual.copy(gps = EstadoGps.LISTA, lat = p.lat, lon = p.lon, precisionM = p.precisionM, errores = actual.errores - "pos")
+                    }
+                }
+            } finally {
+                // solo la busqueda vigente cierra el estado; una cancelada (fondo, busqueda nueva) solo apaga "afinando"
+                if (mia == generacion) {
+                    val cancelada = !isActive
+                    val actual = _estado.value
+                    _estado.value = when {
+                        cancelada -> actual.copy(afinando = false)
+                        actual.gps == EstadoGps.BUSCANDO -> actual.copy(gps = EstadoGps.SIN_SENAL, lat = null, lon = null, precisionM = null, afinando = false)
+                        !llego && mantener && actual.gps == EstadoGps.LISTA ->
+                            actual.copy(afinando = false, notaGps = "No llegó una posición más precisa. Prueba a cielo abierto o cerca de una ventana.")
+                        else -> actual.copy(afinando = false)
+                    }
+                }
             }
         }
     }
@@ -94,5 +167,10 @@ class ReporteNuevoViewModel(app: Application) : AndroidViewModel(app) {
                 )
             }
         }
+    }
+
+    override fun onCleared() {
+        trabajoGps?.cancel()
+        super.onCleared()
     }
 }

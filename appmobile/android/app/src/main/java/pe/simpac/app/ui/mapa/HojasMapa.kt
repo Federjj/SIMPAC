@@ -75,6 +75,8 @@ import pe.simpac.app.dominio.Nowcast
 import pe.simpac.app.dominio.Paleta
 import pe.simpac.app.dominio.PronosticoMapa
 import pe.simpac.app.dominio.Reportes
+import pe.simpac.app.dominio.Rios
+import pe.simpac.app.dominio.SenalCuenca
 import pe.simpac.app.dominio.Tiempo
 import pe.simpac.app.ui.Intents
 import pe.simpac.app.ui.componentes.Haptica
@@ -137,7 +139,7 @@ fun HojaSeleccion(sel: Seleccion, estado: EstadoMapa) {
         is Seleccion.Avisos -> HojaAvisos(sel.avisos, estado.obtenidoAvisosEn)
         is Seleccion.Rio -> HojaRio(sel.rio, estado.obtenidoEn)
         is Seleccion.Mashcon -> HojaMashcon(sel.mashcon, estado.obtenidoEn)
-        is Seleccion.EstacionRio -> HojaEstacionRio(sel.estacion, estado.obtenidoEn)
+        is Seleccion.EstacionRio -> HojaEstacionRio(sel.estacion, estado)
         is Seleccion.Zona -> HojaZona(sel.zona, estado.obtenidoEn)
         is Seleccion.Estacion -> HojaEstacion(sel.estacion, estado.obtenidoEstacionesEn)
         is Seleccion.Acudir -> HojaAcudir(sel.punto, estado.obtenidoAcudirEn)
@@ -184,9 +186,35 @@ private fun FilasAna(t: pe.simpac.app.dominio.TextoRio, unidad: String?) {
     LineaFuente("Nivel de emergencia$sufijo: ${t.ue?.let { "${Cauces.num(it)} $u" } ?: "no publicado"}")
 }
 
+/**
+ * La senal de la cuenca junto a la medicion (Rios.cuenca): punto del color del nivel de la zona y la
+ * linea "Cuenca: aviso naranja de SENAMHI por lluvias vigente hoy; el caudal puede subir."; el color
+ * nunca va solo. Debajo, si la hay, la lluvia medida estacion por estacion.
+ */
 @Composable
-private fun HojaEstacionRio(e: EstacionRioDibujo, obtenidoEn: Long?) {
+private fun LineaCuenca(cuenca: SenalCuenca) {
+    Row(verticalAlignment = Alignment.Top) {
+        Box(Modifier.padding(top = 5.dp).size(10.dp).background(Color(Paleta.zona(cuenca.nivel)), CircleShape))
+        Spacer(Modifier.width(8.dp))
+        Column {
+            Text(cuenca.linea, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+            cuenca.detalle?.let { LineaFuente(it) }
+        }
+    }
+}
+
+/**
+ * Hoja de una estacion de ANA. La senal de la cuenca (aviso de lluvias o lluvia medida) es de la zona del
+ * rio al que pertenece la estacion (el Mashcon o un rio del pais): se busca en el estado del mapa, asi la
+ * hoja dice la medicion de la estacion y, aparte, que el caudal puede subir.
+ */
+@Composable
+private fun HojaEstacionRio(e: EstacionRioDibujo, estado: EstadoMapa) {
     val contexto = LocalContext.current
+    val obtenidoEn = estado.obtenidoEn
+    val zona = estado.mashcon?.takeIf { it.caudal == e.caudal }?.estado
+        ?: estado.rios.firstOrNull { r -> e.caudal in r.lecturas }?.estado?.zona
+    val cuenca = zona?.let { Rios.cuenca(it) }
     Hoja {
         Titulo(Cauces.resumenEstacion(e.nombreRio, e.caudal, e.t, if (e.porAviso) pe.simpac.app.dominio.EstadoCauceRio(e.estado, true, e.colorAviso) else null))
         Pastilla(if (e.porAviso) "Aviso hidrológico ${e.colorAviso} de SENAMHI" else e.t.etiqueta, Paleta.rio(e.estado))
@@ -197,13 +225,20 @@ private fun HojaEstacionRio(e: EstacionRioDibujo, obtenidoEn: Long?) {
             Parrafo("Hay un aviso hidrológico ${e.colorAviso} de SENAMHI para este río (N.º ${h.numero ?: "?"}$hasta). Tenlo en cuenta aunque la última medición de ANA diga otra cosa: el aviso puede llegar antes que la lectura nueva.")
             Parrafo("Última medición de ANA: ${e.t.frase}")
         } else {
+            // con una senal en la cuenca, la medicion va con su estacion: lo que mide ANA y lo que puede pasar son dos
+            // cosas; el valor no se repite porque el titulo ya lo dice
+            if (cuenca != null) Text(Rios.medicion(e.caudal.estacion, e.t.etiqueta), style = MaterialTheme.typography.titleMedium)
             Parrafo(e.t.frase)
         }
         e.t.accion?.let { Text(it, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold) }
+        if (cuenca != null) LineaCuenca(cuenca)
         FilasAna(e.t, e.caudal.unidad)
         LineaFuente("Medido: ${Cauces.lecturaRio(e.caudal) ?: "sin fecha"}")
         if (e.porAviso) e.aviso?.url?.takeIf { it.startsWith("https://") }?.let { url ->
             BotonHoja("Ver el aviso de SENAMHI") { Intents.abrirNavegador(contexto, url) }
+        }
+        cuenca?.url?.takeIf { it.startsWith("https://") }?.let { url ->
+            BotonHoja("Ver el aviso oficial de lluvias", secundario = e.porAviso) { Intents.abrirNavegador(contexto, url) }
         }
         LineaFuente("Fuente: niveles y umbrales de ANA, leídos el ${Tiempo.horaCorta(obtenidoEn)}${e.fuenteTrazo?.let { "; trazo del río: $it" } ?: ""}.")
     }
@@ -214,6 +249,7 @@ private fun HojaRio(r: RioDibujo, obtenidoEn: Long?) {
     val contexto = LocalContext.current
     val est = r.estado
     val aviso = if (est.cauce.porAviso) est.zona.avisoHidro else null
+    val cuenca = Rios.cuenca(est.zona)
     Hoja {
         val c = est.peor
         val t = est.t
@@ -225,11 +261,15 @@ private fun HojaRio(r: RioDibujo, obtenidoEn: Long?) {
             Parrafo("Hay un aviso hidrológico ${est.cauce.color} de SENAMHI para este río (N.º ${aviso.numero ?: "?"}$hasta). SIMPAC resalta todo el trazo con el color del aviso; el aviso no dice qué tramo abarca.")
             if (t != null && c != null) Parrafo("Última medición de ANA en ${c.estacion}: ${t.frase}")
         } else if (t != null) {
+            // con una senal en la cuenca, la medicion va con su estacion: lo que mide ANA y lo que puede pasar son dos
+            // cosas; el valor no se repite porque el titulo ya lo dice
+            if (cuenca != null) Text(Rios.medicion(c?.estacion, t.etiqueta), style = MaterialTheme.typography.titleMedium)
             Parrafo(t.frase)
         } else {
             Parrafo("ANA no tiene una estación de caudal en este río.")
         }
         t?.accion?.let { Text(it, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold) }
+        if (cuenca != null) LineaCuenca(cuenca)
         if (t != null && c != null) {
             LineaFuente("Estación ${c.estacion} (ANA)${if (r.lecturas.size > 1) "; el trazo toma el estado de la peor de sus ${r.lecturas.size} estaciones (${Cauces.lista(r.lecturas.map { it.estacion }, 4)})" else ""}")
             FilasAna(t, c.unidad)
@@ -238,6 +278,9 @@ private fun HojaRio(r: RioDibujo, obtenidoEn: Long?) {
         Parrafo("Si SIMPAC estimó zonas que este río podría afectar (con el relieve; no es un mapa oficial) se ven en la capa \"Zonas que podrían inundarse\" al acercarse (zoom ${Cauces.ZONAS_DESDE}).")
         aviso?.url?.takeIf { it.startsWith("https://") }?.let { url ->
             BotonHoja("Ver el aviso de SENAMHI") { Intents.abrirNavegador(contexto, url) }
+        }
+        cuenca?.url?.takeIf { it.startsWith("https://") }?.let { url ->
+            BotonHoja("Ver el aviso oficial de lluvias", secundario = aviso != null) { Intents.abrirNavegador(contexto, url) }
         }
         LineaFuente("Trazo del río: ${r.fuente ?: "ANA - GeoSNIRH"}${r.licencia?.let { " (${Cauces.licenciaCorta(it)})" } ?: ""}${r.km?.let { "; ${Cauces.num(it)} km" } ?: ""}.")
         LineaFuente("Niveles de ANA leídos el ${Tiempo.horaCorta(obtenidoEn)}.")
@@ -253,16 +296,30 @@ private fun HojaMashcon(m: MashconDibujo, obtenidoEn: Long?) {
         Titulo(if (c != null && t != null) Cauces.resumenEstacion(m.nombre, c, t, m.cauceEstado) else m.nombre)
         Pastilla(m.estado.nivel.titulo, Paleta.zona(m.estado.nivel))
         m.rio.departamento?.let { LineaFuente(it) }
-        m.estado.senales.forEach { s ->
+        val cuenca = Rios.cuenca(m.estado)
+        // la medicion de ANA siempre, con su estacion si hay otras senales ("Estación Mashcón (ANA): tranquila", sin
+        // el valor: ya lo dice el titulo); la senal "ana" ya la dicen la frase y la accion, y la de la cuenca va en su linea
+        val yaDichas = setOf("ana", cuenca?.clave)
+        if (c != null && t != null) {
+            if (m.estado.senales.isNotEmpty()) Text(Rios.medicion(c.estacion, t.etiqueta), style = MaterialTheme.typography.titleMedium)
+            Parrafo(t.frase)
+            t.accion?.let { Text(it, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold) }
+        } else if (m.estado.senales.isEmpty()) {
+            Parrafo("Hoy el río no tiene señales de crecida.")
+        }
+        if (cuenca != null) LineaCuenca(cuenca)
+        m.estado.senales.filter { it.clave !in yaDichas }.forEach { s ->
             Text(s.titulo, style = MaterialTheme.typography.titleMedium)
             Parrafo(s.texto)
         }
-        if (m.estado.senales.isEmpty()) Parrafo(t?.frase ?: "Hoy el río no tiene señales de crecida.")
         m.estado.menciones.forEach { LineaFuente(it) }
         if (c != null && t != null) { FilasAna(t, c.unidad); LineaFuente("Medido: ${Cauces.lecturaRio(c) ?: "sin fecha"}") }
         Parrafo("Las franjas junto al río marcan la zona que podría afectar si se desborda (capa \"Zonas que podrían inundarse\").")
         m.estado.avisoHidro?.url?.takeIf { it.startsWith("https://") }?.let { url ->
             BotonHoja("Ver el aviso de SENAMHI") { Intents.abrirNavegador(contexto, url) }
+        }
+        cuenca?.url?.takeIf { it.startsWith("https://") }?.let { url ->
+            BotonHoja("Ver el aviso oficial de lluvias", secundario = m.estado.avisoHidro?.url != null) { Intents.abrirNavegador(contexto, url) }
         }
         LineaFuente("Fuente: ANA (nivel) y SENAMHI (avisos), leídos el ${Tiempo.horaCorta(obtenidoEn)}. Trazo del río: ${m.fuenteCauce}.")
     }
@@ -682,10 +739,14 @@ private fun Selector(capa: Capa, estado: EstadoMapa, acciones: AccionesCapas) {
 }
 
 @Composable
-private fun Muestra(color: Long, texto: String, linea: Boolean = false, zona: Boolean = false, rombo: Boolean = false, anillo: Boolean = false, punteado: Boolean = false) {
+private fun Muestra(color: Long, texto: String, linea: Boolean = false, zona: Boolean = false, rombo: Boolean = false, anillo: Boolean = false, punteado: Boolean = false, latido: Boolean = false) {
     Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(vertical = 2.dp)) {
         when {
             linea -> Box(Modifier.width(18.dp).height(5.dp).background(Color(color), RoundedCornerShape(3.dp)))
+            // el halo que late del mapa, quieto: banda traslucida del color del nivel bajo un cauce tranquilo
+            latido -> Box(Modifier.width(26.dp).height(13.dp).background(Color(color).copy(alpha = 0.5f), RoundedCornerShape(7.dp)), contentAlignment = Alignment.Center) {
+                Box(Modifier.width(18.dp).height(5.dp).background(Color(Paleta.cauce(EstadoCauce.NORMAL)), RoundedCornerShape(3.dp)))
+            }
             zona -> Box(Modifier.size(16.dp).background(Color(color).copy(alpha = 0.55f), RoundedCornerShape(3.dp)).border(1.dp, Color(color), RoundedCornerShape(3.dp)))
             rombo -> Box(Modifier.size(14.dp).rotate(45f).background(Color(color), RoundedCornerShape(2.dp)))
             // el disco blanco de adentro es el del icono del mapa: asi el aro se lee tambien en el tema oscuro
@@ -760,6 +821,7 @@ private fun Leyenda(capa: Capa, estado: EstadoMapa) {
                 Muestra(Paleta.cauce(EstadoCauce.EMERGENCIA), "Rojo: pasó el nivel de emergencia o aviso hidrológico rojo", linea = true)
                 Muestra(Paleta.cauce(EstadoCauce.SD), "Gris: sin nivel de alerta publicado; en vista país, los ríos sin alerta", linea = true)
                 Muestra(Paleta.rio(EstadoCauce.NORMAL), "Disco: estación de caudal de ANA, con el color de su estado")
+                Muestra(Paleta.zona(NivelZona.ATENTOS), "Halo que late: aviso de lluvia o lluvia medida sobre su cuenca, el río puede subir (naranja o rojo si el río pasó un nivel de alerta); el color del cauce sigue siendo el estado de ANA", latido = true)
                 LineaFuente("Nombres de los ríos desde zoom ${Cauces.ROTULOS_DESDE}; trazo fino desde zoom ${Cauces.DETALLE_DESDE}.")
             }
             Capa.ZONAS -> {

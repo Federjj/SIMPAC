@@ -1,6 +1,9 @@
 package pe.simpac.app.ui.inicio
 
 import android.Manifest
+import android.content.ActivityNotFoundException
+import android.content.Intent
+import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedContent
@@ -75,6 +78,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import pe.simpac.app.dominio.Alertas
@@ -103,6 +107,7 @@ import pe.simpac.app.ui.componentes.Transiciones
 import pe.simpac.app.ui.componentes.bordeTarjeta
 import pe.simpac.app.ui.componentes.presionable
 import pe.simpac.app.ui.componentes.temaOscuro
+import pe.simpac.app.ubicacion.Ubicacion
 
 /**
  * Pantalla Inicio con su ViewModel (la parte sin estado es InicioContenido, que prueba el androidTest).
@@ -122,6 +127,12 @@ fun InicioScreen(irAlertas: () -> Unit, irReportar: () -> Unit, irMapa: (Encuadr
     LaunchedEffect(estado.error, estado.tieneDatos) {
         val e = estado.error
         if (e != null && estado.tieneDatos) avisador.avisar(e, accion = "Reintentar") { recargar() }
+    }
+    // al volver de los ajustes del telefono con la ubicacion ya prendida se recarga sola (la zona pasa a ser la del GPS)
+    val contexto = LocalContext.current
+    LifecycleResumeEffect(estado.ubicacionApagada) {
+        if (estado.ubicacionApagada && Ubicacion.ubicacionActiva(contexto)) recargar()
+        onPauseOrDispose {}
     }
     InicioContenido(
         estado = estado,
@@ -212,6 +223,9 @@ private fun ContenidoInicio(
                 AnimatedVisibility(visible = estado.desactualizado, enter = Transiciones.aparecer, exit = Transiciones.desaparecer) {
                     AvisoDato("Dato desactualizado: SIMPAC no actualiza esta zona desde hace ${Tiempo.haceTexto(estado.titularRevisadoMs).removePrefix("hace ")}. Verifica con los canales oficiales.")
                 }
+                AnimatedVisibility(visible = estado.ubicacionApagada, enter = Transiciones.aparecer, exit = Transiciones.desaparecer) {
+                    AvisoUbicacionApagada(estado.departamento)
+                }
                 AparecerEscalonado(0) { Semaforo(estado, onElegirDepartamento) }
                 AparecerEscalonado(1) { TarjetaTitular(estado) }
                 AparecerEscalonado(2) { ChipsZona(estado, irAlertas, verRioEnMapa) }
@@ -223,6 +237,29 @@ private fun ContenidoInicio(
                 Fuentes(estado)
                 PieReferencial()
                 Spacer(Modifier.height(8.dp))
+            }
+        }
+    }
+}
+
+/**
+ * "Usar mi ubicacion" esta elegido y la app tiene el permiso, pero el interruptor de ubicacion del telefono
+ * esta apagado: se dice por que se ve el departamento guardado, con el mismo texto y la misma accion
+ * ("Activar", ajustes del sistema) que el boton del mapa. Al volver con la ubicacion prendida, InicioScreen recarga.
+ */
+@Composable
+private fun AvisoUbicacionApagada(departamento: String) {
+    val contexto = LocalContext.current
+    val vista = LocalView.current
+    val avisador = LocalAvisador.current
+    Column(Modifier.fillMaxWidth()) {
+        AvisoDato("La ubicación del teléfono está apagada: por ahora se muestra $departamento. Actívala para ver la zona donde estás.")
+        BotonEnlace("Activar", modifier = Modifier.align(Alignment.End)) {
+            Haptica.toque(vista)
+            try {
+                contexto.startActivity(Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS))
+            } catch (_: ActivityNotFoundException) {
+                avisador.avisar("No se pudieron abrir los ajustes de ubicación del teléfono")
             }
         }
     }
@@ -403,6 +440,7 @@ private fun DetalleDesplegable(detalle: String) {
 @Composable
 private fun ChipsZona(estado: EstadoInicio, irAlertas: () -> Unit, verRioEnMapa: () -> Unit) {
     val vista = LocalView.current
+    val contexto = LocalContext.current
     // la tinta del nivel (oscura, para fondo claro) no se lee sobre el tema oscuro: ahi va el color del disco
     val oscuro = temaOscuro()
     fun tintaDe(n: Nivel): Color = Color(if (oscuro) n.fondo else n.tinta)
@@ -425,7 +463,10 @@ private fun ChipsZona(estado: EstadoInicio, irAlertas: () -> Unit, verRioEnMapa:
             r != null -> {
                 // rio_cauce.nombre ya suele traer "Río ..."; no se duplica la palabra
                 val nombre = if (r.nombre.trim().lowercase().startsWith("río") || r.nombre.trim().lowercase().startsWith("rio")) r.nombre.trim() else "Río ${r.nombre}"
-                "$nombre: ${r.texto}" to tintaDe(r.nivel)
+                // con una senal de lluvia sobre la cuenca, el chip dice lo que mide ANA con su estacion
+                // ("Estación Mashcón (ANA): tranquila") y la linea de abajo lo que puede pasar: dos cosas ciertas a la vez
+                val texto = if (r.cuenca != null && r.medicion != null) "$nombre · ${r.medicion}" else "$nombre: ${r.texto}"
+                texto to tintaDe(r.nivel)
             }
             estado.rios.isNotEmpty() -> "${estado.rios.size} ríos con estación, sin señales hoy" to null
             else -> null
@@ -448,10 +489,25 @@ private fun ChipsZona(estado: EstadoInicio, irAlertas: () -> Unit, verRioEnMapa:
                 }
             }
         }
+        // la senal de la cuenca del rio destacado, debajo de la medicion: "Cuenca: aviso naranja de SENAMHI por
+        // lluvias vigente hoy; el caudal puede subir." (punto ámbar de "atentos" + texto; el color nunca va solo)
+        val cuenca = estado.rioDestacado?.cuenca
+        if (cuenca != null) {
+            AnimatedContent(targetState = cuenca.linea, transitionSpec = { fundido() }, label = "cuencaRio") { linea ->
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
+                    Box(Modifier.padding(top = 4.dp).size(10.dp).background(Color(Nivel.AVISO.fondo), CircleShape))
+                    Spacer(Modifier.width(8.dp))
+                    Text(linea, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold, color = tintaDe(Nivel.AVISO), modifier = Modifier.testTag("cuenca_rio"))
+                }
+            }
+        }
         if (hayAlertas || hayRios) {
             FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                 if (hayAlertas) EnlacePestana("Ver las alertas de ${estado.departamento}") { Haptica.toque(vista); irAlertas() }
                 if (hayRios) EnlacePestana("Ver el río en el mapa") { Haptica.toque(vista); verRioEnMapa() }
+                cuenca?.url?.takeIf { it.startsWith("https://") }?.let { url ->
+                    EnlacePestana("Ver el aviso oficial") { Haptica.toque(vista); Intents.abrirNavegador(contexto, url) }
+                }
             }
         }
     }

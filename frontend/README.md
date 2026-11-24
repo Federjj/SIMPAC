@@ -68,7 +68,8 @@ src/
                 NivelBadge · GraficoSerie (SVG propio) · ContextoApp (useApp) · ErrorBoundary · Glifo ·
                 InsigniaCapa · ui/ (shadcn)
   hooks/        usePanorama(depto) (estado de tu zona y del país, se refresca solo) · useGeolocation
-                (navigator.geolocation) · useLayerVisibility (capas recordadas, con la cuenta) · usePronosticoLocal ·
+                (navigator.geolocation en dos tiempos, con precisión; ver "Ubicación de la persona") ·
+                useLayerVisibility (capas recordadas, con la cuenta) · usePronosticoLocal ·
                 useRiosVigilados(depto) · useZonaAhora (todo lo de la tarjeta de inicio) · useSesion
                 (SesionProvider/useSesion) · useAltoHoja (publica --hoja-alto) · useContador (números que cuentan,
                 prefers-reduced-motion)
@@ -90,7 +91,8 @@ src/
     layers/       una capa por archivo + index.js (GRUPOS y LAYERS); nuevas: acudir.js
   lib/          supabaseClient · queries (todas las consultas) · consultaCache (cached/filas/todas/siExiste, puro) ·
                 lenguaje (todos los textos en lenguaje claro) · nivel (semáforo, tu zona / el país) · tiempo ·
-                ubicacion · reportTypes · geo · pronostico · avisoTexto · zonaRio (zona de un río vigilado,
+                ubicacion · geolocalizacion (ubicación en dos tiempos, mejor lectura, textos por estado y
+                de precisión; puro) · reportTypes · geo · pronostico · avisoTexto · zonaRio (zona de un río vigilado,
                 estación de un aviso) · zonaAhora (titular, distancias, chips y botón del inicio) · medidor
                 (escala del medidor de caudal) · serie24h (barras de lluvia) · cauces (ríos del país con trazo) ·
                 acudir (a dónde acudir) · alertas (página Alertas) · comunidad (reportes, votos, chat, errores en
@@ -298,6 +300,8 @@ Lo que se lee en 5 segundos al abrir la app (14-10-2026; ajustes de celular del 
   después; nivel bajo invertido; sin umbral, sin tramos; sin medición, gris), marcas "alerta N" y
   "emergencia N", progreso con `stroke-dashoffset` (900 ms), aguja, número que cuenta, frase y hora de
   `textoRio`/`lecturaRio` (en naranja si es de ayer o `p.desactualizado`). Datos: `caudal_actual`.
+  Una marca que no cabe en una línea antes del borde del `viewBox` («emergencia 18» al 80 % del arco
+  se cortaba, 23-11-2026) va en dos (la palabra y el número), pegada al borde y por fuera del arco.
 - `components/BarrasLluvia.jsx` (altura media; se monta recién al abrirla, así no pide nada al
   cargar): las 3 estaciones automáticas más cercanas a menos de 30 km con la lluvia de la última hora
   frente a la referencia de SENAMHI (`lluvia_senamhi_actual`) y la serie de 24 barras de la más
@@ -308,7 +312,37 @@ Lo que se lee en 5 segundos al abrir la app (14-10-2026; ajustes de celular del 
   encuadra tu punto y el destino (línea recta, no ruta).
 - `components/OnboardingGps.jsx`: pantalla previa al permiso del GPS ("Mira cómo está tu zona"), una
   vez por navegador (`simpac.gps = "visto"`); `App.jsx` solo pide la ubicación al arrancar si
-  `navigator.permissions` dice `granted`. En desarrollo `?bienvenida=1` la fuerza.
+  `navigator.permissions` dice `granted`. En desarrollo `?bienvenida=1` la fuerza. Mientras busca,
+  desde el primer intento y no solo al reintentar, muestra en tono neutro que puede tardar hasta
+  medio minuto (`textoBuscando`: bajo techo el GPS frío ocupa los 6 s de la rápida más los 22 s del
+  afinado). Si falla, dice por qué según el estado (`lib/geolocalizacion.js textoFalloCorto`:
+  permiso negado y dónde se activa, sin señal, GPS que tarda, página sin https) y, cuando reintentar
+  tiene sentido (sin señal o tarda), ofrece "Volver a intentar" junto al selector de ciudad.
+  "Elegir mi ciudad" sigue habilitado mientras se busca (quien sabe que su GPS no responde no espera
+  medio minuto): elegir ciudad, ahí o en el selector del mapa, pasa por `pages/Mapa.jsx elegirCiudad`,
+  que llama al `cancelar` de `useGeolocation` (prop `gpsCancelar`) para que la lectura que llegara
+  después no mueva el mapa a otro lado.
+
+**Ubicación de la persona** (`hooks/useGeolocation.js` + `lib/geolocalizacion.js`, 23-11-2026). Antes
+un solo `getCurrentPosition` con `enableHighAccuracy` y 8 s fallaba en computadora (sin GPS, la
+ubicación sale de la red y el pedido de alta precisión no responde) y en el celular bajo techo (GPS
+frío), así que en producción salía "No se pudo obtener tu ubicación" o el mapa quedaba en el centro
+de la ciudad. Ahora `ubicar()` va en dos tiempos: una lectura rápida de baja precisión (red o wifi,
+`timeout` 6 s, `maximumAge` 60 s) para tener algo ya, y un `watchPosition` de alta precisión hasta
+22 s que se queda con la mejor lectura (menor `accuracy`, `mejorLectura`) y para antes si baja de
+30 m (`LIMITES`). `locate()` resuelve con la primera lectura que llegue; mientras afina (`afinando`),
+`pos` se reemplaza por la mejor y `App.jsx` vuelve a centrar el mapa si la lectura mejor queda a más
+de 100 m de donde centró. `pos` sigue siendo `[lat, lon]`; la precisión en metros va aparte
+(`precision`, `lectura.precisionM`). Con `navigator.permissions` se evita pedir dos veces: con el
+permiso concedido la rápida y el GPS arrancan juntos, por pedir el GPS espera a la rápida, negado no
+se llama al navegador. Estados (`status`) y textos (`TEXTO_ESTADO`): `denied` (cómo activarlo en el
+candado o el ícono de ubicación), `unavailable` (sin señal: salir a cielo abierto; en computadora la
+ubicación es aproximada), `timeout` (el GPS tarda), `insecure` (http sin localhost); `cancelar()`
+corta la búsqueda en curso (la promesa resuelve `null` y el `status` vuelve a `idle`). El botón
+redondo "Mi ubicación" (`pages/Mapa.jsx`) gira y se deshabilita mientras busca (`aria-busy`) y, si
+falla fuera de la hoja de bienvenida, muestra 8 s un aviso `role="status"` con `TEXTO_ESTADO` bajo
+las herramientas (se cierra al tocarlo; solo tras tocar ese botón). Pruebas con `navigator`
+simulado en `lib/geolocalizacion.test.js`.
 
 **Modo emergencia** (`pages/Mapa.jsx`): cuando `nivelMaximo(p.nivelLocal, rios)` pasa a alerta o
 emergencia, una vez por cambio de nivel: pide la hoja plegada (forzado solo en emergencia), prende
@@ -340,7 +374,9 @@ lluvias (el más alto, amarillo)."); el `titular` largo (≤ 240) y el `detalle`
 
 **Degradaciones**: sin `alerta_actual` el semáforo es gris ("SIN DATOS", "Consultando las alertas…"
 o "No se pudo consultar las alertas. Revisa tu conexión." con Reintentar); sin GPS las distancias
-van desde el centro de la ciudad y se ofrece "Usar mi ubicación"; sin ríos vigilados en el
+van desde el centro de la ciudad y se ofrece "Usar mi ubicación" (`lib/geolocalizacion.js
+textoSinGps`: si el GPS tardó o no hubo señal lo dice, sugiere salir a cielo abierto y ofrece "Volver
+a intentar"; sin https o con el permiso negado dice qué cambiar, sin enlace); sin ríos vigilados en el
 departamento el chip lo dice y el botón lleva a los avisos; un río sin mapa de zonas lo dice; la
 hora de ANA o de SENAMHI va en naranja cuando el worker lleva más de 3 h (ríos) o 1,5 h (lluvia) sin
 correr. **Simulación** (solo `npm run dev`): `?simular=mashcon:15.4` (alerta), `:19` (emergencia),
@@ -381,7 +417,10 @@ zona, la posición, el panorama, los ríos vigilados e `irAlMapa` / `verRioEnMap
   cuánto, distancia, estado según la comunidad, vence en, foto, `Votos` y "Ver en el mapa" (zoom
   16). Sin sesión se ve todo y aparece "Entra para reportar, votar y comentar".
 - **Reportar** (`/comunidad/nuevo`): solo con sesión y con la **posición GPS real** (sin pin
-  manual; el texto explica por qué si el permiso se niega). Tipo con `IconoReporte`, subtipo solo
+  manual; el texto explica por qué si el permiso se niega). Debajo de la ubicación va su precisión
+  ("Precisión: unos 25 m (buena)", `textoPrecision`; buena ≤ 30 m, regular ≤ 150 m, baja más) y, si
+  no es buena, "Mejorar precisión" (`afinar`: solo el GPS, hasta 22 s más, partiendo de la lectura que
+  hay) con un aviso cuando es baja o desconocida (el punto puede quedar lejos). Tipo con `IconoReporte`, subtipo solo
   para atasco (leve / moderado / detenido), descripción opcional de hasta 500 letras, foto opcional
   (JPG, PNG o WebP, hasta 3 MB) que se reduce a 1280 px y JPEG antes de subir. `validarReporte`
   revisa todo antes de enviar (incluido que la posición caiga dentro del Perú, el mismo recuadro que
@@ -468,6 +507,32 @@ insistir), la capa de zonas dice "aún no están cargadas" y el panel no nombra 
   y en tramos sin quiebres cerrados). Grosores por banda de zoom (`MapView` pone `data-zoom-banda`: z10
   hasta el zoom 11, z12, z13, z14 de 14 a 15, z16). La faja marginal de ANA, punteada, desde zoom 14
   (pane `rioFaja`, entre el halo y el cauce: casi toda cae dentro del ancho del halo).
+- **Medición y cuenca, sin confundirse** (23-11-2026): el estado "tranquilo" es la medición de ANA en
+  su estación; el "aviso naranja de SENAMHI por lluvias sobre su cuenca" del titular es un pronóstico
+  cuyo polígono toca la cuenca. Las dos cosas son ciertas a la vez (el río está bajo ahora y puede
+  subir), así que la medición se etiqueta como lo que es, «Estación Mashcón (ANA): río tranquilo»
+  (`lib/lenguaje.js etiquetaEstacion`, en el meta del popup del cauce y de la estación; la tarjeta del
+  medidor antepone «Estación Mashcón (ANA):» a la frase), y debajo de la medición va la línea
+  «Cuenca: aviso naranja de SENAMHI por lluvias vigente hoy (hasta el 3 de octubre, 1:00 p. m.); el
+  caudal puede subir. Desde mañana, aviso rojo.» (`lib/zonaRio.js notaCuenca`, armada con las señales y
+  menciones de `estadoZona`: aviso naranja o rojo en curso, lluvia medida sobre la referencia, el
+  amarillo en curso y el que empieza después, que `rio_senal.avisos_lluvia` sí trae: la vista da los
+  avisos de lluvia que no terminaron, en curso o no) con el enlace al aviso («Ver el aviso de SENAMHI
+  por lluvias»; si el lugar del enlace lo ocupa el aviso hidrológico, va como enlace aparte). El
+  tooltip del cauce suma «· aviso naranja de SENAMHI por lluvias sobre su cuenca, el caudal puede
+  subir», y el nombre accesible del disco de la estación (`aria-label`) también («Río Mashcón:
+  Tranquilo; aviso naranja…»: con lector de pantalla no hace falta abrir el popup). Solo lo naranja o
+  rojo de hoy y la lluvia medida dicen «puede subir» («seguir subiendo» si
+  ANA ya mide alerta o emergencia; «el nivel» en una estación de nivel); el aviso hidrológico no va
+  en esa línea porque ya titula el popup. En la tarjeta: `MedidorCaudal` recibe `estado` (el
+  `estadoZona` del río principal) y pinta «**Cuenca:** …» con el enlace.
+  Y lo gráfico: una **luz suave que late** debajo del halo blanco (`.rio-luz`, `layers/rios.js luzDe`,
+  en el pane `rios`) del color del nivel de la zona (`estadoZona.nivel`: ámbar atentos, naranja
+  alerta, rojo emergencia; **nada** con `sin_senales`), más ancha que el halo por banda de zoom (14 a
+  32 px; 10 px en país y región) y animada en `stroke-opacity` entre 0,25 y 0,8 cada 2,6 s; con
+  `prefers-reduced-motion` queda fija a 0,55. El cauce conserva el color de ANA. La leyenda de la
+  capa lo dice con texto («Halo amarillo que late: …») y los ríos del país la llevan igual (clase
+  `rio-nac`, oculta en país salvo `.fuerte`; `seguirVista` le cambia el detalle del trazo con el halo).
 - **Discos de río:** blancos con aro del color del estado, 40 px a escala local (30 en región, punto
   de 14 en país) y rótulo «Mashcón · Tranquilo 0.13 m³/s» (la medida solo a escala local). En alerta
   o emergencia el aro late (quieto con `prefers-reduced-motion`), el rótulo va en una pastilla de color
@@ -519,8 +584,11 @@ insistir), la capa de zonas dice "aún no están cargadas" y el panel no nombra 
   pliega la hoja, prende las capas del río y de la zona y encuadra el cauce en lo que queda libre
   entre los chips de arriba y la hoja (hasta zoom 14).
 - **Simulación (solo `npm run dev`):** `?simular=mashcon:15.4` (caudal de ANA), `mashcon:hidro2` a
-  `hidro4` (aviso hidrológico falso), `mashcon:lluvia` (RIO GRANDE GORE con 7,2 mm) o `mashcon:calma`
-  (sin señales en la cuenca); varias con coma.
+  `hidro4` (aviso hidrológico falso), `mashcon:aviso2` a `aviso4` (aviso de SENAMHI por lluvias falso
+  en curso sobre la cuenca, 24 h), `mashcon:manana3` o `manana4` (uno que empieza mañana a las 00:00
+  de Lima), `mashcon:lluvia` (RIO GRANDE GORE con 7,2 mm) o `mashcon:calma` (sin señales en la
+  cuenca); varias con coma (`mashcon:aviso3,mashcon:manana4` reproduce el titular con la línea
+  «Cuenca: …» y la luz ámbar).
   La nota de la capa dice «SIMULACIÓN (solo desarrollo)». En la compilación de producción no existe.
 
 ### Ríos del país

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { Layers, LocateFixed, Plus, TriangleAlert } from "lucide-react";
+import { Layers, Loader2, LocateFixed, Plus, TriangleAlert, X } from "lucide-react";
 import MapView from "@/components/MapView";
 import LayersPanel from "@/components/LayersPanel";
 import StatusPanel from "@/components/StatusPanel";
@@ -19,8 +19,10 @@ import { cn } from "@/lib/utils";
 import { fechaDeOpcion } from "@/lib/pronostico";
 import { useZonaAhora } from "@/hooks/useZonaAhora";
 import { ETIQUETA_NIVEL, cajaTuYRio, esFuerte, gpsVisto } from "@/lib/zonaAhora";
+import { TEXTO_ESTADO, esFalloGps } from "@/lib/geolocalizacion";
 
 const NOWCAST_OTRO_DIA = { texto: "El nowcasting es solo para las próximas 2 horas: elige Hoy." };
+const AVISO_GPS_MS = 8000; // cuánto queda el aviso de fallo junto al botón "Mi ubicación"
 
 // La página del mapa: lo que antes era App.jsx entero. El estado que comparten las otras páginas
 // (capas, ciudad, zona, panorama, ríos vigilados, posición) vive en App y llega por props; aquí
@@ -47,6 +49,7 @@ export default function Mapa({
   userPos,
   gpsStatus,
   geolocate,
+  gpsCancelar = null,
   ciudad,
   depto,
   porGps,
@@ -233,6 +236,47 @@ export default function Mapa({
     if (userPos && !forzada) setBienvenida(false);
   }, [userPos, forzada]);
 
+  // Elegir ciudad (selector de arriba o la hoja de bienvenida) corta la búsqueda del GPS en curso:
+  // si no, la lectura que llegara medio minuto después movería el mapa a otro lado. (gpsCancelar es
+  // el cancelar de useGeolocation; sin él, solo se elige la ciudad.)
+  const elegirCiudad = useCallback(
+    (nombre) => {
+      gpsCancelar?.();
+      pickCity(nombre);
+    },
+    [gpsCancelar, pickCity]
+  );
+
+  // El botón redondo "Mi ubicación": mientras busca gira y se deshabilita; si falla fuera de la hoja
+  // de bienvenida (ella ya lo dice), un aviso corto junto al botón cuenta qué pasó
+  // (lib/geolocalizacion.js TEXTO_ESTADO) y se va solo a los 8 s o al tocarlo. Solo tras tocar este
+  // botón (los fallos de "Tu zona ahora" o de la hoja los dicen ellas) y una vez por intento.
+  const gpsBuscando = gpsStatus === "pending";
+  const [avisoGps, setAvisoGps] = useState(null);
+  const [intentoGps, setIntentoGps] = useState(0); // cambia con cada toque, por si el estado no cambia (sin https)
+  const avisoPendiente = useRef(false);
+  const temporizadorAviso = useRef(null);
+  const mostrarAvisoGps = useCallback((texto) => {
+    clearTimeout(temporizadorAviso.current);
+    setAvisoGps(texto);
+    if (texto) temporizadorAviso.current = setTimeout(() => setAvisoGps(null), AVISO_GPS_MS);
+  }, []);
+  useEffect(() => () => clearTimeout(temporizadorAviso.current), []);
+  const ubicarme = () => {
+    avisoPendiente.current = true;
+    setIntentoGps((n) => n + 1);
+    geolocate();
+  };
+  useEffect(() => {
+    if (gpsStatus === "pending") {
+      mostrarAvisoGps(null); // empezó una búsqueda: lo que decía el aviso ya no vale
+      return;
+    }
+    if (!avisoPendiente.current) return;
+    avisoPendiente.current = false;
+    if (esFalloGps(gpsStatus) && !bienvenida) mostrarAvisoGps(TEXTO_ESTADO[gpsStatus]);
+  }, [intentoGps, gpsStatus, bienvenida, mostrarAvisoGps]);
+
   // chip de arriba: hereda el nivel máximo (incluido el río), con fondo fuerte en alerta y emergencia
   const etiquetaChip =
     nivelMax !== p.nivelLocal ? (nivelMax === "aviso" ? "Atentos" : nivelMax === "sin_dato" ? NIVEL.sin_dato.label : ETIQUETA_NIVEL[nivelMax]) : p.etiquetaLocal ?? NIVEL[p.nivelLocal].label;
@@ -270,7 +314,7 @@ export default function Mapa({
           el chip del nowcasting. El día y El Niño viven en la hoja (en escritorio, arriba al centro
           y en la barra lateral). */}
       <div data-tapa-mapa="arriba" className="absolute left-4 top-[60px] z-[600] flex flex-col items-start gap-2">
-        <CitySelector value={city} onChange={pickCity} />
+        <CitySelector value={city} onChange={elegirCiudad} />
         {visible.nowcast && (
           <ChipNowcast
             nota={notas.nowcast}
@@ -316,17 +360,40 @@ export default function Mapa({
               <Button
                 variant="secondary"
                 size="icon"
-                className="rounded-xl border border-border bg-card/90 backdrop-blur"
-                onClick={geolocate}
+                className="rounded-xl border border-border bg-card/90 backdrop-blur disabled:opacity-100"
+                onClick={ubicarme}
+                disabled={gpsBuscando}
+                aria-busy={gpsBuscando || undefined}
                 aria-label="Mi ubicación"
               >
-                <LocateFixed className="h-[18px] w-[18px]" />
+                {gpsBuscando ? <Loader2 className="h-[18px] w-[18px] animate-spin" /> : <LocateFixed className="h-[18px] w-[18px]" />}
               </Button>
             </TooltipTrigger>
-            <TooltipContent side="left">Mi ubicación</TooltipContent>
+            <TooltipContent side="left">{gpsBuscando ? "Buscando tu ubicación…" : "Mi ubicación"}</TooltipContent>
           </Tooltip>
         </div>
       </TooltipProvider>
+
+      {/* aviso de fallo del GPS, debajo de la columna de herramientas (16 + 36 + 8 + 36 + 8 px) y, desde
+          lg, debajo del botón Reportar (100 + 36 + 8 px); en 375 px no pasa de los bordes (100vw - 2rem) */}
+      {avisoGps && (
+        <div
+          role="status"
+          data-tapa-mapa="arriba"
+          onClick={() => mostrarAvisoGps(null)}
+          className="absolute right-4 top-[104px] z-[610] flex max-w-[calc(100vw-2rem)] cursor-pointer items-start gap-2 rounded-xl border border-border bg-card/95 px-3 py-2 text-xs leading-snug shadow-lg backdrop-blur sm:max-w-xs lg:top-[144px]"
+        >
+          <span className="min-w-0">{avisoGps}</span>
+          <button
+            type="button"
+            onClick={() => mostrarAvisoGps(null)}
+            aria-label="Cerrar el aviso"
+            className="-mr-1 -mt-0.5 shrink-0 rounded p-0.5 text-muted-foreground hover:text-foreground"
+          >
+            <X className="h-3.5 w-3.5" />
+          </button>
+        </div>
+      )}
 
       {showLayers && (
         <LayersPanel
@@ -386,7 +453,7 @@ export default function Mapa({
         <OnboardingGps
           ciudad={ciudad}
           city={city}
-          pickCity={pickCity}
+          pickCity={elegirCiudad}
           geolocate={geolocate}
           status={gpsStatus}
           onCerrar={() => setBienvenida(false)}

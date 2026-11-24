@@ -1,14 +1,14 @@
 import L from "leaflet";
 import { Waves } from "lucide-react";
 import { getCauceRio, getCaucesRios, getCaudales, getRiosVigilados, getSenalesCauces, getSenalesRio, getZonasRio } from "@/lib/queries";
-import { lecturaRio, textoRio } from "@/lib/lenguaje";
-import { avisoEsDeEstacion, caudalDelRio, diaHora, estacionDeAviso, estadoCauce, estadoZona } from "@/lib/zonaRio";
+import { etiquetaEstacion, lecturaRio, textoRio } from "@/lib/lenguaje";
+import { avisoEsDeEstacion, caudalDelRio, diaHora, estacionDeAviso, estadoCauce, estadoZona, notaCuenca } from "@/lib/zonaRio";
 import {
   GEOMETRIAS, ROTULOS_DESDE, aLatLngs, aligerar, avisosDe, cajaConMargen, detallePorZoom, elegirRotulados, emparejarCauces,
   enVista, esFuerte, estadoRio, extenderTramo, guardarDetalle, latLngsTramo, licenciaCorta, lista, notaCauces, tramoCubre,
 } from "@/lib/cauces";
 import { NOTA_SIMULACION, conSimulacion, simularCauce } from "@/lib/simulacion";
-import { CAUCE_HEX, RIO_HEX } from "../palette";
+import { CAUCE_HEX, RIO_HEX, ZONA_HEX } from "../palette";
 import { enlaceSeguro, escapeHtml, popupHtml } from "../markers";
 import { iconoRio, textoRotulo } from "../marcadores";
 import { rotuloLinea } from "../rotuloLinea";
@@ -49,6 +49,15 @@ import { rotuloLinea } from "../rotuloLinea";
 // dicen "Aviso" si el aviso es de esa misma estación (lib/zonaRio.js avisoEsDeEstacion). Antes el
 // aviso de San Regis (Loreto) teñía también Balsas y Corral Quemado (Cajamarca, a cientos de km,
 // tranquilos): 13 estaciones en naranja sin aviso propio.
+// Medición y cuenca, sin confundirse: la medición de ANA se etiqueta como lo que es ("Estación
+// Mashcón (ANA): río tranquilo", lib/lenguaje.js etiquetaEstacion) y, si la zona del río tiene
+// señales de la cuenca (aviso de SENAMHI por lluvias en curso o de mañana, lluvia medida sobre la
+// referencia), el popup del cauce, el de la estación y el tooltip llevan debajo de la medición la
+// línea "Cuenca: aviso naranja de SENAMHI por lluvias vigente hoy (...); el caudal puede subir."
+// (lib/zonaRio.js notaCuenca) con el enlace al aviso. Las dos cosas son ciertas a la vez: el río
+// está bajo ahora y puede subir. Y una luz suave que late debajo del halo (.rio-luz, index.css) del
+// color del nivel de la zona (estadoZona.nivel: ámbar atentos, naranja alerta, rojo emergencia; nada
+// sin señales): el cauce conserva el color de ANA. Quieta con prefers-reduced-motion.
 const ATRIB_ANA = "Niveles de ríos: ANA";
 const num = (v) => Number(v).toLocaleString("es-PE", { maximumFractionDigits: 2 });
 const minuscula = (t) => t.charAt(0).toLowerCase() + t.slice(1);
@@ -68,6 +77,26 @@ const enlaceHistorico = (c) =>
   `<div class="pop"><p class="enl"><a data-ruta href="${escapeHtml(
     `/historico?tipo=rio&id=${encodeURIComponent(c.estacion)}${c.rio ? `&rio=${encodeURIComponent(c.rio)}` : ""}`
   )}">Ver histórico</a></p></div>`;
+
+// Enlace al aviso de SENAMHI por lluvias de la cuenca cuando el lugar del enlace del popup ya lo
+// ocupa el aviso hidrológico (popupHtml admite uno solo).
+const ENLACE_LLUVIA = "Ver el aviso de SENAMHI por lluvias";
+const enlaceLluvia = (cu) =>
+  cu?.url && enlaceSeguro(cu.url)
+    ? `<div class="pop"><p class="enl"><a href="${escapeHtml(cu.url)}" target="_blank" rel="noopener noreferrer">${ENLACE_LLUVIA}</a></p></div>`
+    : "";
+
+// La luz que late debajo del halo cuando la zona del río tiene señales (ninguna con sin_senales).
+// `clase` extra para los ríos del país (rio-nac y fuerte: en vista país se ocultan o afinan como el
+// halo). Devuelve la capa o null.
+function luzDe(group, latlngsOGeoJson, nivel, clase = "") {
+  if (!nivel || nivel === "sin_senales") return null;
+  const estilo = { className: `rio-luz n-${nivel}${clase ? ` ${clase}` : ""}`, color: ZONA_HEX[nivel], weight: 26, opacity: 0.5 };
+  const capa = Array.isArray(latlngsOGeoJson)
+    ? L.polyline(latlngsOGeoJson, { pane: "rios", interactive: false, ...estilo })
+    : L.geoJSON(latlngsOGeoJson, { pane: "rios", interactive: false, style: estilo });
+  return capa.addTo(group);
+}
 
 // Un río vigilado (o los del país) que falla no deja el mapa sin estaciones (MapView reintenta
 // solo si falla todo).
@@ -109,21 +138,30 @@ function filasAna(c, t) {
 
 // Popup de una estación. `vig` (la de un río vigilado, o la de un río del país con aviso
 // hidrológico más alto que su lectura): {rio, estado, cauce} para titularlo con el nombre del río
-// y, si hay aviso hidrológico, decirlo primero.
+// y, si hay aviso hidrológico, decirlo primero. Con `vig` la medición va etiquetada como lo que es
+// ("Estación Mashcón (ANA): río tranquilo") y, si la cuenca tiene señales, la línea "Cuenca: ..."
+// debajo de la medición con su enlace.
 function popupEstacion(c, t, { nota, vig } = {}) {
   const aviso = vig?.cauce.porAviso ? vig.estado.avisoHidro : null;
-  return popupHtml({
-    title: vig ? vig.rio.nombre : t.titulo,
-    meta: [
-      aviso ? `Aviso hidrológico ${vig.cauce.color} (SENAMHI)` : t.etiqueta,
-      vig ? `Estación ${c.estacion} (ANA)` : null,
-      c.departamento,
-    ],
-    resumen: aviso ? notaAviso(aviso, vig.cauce.color) : t.frase,
-    filas: filasAna(c, t),
-    nota: [aviso ? `Última medición de ANA: ${t.frase}` : null, t.accion, nota],
-    enlace: aviso && enlaceSeguro(aviso.url) ? { href: aviso.url, texto: "Ver el aviso de SENAMHI" } : null,
-  }) + enlaceHistorico(c);
+  const cuenca = vig ? notaCuenca(vig.estado) : null;
+  const enlaceAviso = aviso && enlaceSeguro(aviso.url) ? { href: aviso.url, texto: "Ver el aviso de SENAMHI" } : null;
+  const enlaceCuenca = cuenca?.url ? { href: cuenca.url, texto: ENLACE_LLUVIA } : null;
+  return (
+    popupHtml({
+      title: vig ? vig.rio.nombre : t.titulo,
+      meta: [
+        aviso ? `Aviso hidrológico ${vig.cauce.color} (SENAMHI)` : vig ? null : t.etiqueta,
+        vig ? etiquetaEstacion(c, t) : null,
+        c.departamento,
+      ],
+      resumen: aviso ? notaAviso(aviso, vig.cauce.color) : t.frase,
+      filas: filasAna(c, t),
+      nota: [aviso ? `Última medición de ANA: ${t.frase}` : null, cuenca?.texto, t.accion, nota],
+      enlace: enlaceAviso ?? enlaceCuenca,
+    }) +
+    (enlaceAviso && enlaceCuenca ? enlaceLluvia(cuenca) : "") +
+    enlaceHistorico(c)
+  );
 }
 
 // Halo, cauce, afluentes, nombre sobre la línea y faja marginal de un río vigilado.
@@ -141,6 +179,8 @@ function dibujarRio(group, map, vig, c, fajas) {
     }).addTo(group);
   }
   if (r.cauce) {
+    // la luz del nivel de la zona va debajo del halo blanco: el halo sigue separando el río del fondo
+    luzDe(group, r.cauce, vig.estado.nivel);
     L.geoJSON(r.cauce, {
       pane: "rios",
       interactive: false,
@@ -168,7 +208,7 @@ function dibujarRio(group, map, vig, c, fajas) {
   }
   if (!r.cauce) return;
   L.geoJSON(r.cauce, { pane: "rioCauce", style: { className: "rio-cauce", color, weight: 6.5, opacity: 1 } })
-    .bindTooltip(escapeHtml(tooltipRio(r.nombre, c, t, cauce)), { sticky: true, className: "tip" })
+    .bindTooltip(escapeHtml(tooltipRio(r.nombre, c, t, cauce, null, notaCuenca(vig.estado))), { sticky: true, className: "tip" })
     .bindPopup(
       c
         ? popupEstacion(c, t, { nota: NOTA_CAUCE, vig })
@@ -182,15 +222,17 @@ function dibujarRio(group, map, vig, c, fajas) {
 }
 
 // «Río Huallaga · tranquilo (938.54 m³/s, ANA)» / «... · aviso hidrológico naranja de SENAMHI (ANA,
-// ayer 18:00: tranquilo, 938.54 m³/s)» / «... · sin medición»
-function tooltipRio(nombre, c, t, cauce, estacionAviso = null) {
+// ayer 18:00: tranquilo, 938.54 m³/s)» / «... · sin medición». Con señales en la cuenca (notaCuenca)
+// se suma «· aviso naranja de SENAMHI por lluvias sobre su cuenca, el caudal puede subir».
+function tooltipRio(nombre, c, t, cauce, estacionAviso = null, cuenca = null) {
   const rot = c ? textoRotulo(c, t) : null;
   const cuando = (lecturaRio(c ?? {}) ?? "").replace(/\s*\(ANA\)$/, "");
   const ana = !c || c.valor == null ? null : `ANA${cuando ? `, ${cuando}` : ""}: ${rot.estado.toLowerCase()}, ${rot.valor}`;
+  const mas = cuenca ? ` · ${cuenca.corto}` : "";
   if (cauce.porAviso)
-    return `${nombre} · aviso hidrológico ${cauce.color} de SENAMHI${estacionAviso ? ` en la estación ${estacionAviso}` : ""}${ana ? ` (${ana})` : ""}`;
-  if (!c || c.valor == null) return `${nombre} · sin medición`;
-  return `${nombre} · ${rot.estado.toLowerCase()} (${rot.valor}, ANA)`;
+    return `${nombre} · aviso hidrológico ${cauce.color} de SENAMHI${estacionAviso ? ` en la estación ${estacionAviso}` : ""}${ana ? ` (${ana})` : ""}${mas}`;
+  if (!c || c.valor == null) return `${nombre} · sin medición${mas}`;
+  return `${nombre} · ${rot.estado.toLowerCase()} (${rot.valor}, ANA)${mas}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -225,18 +267,24 @@ function popupCauce(rio, est) {
     (c
       ? `el nivel es de la estación ${c.estacion} de ANA.`
       : "ANA no tiene una estación de caudal en este río: el color es el del aviso hidrológico de SENAMHI.");
+  // hoy rio_cauce_senal no trae avisos de lluvia ni lluvia medida (estadoRio los deja vacíos): la
+  // línea "Cuenca: ..." saldrá sola cuando los traiga
+  const cuenca = notaCuenca(zona);
+  const enlaceAviso = aviso && enlaceSeguro(aviso.url) ? { href: aviso.url, texto: "Ver el aviso de SENAMHI" } : null;
+  const enlaceCuenca = cuenca?.url ? { href: cuenca.url, texto: ENLACE_LLUVIA } : null;
   return (
     popupHtml({
       title: fila.nombre,
       meta: [
-        aviso ? `Aviso hidrológico ${cauce.color} (SENAMHI${estacionAviso ? `, estación ${estacionAviso}` : ""})` : t ? t.etiqueta : "Sin estación de ANA",
-        c ? `Estación ${c.estacion} (ANA)` : null,
+        aviso ? `Aviso hidrológico ${cauce.color} (SENAMHI${estacionAviso ? `, estación ${estacionAviso}` : ""})` : null,
+        c ? etiquetaEstacion(c, t) : "Sin estación de ANA",
         fila.departamento,
       ],
       resumen: aviso ? notaAviso(aviso, cauce.color) : t?.frase,
       filas: c ? filasAna(c, t) : [],
       nota: [
         aviso && t ? `Última medición de ANA en ${c.estacion}: ${t.frase}` : null,
+        cuenca?.texto,
         t?.accion,
         ...[otras].flat(),
         trazo,
@@ -244,13 +292,16 @@ function popupCauce(rio, est) {
         // para el popup
         SIN_ZONAS,
       ],
-      enlace: aviso && enlaceSeguro(aviso.url) ? { href: aviso.url, texto: "Ver el aviso de SENAMHI" } : { href: fila.fuente_url, texto: "Ver el servicio de ANA (GeoSNIRH)" },
-    }) + (c ? enlaceHistorico(c) : "")
+      enlace: enlaceAviso ?? enlaceCuenca ?? { href: fila.fuente_url, texto: "Ver el servicio de ANA (GeoSNIRH)" },
+    }) +
+    (enlaceAviso && enlaceCuenca ? enlaceLluvia(cuenca) : "") +
+    (c ? enlaceHistorico(c) : "")
   );
 }
 
-// Halo y cauce de cada río del país (con el trazo de ~50 m; el fino lo pone seguirVista).
-//   -> Map rio_ana -> { rio, est, halo, linea, detalle }
+// Luz (si la zona tiene señales), halo y cauce de cada río del país (con el trazo de ~50 m; el fino
+// lo pone seguirVista).
+//   -> Map rio_ana -> { rio, est, luz, halo, linea, detalle }
 function dibujarNacionales(group, nacionales, estados) {
   const trazos = new Map();
   for (const rio of nacionales) {
@@ -261,6 +312,7 @@ function dibujarNacionales(group, nacionales, estados) {
     const fuerte = esFuerte(est);
     const clase = `rio-nac${fuerte ? " fuerte" : ""}`;
     const ll = aLatLngs(g.lejos);
+    const luz = luzDe(group, ll, est.zona.nivel, clase);
     const halo = L.polyline(ll, {
       pane: "rios", interactive: false, className: `rio-halo ${clase}`, color: "#fff", weight: 13, opacity: 0.92,
     }).addTo(group);
@@ -268,12 +320,14 @@ function dibujarNacionales(group, nacionales, estados) {
       pane: "rioCauce", className: `rio-cauce ${clase}`, color: CAUCE_HEX[est.cauce.estado] ?? CAUCE_HEX.sd, weight: 6.5, opacity: 1,
     })
       .bindTooltip(
-        escapeHtml(tooltipRio(rio.fila.nombre, est.peor, est.t, est.cauce, est.cauce.porAviso ? estacionDelAviso(est.zona.avisoHidro, rio.lecturas) : null)),
+        escapeHtml(
+          tooltipRio(rio.fila.nombre, est.peor, est.t, est.cauce, est.cauce.porAviso ? estacionDelAviso(est.zona.avisoHidro, rio.lecturas) : null, notaCuenca(est.zona))
+        ),
         { sticky: true, className: "tip" }
       )
       .bindPopup(() => popupCauce(rio, est)) // se arma recién al abrirlo
       .addTo(group);
-    trazos.set(id, { rio, est, halo, linea, detalle: "lejos" });
+    trazos.set(id, { rio, est, luz, halo, linea, detalle: "lejos" });
   }
   return trazos;
 }
@@ -307,6 +361,7 @@ function seguirVista(group, map, trazos, estados) {
     const partes = detalle === "cauce" ? g?.cauce : g?.lejos;
     if (!partes || t.detalle === detalle) return;
     const ll = aLatLngs(partes);
+    t.luz?.setLatLngs(ll);
     t.halo.setLatLngs(ll);
     t.linea.setLatLngs(ll);
     t.detalle = detalle;
@@ -405,6 +460,12 @@ export default {
         "Río resaltado con su trazo: azul si está tranquilo; si no, el color de su estación (la peor, si tiene varias) o del aviso hidrológico de SENAMHI. El Mashcón tiene además mapa de zonas",
     },
     { forma: "linea", color: CAUCE_HEX.alerta, label: "Naranja o rojo: el río pasó su nivel de alerta o de emergencia (ANA), o hay aviso hidrológico de SENAMHI" },
+    {
+      forma: "linea",
+      color: ZONA_HEX.atentos,
+      label:
+        "Halo amarillo que late: aviso de lluvia o lluvia medida sobre su cuenca (o el río cerca de su nivel de alerta), el río puede subir; el cauce sigue con el color de lo que mide ANA. Naranja o rojo que late: alerta o emergencia",
+    },
     { forma: "linea", color: CAUCE_HEX.sd, label: "Gris fino: con el mapa en vista país (zoom 6 o menos), los ríos sin alerta; o sin nivel de alerta publicado" },
     { forma: "linea", color: "#0F4C81", punteado: true, label: "Límite de la faja marginal aprobada por ANA (desde zoom 14)" },
   ],
@@ -490,6 +551,10 @@ export default {
         ? { nombre: rot0.nombre, estado: `${CORTA_AVISO[ref.cauce.color]} SENAMHI`, valor: rot0.valor ? `ANA: ${rot0.valor}` : "" }
         : rot0;
       const corto = `${rot.nombre} · ${rot.estado}`;
+      // la señal de la cuenca (notaCuenca) va también en el nombre accesible del disco: quien usa
+      // lector de pantalla la oye sin tener que abrir el popup
+      const cuenca = ref ? notaCuenca(ref.estado) : null;
+      const accesible = `${ref ? ref.rio.nombre : t.titulo}: ${porAviso ? rot.estado : t.etiqueta}${cuenca ? `; ${cuenca.corto}` : ""}`;
       const m = L.marker([c.lat, c.lon], {
         icon: iconoRio({ estado, fuerte, rotulo: rot }),
         keyboard: true,
@@ -499,9 +564,7 @@ export default {
         // el HTML del popup se arma recién al abrirlo (130 estaciones: armarlos todos costaba
         // más que dibujar los discos)
         .bindPopup(() => popupEstacion(c, t, { vig: ref }))
-        .on("add", (e) =>
-          e.target.getElement()?.setAttribute("aria-label", `${ref ? ref.rio.nombre : t.titulo}: ${porAviso ? rot.estado : t.etiqueta}`)
-        )
+        .on("add", (e) => e.target.getElement()?.setAttribute("aria-label", accesible))
         .addTo(group);
       // un río vigilado (tiene mapa de zonas) va antes que una estación cualquiera; con señales en
       // su zona, más aún (siempre debajo de los fuertes, 950)
