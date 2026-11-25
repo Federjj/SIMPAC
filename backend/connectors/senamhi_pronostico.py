@@ -27,7 +27,7 @@ legibles, o si más del MAX_PROBLEMAS de los bloques no se entendió. Un bloque 
 de fechas no coincide con los días leídos se descarta entero (no se sabe qué día falta).
 
 Licencia: la de SENAMHI (ATRIBUCION en backend/connectors/senamhi_avisos.py). El texto se
-guarda literal; el ícono y el resumen de SIMPAC se rotulan "basados en SENAMHI".
+guarda literal; el ícono y el resumen de SIFEC se rotulan "basados en SENAMHI".
 """
 from __future__ import annotations
 

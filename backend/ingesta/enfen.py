@@ -10,7 +10,7 @@ suele ir meses por delante del IGP. La tarea lo baja solo si es posterior al úl
 (pesa ~17 MB) y escribe en indice el ICEN más reciente (si es más nuevo que el que hay) y
 el ICEN_TMP (sin retroceder de mes), y en icen_serie TODOS los meses de la tabla
 (normalmente 12) con origen ENFEN y la categoría oficial de la tabla: el IGP ya no los pisa
-(guardar.SQL_ICEN_SERIE; la categoría de los meses del IGP la calcula SIMPAC).
+(guardar.SQL_ICEN_SERIE; la categoría de los meses del IGP la calcula SIFEC).
 
 Relleno de la serie: si icen_serie existe y no tiene ningún mes del ENFEN (la tabla es
 nueva y el informe vigente se leyó antes de que existiera), se relee UNA vez el informe

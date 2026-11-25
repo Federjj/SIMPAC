@@ -74,7 +74,7 @@ object Rutas {
  * y las pantallas de comunidad (nuevo y detalle) entran deslizando desde la derecha (Transiciones).
  */
 @Composable
-fun AppSimpac(pestanaInicial: Pestana?, vecesPedida: Int) {
+fun AppSifec(pestanaInicial: Pestana?, vecesPedida: Int) {
     val navController = rememberNavController()
     val compartido: EstadoCompartido = viewModel()
     val entrada by navController.currentBackStackEntryAsState()

@@ -78,7 +78,8 @@ export async function misReportes() {
   return { ok: true, reportes: data ?? [] };
 }
 
-// Ciudad por defecto recordada en este navegador (también sin sesión): clave simpac.zona.
+// Ciudad por defecto recordada en este navegador (también sin sesión): clave simpac.zona (conserva el
+// nombre anterior del producto a propósito: renombrarla haría perder la ciudad ya elegida).
 export const CLAVE_ZONA = "simpac.zona";
 export function leerZonaLocal() {
   try {

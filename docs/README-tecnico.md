@@ -1,6 +1,6 @@
-# SIMPAC — Documentación técnica (devs)
+# SIFEC — Documentación técnica (devs)
 
-> **SIMPAC** — Sistema de Información Meteorológica y Prevención de Anomalías de Cajamarca.
+> **SIFEC** — Sistema Inteligente de Acceso a Información del Fenómeno El Niño.
 > Plataforma web + app Android nativa en Kotlin + Jetpack Compose (`appmobile/android/`,
 > `appmobile/README.md`, §8.4; la anterior con Capacitor se retiró del repo el 24-10-2026, §8.3) que
 > **centraliza datos hidrometeorológicos del Perú, con foco en Cajamarca**, y emite **alertas
@@ -124,7 +124,7 @@ VigiaFEN/
 │  ├─ README.md          # la app Android nativa: compilar, probar, FCM, firmar y publicar
 │  └─ android/           # app nativa en Kotlin + Jetpack Compose (§8.4): settings/build.gradle.kts, gradle/ (libs.versions.toml,
 │                        # wrapper 9.1.0), app/ (build.gradle.kts, AndroidManifest.xml, res/, src/main/java/pe/simpac/app/:
-│                        # SimpacApp, MainActivity, dominio/, data/, push/, ubicacion/, ui/{inicio,alertas,mapa,acudir,cuenta};
+│                        # SifecApp, MainActivity, dominio/, data/, push/, ubicacion/, ui/{inicio,alertas,mapa,acudir,cuenta};
 │                        # src/test (22 pruebas JVM), src/androidTest (4 de Compose UI)); google-services.json y build/ no se versionan
 ├─ supabase/
 │  ├─ migrations/        # historia de la BD: un archivo por cambio, en orden (35 al 24-10-2026)
@@ -372,7 +372,7 @@ meses. Para las condiciones frías el ENFEN usa percentiles sin cortes numérico
 últimos 36 meses del IGP y la tarea `enfen`, los meses de la tabla de cada Informe Técnico nuevo
 (normalmente 12). Un mes del ENFEN nunca lo pisa el IGP; el IGP completa los meses que el ENFEN no
 tiene. Nada se borra. La categoría de los meses del ENFEN es la oficial de su tabla; la de los
-del IGP la calcula SIMPAC con `igp.categoria()`. Protecciones:
+del IGP la calcula SIFEC con `igp.categoria()`. Protecciones:
 - Un mes posterior al mes anterior al actual (hora de Perú) se descarta: el IGP se baja por http
   y una fila futura quedaría para siempre en la serie y en `indice`.
 - Si la tabla no tiene meses del ENFEN, o si la relectura encontró un informe más viejo que el
@@ -632,7 +632,7 @@ además, solo si hay estaciones evaluables fuera de la zona.
 
 Si el worker se adelanta a la migración no rompe: se salta las alertas con aviso. Lo que no puede
 adelantarse es el worker al frontend: el frontend viejo describiría las nuevas como "lluvia fuerte"
-o con "umbral referencial de SIMPAC". Control después del despliegue (los dos números iguales, y
+o con "umbral referencial de SIFEC". Control después del despliegue (los dos números iguales, y
 `count(*)` igual a `latido.alertas`):
 ```sql
 select count(*), count(distinct referencia) from alerta where tipo = 'lluvia';
@@ -848,7 +848,7 @@ worker.
 |---|---|---|
 | `rio.json` | id `mashcon`, nombre, departamento; estaciones `estacion_ana: "Mashcón"`, `rio_ana: "Mashcon"`, `estacion_senamhi: "220213"`; centro del mapa (-7.14987, -78.49459, zoom 13); `lugares_aviso`: los 8 centros poblados que SENAMHI nombra en sus avisos ("Bellavista" con `mapa: false`: hay dos) | SENAMHI (nombres) y GEOCATMIN (puntos INEI/IGN/MINEDU) |
 | `cauce.geojson` | partes `tronco` (13,92 km), `afluente` (Grande, Porcón, San Lucas) y `rotulo` (tronco simplificado a 120 m, guía del nombre) | OpenStreetMap, ODbL 1.0 |
-| `cuenca.geojson` | cuenca estimada hasta la unión con el Chonta (318,4 km², con una franja de 200 m alrededor del cauce). **No se dibuja**: decide qué avisos y estaciones de lluvia cuentan para el río | estimación SIMPAC (Copernicus GLO-30 + ríos OSM) |
+| `cuenca.geojson` | cuenca estimada hasta la unión con el Chonta (318,4 km², con una franja de 200 m alrededor del cauce). **No se dibuja**: decide qué avisos y estaciones de lluvia cuentan para el río | estimación SIFEC (Copernicus GLO-30 + ríos OSM) |
 | `zonas.geojson` | 7 zonas: `estimada` (`mashcon:relieve:1`, `:2`, `:3`; 0,82 / 1,32 / 1,94 km²) y `estudio` (`mashcon:indeci2005:{mayor,menor}:{norte,confluencia}`). Cada una con `nombre`, `texto`, `fuente`, `fuente_url`, `licencia`, `atribucion`, `metodo`, `fecha_fuente` y `orden`. Las de relieve se llaman "Zona más baja junto al río" (`bajo_1m`, no se dibuja), "Zona que podría inundarse si el río se desborda" (`bajo_2m`) y "Zona que también podría inundarse" (`bajo_3m`); sus textos no dan metros | Copernicus + ODbL; INDECI-PNUD 2005 |
 | `faja.geojson` | 6 líneas `tipo: "faja"` (una por resolución y margen) | ANA - DSNIRH |
 | `incidentes.json` | 14 registros: 11 incidentes (10 con punto en el mapa; el de 1974 solo tiene el distrito) y 3 crecidas en rojo (`tipo: "crecida"`, sin punto). Cada uno con su fuente (URL https), precisión y texto | la de cada registro |
@@ -1055,7 +1055,7 @@ Corrida suelta: `docker compose run --rm worker python -m backend.ingesta.rios`.
 - Los incidentes son de prensa, municipio, INDECI, la Red Integrada de Salud Cajamarca (Gobierno
   Regional), ANA y una tesis: la ubicación es aproximada y "pasó antes" no quiere decir que hoy haya
   peligro.
-- "Atento" (80 % del caudal de alerta de ANA, unos 11,2 m³/s en el Mashcón) es criterio de SIMPAC.
+- "Atento" (80 % del caudal de alerta de ANA, unos 11,2 m³/s en el Mashcón) es criterio de SIFEC.
 - **Overpass no se usa en vivo:** dio errores por saturación en 4 de 7 consultas durante la
   investigación. El trazo se bajó una vez por la API 0.6 y vive en el repo y en la BD; nada consulta
   OSM, ANA ni GEOCATMIN por visita.
@@ -1307,7 +1307,7 @@ y a su nota de prensa. Nunca se dibuja un polígono de zona segura estimado ni s
   carga solo de Cajamarca no toca los demás departamentos; una fuente que no se cargó no se toca).
 - Descarga (`--descargar`): RENIPRESS se descubre leyendo la ficha (el `RENIPRESS_dd-mm-aaaa.csv` más
   reciente) y en el repo se guarda solo el departamento de Cajamarca (`renipress_cajamarca.csv`,
-  1,1 MB; el CSV completo va a `<tmp>/simpac_acudir/` con `--pais`); CENEPRED se pagina de a 1000;
+  1,1 MB; el CSV completo va a `<tmp>/sifec_acudir/` con `--pais`); CENEPRED se pagina de a 1000;
   CGBVP son 29 llamadas (1 + 28 comandancias). Guardas: menos de 100 filas de Cajamarca, menos de 1000
   comisarías, 150 bomberos o 150 compañías cancelan esa fuente. Si una fuente falla, su archivo
   anterior se conserva y `fuentes.json` no la pisa (una fuente caída no borra datos).
@@ -1331,7 +1331,7 @@ puntos); íconos `L.divIcon` compartidos por tipo con glifos lucide y colores fu
 tarjeta muestra los números 105 / 116 / 106 con `tel:`, y los 3 puntos más cercanos (el mejor de salud
 con la regla "hospital 24 h si está a menos de 15 km; si no, el establecimiento más cercano", la
 comisaría y los bomberos) con distancia en línea recta, teléfono, "24 h" solo si `atiende_24h = true`,
-"Cómo llegar" (Google Maps y `geo:` en Android) y "Ver en el mapa" (evento `simpac:acudir-ver`, que
+"Cómo llegar" (Google Maps y `geo:` en Android) y "Ver en el mapa" (evento `sifec:acudir-ver`, que
 enciende la capa, encuadra y abre el popup después de que el mapa se asienta).
 
 **Cargador:**
@@ -1451,7 +1451,7 @@ alerta ni emergencia y mide 110 caracteres o menos. Desde el 20-10-2026 (integra
 `getTitular` pide también `titular_corto` y la tarjeta usa esa columna con la misma regla (por eso hoy
 en Cajamarca se lee "Cajamarca: 3 avisos de SENAMHI por lluvias (el más alto, amarillo)." tal como lo
 escribió el worker); el `titular` largo (240) y el `detalle` van en la altura completa de la hoja ("Qué
-dicen las fuentes hoy", con la marca "resumen del servidor de SIMPAC" o "redactado automáticamente con
+dicen las fuentes hoy", con la marca "resumen del servidor de SIFEC" o "redactado automáticamente con
 las cifras oficiales" según `origen`). La app Kotlin muestra las dos columnas en Inicio (§8.4) y la
 tarea `push` usa `titular_corto` como cuerpo de la notificación (§5.6.12).
 
@@ -1574,7 +1574,7 @@ pedidas (4 ríos con el Marañón incluido, ~140 ms en la BD; Marañón 158 KB, 
 los ríos cuya caja toca la vista desde zoom 12 (`lib/cauces.js riosParaZonas`, `ZONAS_DESDE`), visibles
 desde zoom 13 con los estilos del Mashcón; `getFranjaRio(rioAna)` (caché 60 min) solo con el río fuerte;
 y la tarjeta "Tu zona ahora" pide las zonas del río más cercano para el chip "Dentro/Fuera de la zona
-que podría inundarse (estimación SIMPAC con el relieve)". Medido el 20-10-2026: zonas por río 320-850
+que podría inundarse (estimación SIFEC con el relieve)". Medido el 20-10-2026: zonas por río 320-850
 ms (vista vacía), trazo fino 240-580 ms.
 
 **Cómo repetirlo para otro río** (fuera del contenedor; el venv va fuera del repo):
@@ -1615,8 +1615,8 @@ frontend, así que la lluvia medida y un río muy bajo nunca llegan a `alerta`):
 
 | Cambio de nivel | Mensaje | `android.priority` |
 |---|---|---|
-| sube a `alerta` o `emergencia` (o pasa de alerta a emergencia) | título "SIMPAC: ALERTA en Cajamarca" / "SIMPAC: EMERGENCIA en Cajamarca", cuerpo = `titular_corto` | `high` |
-| baja de alerta o emergencia a `normal` o `aviso` | "SIMPAC: vuelve la calma en Cajamarca" | `normal` |
+| sube a `alerta` o `emergencia` (o pasa de alerta a emergencia) | título "SIFEC: ALERTA en Cajamarca" / "SIFEC: EMERGENCIA en Cajamarca", cuerpo = `titular_corto` | `high` |
+| baja de alerta o emergencia a `normal` o `aviso` | "SIFEC: vuelve la calma en Cajamarca" | `normal` |
 | actual `sin_dato` (fuente caída) | nada: no se toca la fila (no es calma ni alerta) | |
 | igual al previo (aunque cambie el texto) | nada | |
 | normal <-> aviso, emergencia -> alerta | se anota el nivel sin enviar | |
@@ -1682,14 +1682,14 @@ beat registra 10 tareas y `push` corre al arrancar y cada 300 s. Primera corrida
 'fallas': [], 'avisos': []}`, es decir el envío único de las 6 alertas vigentes (Tumbes emergencia;
 Piura, Huancavelica, Lima, Ayacucho y Arequipa alerta) a `zona_<slug>` y `pais`; las corridas
 siguientes `enviados 0` (`push_estado` recuerda; al 22:23 UTC tenía 23 filas). `docker compose exec
-worker python -m backend.ingesta.push --prueba --zona Cajamarca` (manda "SIMPAC: prueba en Cajamarca"
+worker python -m backend.ingesta.push --prueba --zona Cajamarca` (manda "SIFEC: prueba en Cajamarca"
 al tema `zona_cajamarca`, sin tocar la BD; sin credenciales imprime el aviso y sale con código 2)
 llegó al emulador Pixel_7a suscrito a `zona_cajamarca` (canal `alertas`; la primera vez tardó unos
 minutos mientras FCM propagaba la suscripción) y al tocarla la app abrió la pestaña Alertas. Antes,
 el 20-10, se había verificado la corrida sin credenciales (latido con el aviso, 6 pendientes, 0
 envíos, `push_estado` sin tocar) y la firma del JWT contra una clave RSA de prueba.
 
-**Costo y volumen:** FCM es gratis sin límite de mensajes (plan Spark, sin tarjeta). SIMPAC manda
+**Costo y volumen:** FCM es gratis sin límite de mensajes (plan Spark, sin tarjeta). SIFEC manda
 como mucho un mensaje por cambio de nivel por departamento (25 zonas): decenas al día en temporada de
 lluvias. El push llega como mucho ~35 min después de que SENAMHI o ANA publiquen (`titular` cada 30
 min + `push` cada 5). La web no recibe push (no hay Web Push).
@@ -1826,7 +1826,7 @@ lectura, estación por estación y en todo el país, con el umbral que da la pro
   desde el 20-10-2026 (hallazgo: Loreto salía en "alerta" por 5 vaciantes y la tarjeta decía "un río
   pasó su nivel de alerta").
 
-Se retiraron los umbrales provisionales de SIMPAC para la lluvia (20 y 40 mm en 24 h, 15 mm en
+Se retiraron los umbrales provisionales de SIFEC para la lluvia (20 y 40 mm en 24 h, 15 mm en
 1 h): eran los mismos en todo el país y no se ajustaban a cada lugar (20 mm en 24 h es lluvia
 normal en la selva).
 
@@ -2003,7 +2003,7 @@ Stack completo en `docker-compose.yml` (4 servicios):
 | Servicio | Qué es | Puerto |
 |---|---|---|
 | `frontend` | React build servido por **nginx** (gzip precomprimido, caché inmutable de `/assets/`, CSP; §8.2) | 8080 |
-| `backend` | API **FastAPI async** (`backend/app.py`), CORS solo para los orígenes de SIMPAC | 8000 |
+| `backend` | API **FastAPI async** (`backend/app.py`), CORS solo para los orígenes de SIFEC | 8000 |
 | `worker` | **Celery + beat**: ingesta horaria, ENFEN cada 6 h, avisos SENAMHI, lluvia nacional, pronóstico por localidad, nowcasting, avisos hidrológicos, titular por departamento cada 30 min, push por FCM cada 5 min, refresco de caché (10 tareas) | — |
 | `redis` | caché (snapshot) + cola/broker de Celery | 6379 |
 
@@ -2059,7 +2059,7 @@ docker compose up --build
   Android; un `*` se ignora) y solo `GET`. En producción poner el dominio de la web. Comprobación:
   `curl -sI -H 'Origin: https://ejemplo.com' http://localhost:8000/health` no trae
   `Access-Control-Allow-Origin` y con `-H 'Origin: http://localhost:8080'` sí (`/health` responde
-  `{"ok":true,"service":"simpac-api"}` con `Vary: Origin`; `/api/snapshot`, 46 KB en 0,03 s el
+  `{"ok":true,"service":"sifec-api"}` con `Vary: Origin`; `/api/snapshot`, 46 KB en 0,03 s el
   20-10-2026).
 - **Imagen del frontend:** `frontend/Dockerfile` compila con `node:22-alpine` desde el 20-10-2026
   (antes `node:20-alpine`, con el aviso `EBADENGINE` de `@supabase/supabase-js` 2.116, que declara
@@ -2173,7 +2173,7 @@ propio venv (`requirements-relieve.txt`, §5.6.11).
 - **Chat en tiempo real:** `message` está en la publicación `supabase_realtime`; `postgres_changes`
   respeta la RLS (solo con sesión y solo los mensajes vigentes, `msg lectura vigente`) y la tabla no
   expone su posición.
-- **API y nginx:** CORS cerrado a los orígenes de SIMPAC (§8); nginx manda CSP (`default-src 'self'`,
+- **API y nginx:** CORS cerrado a los orígenes de SIFEC (§8); nginx manda CSP (`default-src 'self'`,
   scripts solo propios, estilos propios e inline más Google Fonts, imágenes y conexiones solo a
   Supabase, también `wss:` para la sesión y el chat, Stadia, NASA GIBS e IDESEP, `data:`/`blob:` para
   los glifos; `frame-ancestors 'self'`, `object-src 'none'`), `X-Content-Type-Options: nosniff`,
@@ -2199,7 +2199,7 @@ propio venv (`requirements-relieve.txt`, §5.6.11).
   `manifest.webmanifest` y `sw.js` siempre `no-cache`; `/assets/noexiste.js` da 404 (nunca `index.html`
   con tipo de script); cualquier ruta de la SPA (`/alertas`, `/cuenta`...) cae en `index.html`.
 - **Chunks:** `react`, `leaflet` y `supabase` van en archivos propios (`manualChunks`): un cambio en el
-  código de SIMPAC invalida solo `index-*.js` (155 KB gzip) y no los ~148 KB gzip de los vendors. Build
+  código de SIFEC invalida solo `index-*.js` (155 KB gzip) y no los ~148 KB gzip de los vendors. Build
   del 20-10-2026: 1801 módulos en 9,4 s; páginas perezosas Alertas 16,3 kB, Historico 15,1, Cuenta
   11,8, ReporteNuevo 7,1, Chat 6,0, Comunidad 2,8 kB.
 - `index.html` lleva `preconnect` a Supabase (la URL la inyecta Vite con `%VITE_SUPABASE_URL%`),
@@ -2216,7 +2216,7 @@ propio venv (`requirements-relieve.txt`, §5.6.11).
 
 ### 8.3. App Android anterior (Capacitor), retirada el 24-10-2026
 
-Entre el 14-10 y el 24-10-2026 la app de SIMPAC fue la misma web empaquetada con **Capacitor 8.5.3**
+Entre el 14-10 y el 24-10-2026 la app de SIFEC fue la misma web empaquetada con **Capacitor 8.5.3**
 (`frontend/android/`, `frontend/capacitor.config.json`, `appId` `pe.simpac.app`, origen
 `https://localhost`, GPS por `@capacitor/geolocation`; APK de prueba de 5 304 253 bytes compilado el
 20-10 y probado en el emulador `Pixel_7a`). Desde el 20-10 la app es la nativa en Kotlin (§8.4), con
@@ -2255,7 +2255,7 @@ FCM, firma, Play Console) está en `appmobile/README.md`; aquí el contrato con 
   (el Docker de la PC visto desde el emulador); fijas en el APK (`-Psimpac.apiUrl` y `-Psimpac.webUrl`
   al compilar), no se cambian desde la app.
 - **Pantallas** (`ui/`, barra inferior de 5): Inicio (semáforo con color + etiqueta, `titular_corto` y
-  detalle con "Generado el ... por reglas de SIMPAC con datos oficiales", chips "N alertas oficiales" y
+  detalle con "Generado el ... por reglas de SIFEC con datos oficiales", chips "N alertas oficiales" y
   "Río X: estado en estación (valor)", ENFEN, pronóstico de 3 días, Llamar 105 / 116, fuentes con hora,
   pie referencial), Alertas (emergencia > alerta > aviso, oficiales primero, lluvia medida aparte como
   no oficial, filtro Mi zona / Todo el país), Mapa (la web en un WebView con JavaScript y
@@ -2267,7 +2267,7 @@ FCM, firma, Play Console) está en `appmobile/README.md`; aquí el contrato con 
   Tiempo, Alertas, Acudir, Pronostico, Rios), probada en JVM: 22 pruebas (`DominioTest` 16,
   `ModelosTest` 6) más 4 de Compose UI en `androidTest` (`InicioScreenTest`).
 - **Push (contrato con §5.6.12):** al prender el interruptor pide `POST_NOTIFICATIONS` (Android 13+) y
-  se suscribe a `pais` y `zona_<slug>` (`push/PushSimpac.kt`); al cambiar de departamento se desuscribe
+  se suscribe a `pais` y `zona_<slug>` (`push/PushSifec.kt`); al cambiar de departamento se desuscribe
   del anterior; al apagar, de los dos. `push/ServicioMensajes.kt` muestra la notificación en el canal
   `alertas` (importancia alta) y al tocarla `MainActivity` abre la pestaña que diga `data.ruta`
   (`/alertas`). El token de registro se guarda cifrado (`AlmacenSeguro`). Verificado el 24-10-2026 con
@@ -2289,7 +2289,7 @@ FCM, firma, Play Console) está en `appmobile/README.md`; aquí el contrato con 
   `div.h-screen` de la web medían 0 px (la app de Capacitor no lo sufría: su WebView venía del XML con
   `match_parent`, y la misma web en ese APK daba `100vh = 845` con el mismo WebView 155). Con
   `layoutParams = ViewGroup.LayoutParams(MATCH_PARENT, MATCH_PARENT)` en `ui/mapa/MapaScreen.kt`
-  `100vh = 705`, Leaflet mide 649 px, cargan 16 tiles y la captura muestra el mapa, el chip SIMPAC y la
+  `100vh = 705`, Leaflet mide 649 px, cargan 16 tiles y la captura muestra el mapa, el chip SIFEC y la
   hoja. Sin excepciones de `pe.simpac.app` en logcat.
 - **Límites y pendientes:** WebView del Mapa en teléfono real (en el emulador ya pinta); una vez el botón atrás dentro del
   WebView volvió a Inicio en vez de retroceder (revisar `canGoBack` en `onPageFinished`); la sesión de la
@@ -2323,7 +2323,7 @@ Supabase gratuito no se pausa por inactividad (recibe consultas cada hora).
 servicio necesita está escrito en esos dos archivos de la raíz, en el formato *config as code* de
 Railway (`railway.json`). **Ojo:** la documentación de Railway (04-11-2026) dice textual que *config as
 code* está deprecado, que "New services cannot opt into Config as Code" y que los archivos solo siguen
-leyéndose en servicios que ya los usaban, hasta el 2026-12-01 (corte duro). Como los servicios de SIMPAC
+leyéndose en servicios que ya los usaban, hasta el 2026-12-01 (corte duro). Como los servicios de SIFEC
 se crean nuevos, **los dos archivos no se van a leer**: sirven como referencia versionada de lo que hay
 que escribir a mano en el panel (Settings de cada servicio, abajo) y como entrada de `railway config
 migrate` si más adelante se pasa a *Infrastructure as Code*. Si el panel todavía ofreciera Settings >
@@ -2429,7 +2429,7 @@ filas (ya las tiene, es la BD compartida).
 
 **Comprobación** (PowerShell usa `curl.exe`; en `cmd` y Git Bash, `curl`):
 ```bash
-curl -s https://<api>.up.railway.app/health                      # {"ok":true,"service":"simpac-api"}
+curl -s https://<api>.up.railway.app/health                      # {"ok":true,"service":"sifec-api"}
 curl -s -o /dev/null -w "%{http_code} %{size_download} bytes %{time_total}s\n" https://<api>.up.railway.app/api/snapshot   # 200, ~46 KB
 curl -sI -H "Origin: https://<proyecto>.vercel.app" https://<api>.up.railway.app/health | grep -i access-control   # Access-Control-Allow-Origin con ese dominio
 ```
@@ -2535,7 +2535,7 @@ Reglas:
 - [x] Capa de **lluvia ahora** en todo el país (§5.6.2), más lluvia observada, satélite y SILVIA (§5.6.3).
 - [x] **Serie del ICEN** (`icen_serie`) y panel gráfico de El Niño en el frontend.
 - [x] **Alertas de lluvia con la referencia de SENAMHI** por estación, en todo el país (§5.6.2); se
-      retiraron los umbrales provisionales de SIMPAC.
+      retiraron los umbrales provisionales de SIFEC.
 - [x] **Avisos con ícono** (gota, gota con rayo, copo; §5.6.1), **pronóstico oficial por localidad**
       (§5.6.4) y **nowcasting experimental** (§5.6.5), con sus capas en el frontend.
 - [ ] Ubicar las **41 localidades del pronóstico sin punto** (`sin_ubicar` en

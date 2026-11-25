@@ -19,7 +19,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
-import pe.simpac.app.SimpacApp
+import pe.simpac.app.SifecApp
 import pe.simpac.app.data.AvisoHidro
 import pe.simpac.app.data.AvisoVigente
 import pe.simpac.app.data.CaudalActual
@@ -295,7 +295,7 @@ data class EstadoMapa(
  * nowcasting cada 2 min mientras siga prendida). Al salir de la pestana el ViewModel se limpia.
  */
 class MapaViewModel(app: Application) : AndroidViewModel(app) {
-    private val contenedor = (app as SimpacApp).contenedor
+    private val contenedor = (app as SifecApp).contenedor
     private val repo = contenedor.repositorio
     private val ajustes = contenedor.ajustes
 
@@ -922,7 +922,7 @@ class MapaViewModel(app: Application) : AndroidViewModel(app) {
             val fuentes = mutableListOf<String>()
             rAvisos.getOrNull()?.let { fuentes += "Avisos: SENAMHI (áreas simplificadas), leídos ${Tiempo.horaCorta(it.obtenidoEn)}" }
             rCaudales.getOrNull()?.let { fuentes += "Niveles de ríos: ANA, leídos ${Tiempo.horaCorta(it.obtenidoEn)}" }
-            rCauces.getOrNull()?.let { fuentes += "Trazo de los ríos del país: ANA - GeoSNIRH; zonas: estimación de SIMPAC con el relieve (Copernicus GLO-30), no es un mapa oficial" }
+            rCauces.getOrNull()?.let { fuentes += "Trazo de los ríos del país: ANA - GeoSNIRH; zonas: estimación de SIFEC con el relieve (Copernicus GLO-30), no es un mapa oficial" }
             if (mashcon != null) fuentes += "Trazo del Mashcón: colaboradores de OpenStreetMap (ODbL)"
             val deCache = listOfNotNull(rAvisos.getOrNull()?.deCache, rCaudales.getOrNull()?.deCache, rCauces.getOrNull()?.deCache).any { it }
 

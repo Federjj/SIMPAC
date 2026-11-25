@@ -8,12 +8,12 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
-import pe.simpac.app.SimpacApp
+import pe.simpac.app.SifecApp
 import pe.simpac.app.data.AjustesApp
-import pe.simpac.app.push.PushSimpac
+import pe.simpac.app.push.PushSifec
 
 class AjustesViewModel(app: Application) : AndroidViewModel(app) {
-    private val contenedor = (app as SimpacApp).contenedor
+    private val contenedor = (app as SifecApp).contenedor
     private val ajustes = contenedor.ajustes
 
     val conf: StateFlow<AjustesApp?> = ajustes.flujo.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
@@ -22,7 +22,7 @@ class AjustesViewModel(app: Application) : AndroidViewModel(app) {
     private val _mensaje = MutableStateFlow<String?>(null)
     val mensaje: StateFlow<String?> = _mensaje
 
-    val pushDisponible: Boolean get() = PushSimpac.disponible(getApplication())
+    val pushDisponible: Boolean get() = PushSifec.disponible(getApplication())
 
     fun guardarDepartamento(nombre: String) {
         viewModelScope.launch {
@@ -52,7 +52,7 @@ class AjustesViewModel(app: Application) : AndroidViewModel(app) {
                     ajustes.guardarNotificaciones(true)
                     _mensaje.value = "Recibirás avisos de alerta o emergencia de ${c.departamento} y del país."
                 } else {
-                    PushSimpac.desactivar(c.temaZonaSuscrito)
+                    PushSifec.desactivar(c.temaZonaSuscrito)
                     ajustes.guardarTemaZona(null)
                     ajustes.guardarNotificaciones(false)
                     _mensaje.value = "Notificaciones apagadas."
@@ -65,9 +65,9 @@ class AjustesViewModel(app: Application) : AndroidViewModel(app) {
 
     private suspend fun activarPush(departamento: String) {
         val c = ajustes.actual()
-        val tema = PushSimpac.activar(departamento, c.temaZonaSuscrito)
+        val tema = PushSifec.activar(departamento, c.temaZonaSuscrito)
         ajustes.guardarTemaZona(tema)
-        PushSimpac.token()?.let { contenedor.almacenSeguro.tokenFcm = it }
+        PushSifec.token()?.let { contenedor.almacenSeguro.tokenFcm = it }
     }
 
     fun limpiarMensaje() { _mensaje.value = null }

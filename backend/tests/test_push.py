@@ -175,7 +175,7 @@ class TestDecidir(unittest.TestCase):
 class TestMensaje(unittest.TestCase):
     def test_alerta_segun_el_contrato(self):
         m = tarea.armar_mensaje("Cajamarca", "alerta", "Cajamarca: 2 avisos de SENAMHI.", GENERADO, "alerta")
-        self.assertEqual(m["notification"], {"title": "SIMPAC: ALERTA en Cajamarca", "body": "Cajamarca: 2 avisos de SENAMHI."})
+        self.assertEqual(m["notification"], {"title": "SIFEC: ALERTA en Cajamarca", "body": "Cajamarca: 2 avisos de SENAMHI."})
         self.assertEqual(m["data"], {"nivel": "alerta", "zona": "Cajamarca", "generado_en": "2026-10-20T11:30:00+00:00",
                                      "ruta": "/alertas"})
         self.assertTrue(all(isinstance(v, str) for v in m["data"].values()))   # FCM exige texto en data
@@ -185,9 +185,9 @@ class TestMensaje(unittest.TestCase):
 
     def test_emergencia_y_calma(self):
         m = tarea.armar_mensaje("Madre de Dios", "emergencia", "x", GENERADO, "alerta")
-        self.assertEqual(m["notification"]["title"], "SIMPAC: EMERGENCIA en Madre de Dios")
+        self.assertEqual(m["notification"]["title"], "SIFEC: EMERGENCIA en Madre de Dios")
         c = tarea.armar_mensaje("Piura", "normal", "Piura: sin avisos de SENAMHI.", GENERADO, "calma")
-        self.assertEqual(c["notification"]["title"], "SIMPAC: vuelve la calma en Piura")
+        self.assertEqual(c["notification"]["title"], "SIFEC: vuelve la calma en Piura")
         self.assertEqual((c["data"]["nivel"], c["android"]["priority"]), ("normal", "normal"))
 
     def test_cuerpo_prefiere_el_corto(self):
@@ -371,7 +371,7 @@ class TestTarea(unittest.TestCase):
         conn, resumen = self.correr(credenciales=json.dumps(INFO))
         enviados = self.red.fcm()
         self.assertEqual([m["notification"]["title"] for m in enviados],
-                         ["SIMPAC: ALERTA en Cajamarca", "SIMPAC: EMERGENCIA en Piura", "SIMPAC: ALERTA en Madre de Dios"])
+                         ["SIFEC: ALERTA en Cajamarca", "SIFEC: EMERGENCIA en Piura", "SIFEC: ALERTA en Madre de Dios"])
         self.assertEqual(enviados[0]["notification"]["body"], TITULARES[0]["titular_corto"])
         self.assertEqual(enviados[0]["condition"], "'pais' in topics || 'zona_cajamarca' in topics")
         self.assertEqual(enviados[0]["data"], {"nivel": "alerta", "zona": "Cajamarca", "generado_en": "2026-10-20T11:30:00+00:00",
@@ -421,7 +421,7 @@ class TestTarea(unittest.TestCase):
         conn, resumen = self.correr(_Conexion(titulares=titulares, previos=previos), credenciales=json.dumps(INFO))
         enviados = self.red.fcm()
         self.assertEqual([m["notification"]["title"] for m in enviados],
-                         ["SIMPAC: vuelve la calma en Cajamarca", "SIMPAC: EMERGENCIA en Piura", "SIMPAC: vuelve la calma en Lima"])
+                         ["SIFEC: vuelve la calma en Cajamarca", "SIFEC: EMERGENCIA en Piura", "SIFEC: vuelve la calma en Lima"])
         self.assertEqual(enviados[0]["notification"]["body"], titulares[0]["titular_corto"])
         self.assertEqual(enviados[0]["data"]["nivel"], "normal")
         self.assertEqual(enviados[2]["data"]["nivel"], "aviso")
@@ -523,7 +523,7 @@ class TestPrueba(unittest.TestCase):
         [m] = red.fcm()
         self.assertEqual(m["topic"], "zona_madre_de_dios")
         self.assertNotIn("condition", m)
-        self.assertEqual(m["notification"]["title"], "SIMPAC: prueba en Madre de Dios")
+        self.assertEqual(m["notification"]["title"], "SIFEC: prueba en Madre de Dios")
         self.assertIn("07:00", m["notification"]["body"])          # hora de Perú
         self.assertEqual(m["data"]["ruta"], "/alertas")
         self.assertIn("zona_madre_de_dios", salida)

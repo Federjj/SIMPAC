@@ -3,7 +3,7 @@
 // lib/lenguaje.js. Módulo puro: lo prueba node --test.
 //
 // Escala de crecida: 0 .. max(umbral_emergencia x 1,25, valor x 1,1); verde hasta el 80 % del
-// umbral de alerta ("cerca" es criterio de SIMPAC), ámbar hasta la alerta, naranja hasta la
+// umbral de alerta ("cerca" es criterio de SIFEC), ámbar hasta la alerta, naranja hasta la
 // emergencia, rojo después. Umbrales de nivel bajo (vaciante, ue < ua): el arco se invierte, rojo a
 // la izquierda. Sin umbral de alerta no hay tramos (solo el número); sin medición, arco gris.
 import { NIVEL_HEX } from "../map/palette.js";

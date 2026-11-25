@@ -155,7 +155,7 @@ export default function Historico() {
           texto={
             estado.primera
               ? `Hay datos desde el ${fechaLargaConAnio(estado.primera.fecha ?? estado.primera.medido_en)}; prueba con un rango más largo o una fecha más reciente.`
-              : "SIMPAC todavía no tiene lecturas guardadas de esta estación."
+              : "SIFEC todavía no tiene lecturas guardadas de esta estación."
           }
         />
       )}
@@ -204,7 +204,7 @@ export default function Historico() {
               <Download className="h-4 w-4" />
               Descargar CSV
             </Button>
-            <span className="text-xs text-muted-foreground">Fuente: {q.tipo === "rio" ? "ANA" : "SENAMHI"} · horas de Perú · guardado por SIMPAC.</span>
+            <span className="text-xs text-muted-foreground">Fuente: {q.tipo === "rio" ? "ANA" : "SENAMHI"} · horas de Perú · guardado por SIFEC.</span>
           </div>
           <table className="mt-3 w-full text-left text-xs">
             <caption className="sr-only">Lecturas del rango elegido, de la más nueva a la más vieja</caption>

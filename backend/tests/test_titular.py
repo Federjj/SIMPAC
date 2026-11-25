@@ -117,7 +117,7 @@ class _Api:
     """Un urlopen de mentira: anota cada pedido y responde con `redactar(departamento)` o lanza `falla`."""
 
     def __init__(self, redactar=None, falla=None):
-        self.redactar = redactar or (lambda d: f"{d}: SIMPAC revisó las fuentes oficiales de hoy.")
+        self.redactar = redactar or (lambda d: f"{d}: SIFEC revisó las fuentes oficiales de hoy.")
         self.falla = falla
         self.pedidos = []
 
@@ -313,7 +313,7 @@ class TestReglas(unittest.TestCase):
 
     def test_sin_datos_nunca_dice_normal(self):
         titular, detalle = tarea.titular_reglas(_insumos("Loreto", enfen=ENFEN_NO_ACTIVO))
-        self.assertIn("SIMPAC no tiene aquí ríos con nivel de alerta de ANA ni estaciones de SENAMHI", titular)
+        self.assertIn("SIFEC no tiene aquí ríos con nivel de alerta de ANA ni estaciones de SENAMHI", titular)
         self.assertIn("ENFEN: sin alerta de El Niño ni La Niña", titular)
         for palabra in ("normal", "tranquil", "calma"):
             self.assertNotIn(palabra, titular.lower())
@@ -346,7 +346,7 @@ class TestReglas(unittest.TestCase):
         self.assertEqual(tarea.titular_corto(_insumos("Piura")),
                          "Piura: sin avisos de SENAMHI; 1 río de ANA y 1 estación de lluvia sin pasar su nivel.")
         self.assertEqual(tarea.titular_corto(_insumos("Loreto")),
-                         "Loreto: sin avisos de SENAMHI; SIMPAC no tiene aquí ríos ni estaciones de lluvia que pueda revisar.")
+                         "Loreto: sin avisos de SENAMHI; SIFEC no tiene aquí ríos ni estaciones de lluvia que pueda revisar.")
         for palabra in ("normal", "tranquil"):
             self.assertNotIn(palabra, tarea.titular_corto(_insumos("Loreto")).lower())
         # lo más grave primero y, si no cabe, se quitan las partes de menor nivel desde el final
@@ -382,7 +382,7 @@ class TestPedido(unittest.TestCase):
         self.assertEqual((cuerpo["model"], cuerpo["max_tokens"], cuerpo["temperature"]), (MODELO, 200, 0))
         self.assertEqual([m["role"] for m in cuerpo["messages"]], ["user"])
         hechos = cuerpo["messages"][0]["content"]
-        for linea in ("Departamento: Cajamarca", "Nivel general calculado por SIMPAC: alerta (rótulo: Alerta)",
+        for linea in ("Departamento: Cajamarca", "Nivel general calculado por SIFEC: alerta (rótulo: Alerta)",
                       "Alertas y avisos oficiales vigentes: 2", "Aviso de SENAMHI (SENAMHI aviso 377), color naranja",
                       "Río que pasó su nivel de alerta según ANA (Chilete (Jequetepeque))",
                       "máximo 12,4 mm en CHOTA GORE", "Río vigilado Río Mashcón: nivel atentos",
@@ -394,7 +394,7 @@ class TestPedido(unittest.TestCase):
     def test_pedido_http(self):
         api = _Api()
         texto = tarea.pedir_llm(_insumos(), "sk-prueba", MODELO, abrir=api)
-        self.assertEqual(texto, "Cajamarca: SIMPAC revisó las fuentes oficiales de hoy.")
+        self.assertEqual(texto, "Cajamarca: SIFEC revisó las fuentes oficiales de hoy.")
         [(pedido, cuerpo, timeout)] = api.pedidos
         self.assertEqual((pedido.full_url, pedido.get_method(), timeout), (tarea.API_URL, "POST", tarea.TIMEOUT_S))
         cabeceras = {k.lower(): v for k, v in pedido.header_items()}
@@ -469,7 +469,7 @@ class TestValidar(unittest.TestCase):
         self.rechaza("Loreto: sin alertas.", i, motivo="sin alertas")
         self.rechaza("Loreto: tranquilo según SENAMHI.", i, motivo="tranquil")
         # el estado del ENFEN no es una afirmación sobre la zona
-        tarea.validar("Loreto: SIMPAC no tiene aquí ríos ni estaciones que revisar. ENFEN: sin alerta de El Niño ni La Niña.", i)
+        tarea.validar("Loreto: SIFEC no tiene aquí ríos ni estaciones que revisar. ENFEN: sin alerta de El Niño ni La Niña.", i)
 
     def test_con_alertas_no_dice_que_no_hay(self):
         self.rechaza("Cajamarca: sin alertas de ANA; aviso naranja de SENAMHI.", motivo="sí los hay")
@@ -504,7 +504,7 @@ class TestRedactar(unittest.TestCase):
     def test_con_clave_y_cambio_redacta_el_modelo(self):
         r = self.redactar()
         self.assertEqual((r["origen"], r["modelo"], r["titular"]),
-                         ("llm", MODELO, "Cajamarca: SIMPAC revisó las fuentes oficiales de hoy."))
+                         ("llm", MODELO, "Cajamarca: SIFEC revisó las fuentes oficiales de hoy."))
         self.assertTrue(r["titular_corto"].startswith("Cajamarca: aviso naranja"))   # el corto siempre es por reglas
         self.assertEqual(len(self.api.pedidos), 1)
         self.assertEqual(self.estado["fallas_seguidas"], 0)

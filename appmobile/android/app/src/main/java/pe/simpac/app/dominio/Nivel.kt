@@ -1,7 +1,7 @@
 package pe.simpac.app.dominio
 
 /**
- * Semaforo de SIMPAC, con los mismos colores que la web (frontend/src/lib/nivel.js).
+ * Semaforo de SIFEC, con los mismos colores que la web (frontend/src/lib/nivel.js).
  * Siempre se muestra color + etiqueta: nunca solo el color.
  * fondo = color del disco o la franja; tinta = texto sobre fondo claro.
  */

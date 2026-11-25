@@ -1,4 +1,4 @@
-# Catalogo de versiones de la app Android de SIMPAC.
+# Catalogo de versiones de la app Android de SIFEC.
 [versions]
 androidGradlePlugin = "9.0.1"
 kotlin = "2.3.20"

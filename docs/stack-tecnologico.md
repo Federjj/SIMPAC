@@ -1,8 +1,8 @@
-# SIMPAC — Stack tecnológico
+# SIFEC — Stack tecnológico
 
 > Tecnologías del proyecto por capa, con su **estado**:
 > **hecho** = implementado (prototipo) · **decidido** = decidido, por construir · **evaluar** = a evaluar.
-> SIMPAC = plataforma web + app Android que centraliza datos hidrometeorológicos de Cajamarca,
+> SIFEC = plataforma web + app Android que centraliza datos hidrometeorológicos de Cajamarca,
 > emite alertas de lluvia/crecidas y suma una capa comunitaria (reportes + chat) tipo Waze.
 
 ---

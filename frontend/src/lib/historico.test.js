@@ -98,8 +98,8 @@ test("csv y nombres", () => {
     ]
   );
   assert.equal(csv, '﻿fecha;"valor; raro"\r\n2026-10-14;1.5\r\n"con ""comillas""";\r\n');
-  assert.equal(nombreCsv("rio", "Túnel Chotano", "7d"), "simpac_rio_tunel_chotano_7d.csv");
-  assert.equal(nombreCsv("lluvia", "", "24h"), "simpac_lluvia_estacion_24h.csv");
+  assert.equal(nombreCsv("rio", "Túnel Chotano", "7d"), "sifec_rio_tunel_chotano_7d.csv");
+  assert.equal(nombreCsv("lluvia", "", "24h"), "sifec_lluvia_estacion_24h.csv");
   assert.equal(fechaLargaConAnio("2026-09-22"), "22 de setiembre de 2026");
   assert.equal(fechaLargaConAnio(Date.parse("2026-09-22T23:30:00-05:00")), "22 de setiembre de 2026");
 });

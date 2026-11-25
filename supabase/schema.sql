@@ -1,5 +1,5 @@
 -- ============================================================================
--- SIMPAC — Esquema consolidado (PostgreSQL + PostGIS) en Supabase
+-- SIFEC — Esquema consolidado (PostgreSQL + PostGIS) en Supabase
 --
 -- Es una FOTO del estado final, para leer de un vistazo cómo queda la BD.
 -- La historia real (lo que se aplicó y en qué orden) está en supabase/migrations/:
@@ -59,6 +59,7 @@
 --   20261020164715 rio_cauce_mapa_franja              rio_cauce_mapa.ancho_m y franja (franja de atención referencial)
 --   20261020165455 rio_cauce_zona                     zonas estimadas con el relieve junto a los ríos del país y rio_cauce_zona_mapa
 --   20261025020623 mapa_trimestre                     mapa.trimestre y mapa.meses (una fila FEN por evento y trimestre) e índice único (uuid, coalesce(trimestre, ''))
+--   20261125120000 nombre_sifec  (pendiente de aplicar)  textos guardados y comentarios con el nombre SIFEC (rio_zona, rio_cauce_zona, rio_vigilado.fuentes, titular_zona, icen_serie.categoria)
 -- ============================================================================
 
 create extension if not exists postgis;
@@ -158,14 +159,14 @@ create table comunicado_enfen (
 create table icen_serie (
   mes        text primary key check (mes ~ '^[0-9]{4}-(0[1-9]|1[0-2])$'),   -- 'AAAA-MM'
   valor      double precision not null,
-  categoria  text not null,              -- ENFEN: oficial de su tabla; IGP: calculada por SIMPAC
+  categoria  text not null,              -- ENFEN: oficial de su tabla; IGP: calculada por SIFEC
   origen     text not null check (origen in ('IGP', 'ENFEN')),
   ts_captura timestamptz not null default now()
 );
 comment on table icen_serie is
   'ICEN mensual (IGP y Tabla del Informe Técnico ENFEN; el ENFEN tiene precedencia). Lo escribe el worker.';
 comment on column icen_serie.categoria is
-  'ENFEN: la oficial de la tabla de su informe. IGP: calculada por SIMPAC con los cortes de la Nota Técnica ENFEN 01-2024 (en los meses fríos solo dice Fría).';
+  'ENFEN: la oficial de la tabla de su informe. IGP: calculada por SIFEC con los cortes de la Nota Técnica ENFEN 01-2024 (en los meses fríos solo dice Fría).';
 
 -- Avisos oficiales de SENAMHI como áreas (tarea 'avisos', cada hora): una fila por aviso,
 -- día (mapa) y nivel (2 amarillo, 3 naranja, 4 rojo), con los polígonos unidos y
@@ -419,7 +420,7 @@ create unique index mapa_uuid_trimestre_key on mapa (uuid, (coalesce(trimestre, 
 -- se desborda, sus incidentes pasados documentados y las señales de hoy. rio_vigilado, rio_zona y
 -- rio_incidente los carga UNA vez backend/mapas/cargar_rios.py desde backend/data/rios/<id>/ (como
 -- los mapas FEN); aviso_hidrologico lo llena la tarea 'rios' del worker (cada hora).
--- Honestidad del dato: rio_zona.tipo 'estimada' = estimación SIMPAC por relieve (HAND, Copernicus
+-- Honestidad del dato: rio_zona.tipo 'estimada' = estimación SIFEC por relieve (HAND, Copernicus
 -- GLO-30), 'estudio' = mapa de un estudio oficial pasado a coordenadas (INDECI-PNUD 2005), 'faja' =
 -- límite de la faja marginal de ANA (no es un mapa de inundación). El trazo (OSM) y lo derivado de
 -- él van con ODbL 1.0 y atribución; Copernicus con su aviso; ANA, INDECI y SENAMHI citando la fuente.
@@ -437,7 +438,7 @@ create table rio_vigilado (
   cauce            geometry(MultiLineString, 4326) not null,  -- tronco del río (OSM)
   afluentes        geometry(MultiLineString, 4326),           -- formadores y afluente urbano (OSM)
   guia_rotulo      geometry(LineString, 4326),                -- tronco simplificado (~120 m): nombre sobre la línea
-  cuenca           geometry(MultiPolygon, 4326) not null,     -- estimación SIMPAC; no se dibuja: decide qué avisos
+  cuenca           geometry(MultiPolygon, 4326) not null,     -- estimación SIFEC; no se dibuja: decide qué avisos
                                                               -- de lluvia y qué estaciones cuentan para el río
   lugares_aviso    jsonb not null default '[]'::jsonb check (jsonb_typeof(lugares_aviso) = 'array'),
                                                  -- centros poblados que SENAMHI nombra en sus avisos del río:
@@ -468,7 +469,7 @@ create table rio_zona (
 );
 create index rio_zona_rio_idx on rio_zona (rio, orden);
 comment on table rio_zona is
-  'Zonas que un río vigilado podría afectar. tipo: estimada (relieve, SIMPAC) | estudio (INDECI-PNUD 2005 digitalizado) | faja (faja marginal ANA). Ninguna es un mapa oficial de inundación vigente.';
+  'Zonas que un río vigilado podría afectar. tipo: estimada (relieve, SIFEC) | estudio (INDECI-PNUD 2005 digitalizado) | faja (faja marginal ANA). Ninguna es un mapa oficial de inundación vigente.';
 
 create table rio_incidente (
   id              text primary key,              -- 'MAS-2014-03-26', 'ANA-EEH-9913', 'SEN-2021-0987'
@@ -1035,7 +1036,7 @@ create policy "lectura publica rio cauce" on rio_cauce for select using (true);
 --    falla o su texto no pasa, lo arman reglas fijas (origen 'reglas'). Si la
 --    API falla y nada cambió, el titular anterior se queda (nunca se borra).
 --    El nivel es el semáforo del frontend (lib/nivel.js): 'sin_dato' cuando
---    SIMPAC no tiene nada que revisar en el departamento; la lluvia medida y
+--    SIFEC no tiene nada que revisar en el departamento; la lluvia medida y
 --    un río muy bajo (vaciante) nunca pasan de 'aviso'.
 -- ===========================================================================
 create table titular_zona (

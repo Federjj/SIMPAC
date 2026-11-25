@@ -8,7 +8,7 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
-import pe.simpac.app.SimpacApp
+import pe.simpac.app.SifecApp
 import pe.simpac.app.data.ComentarioReporte
 import pe.simpac.app.dominio.Comunidad
 import pe.simpac.app.dominio.Departamentos
@@ -36,7 +36,7 @@ private val UUID = Regex("^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a
 
 /** Detalle de un reporte (pages/ReporteDetalle.jsx): tarjeta completa, votos y comentarios. */
 class ReporteDetalleViewModel(app: Application) : AndroidViewModel(app) {
-    private val contenedor = (app as SimpacApp).contenedor
+    private val contenedor = (app as SifecApp).contenedor
     private val repo = contenedor.repositorio
     private val sesion = contenedor.sesion
 

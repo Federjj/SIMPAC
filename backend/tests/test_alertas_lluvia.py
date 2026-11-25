@@ -153,7 +153,7 @@ class TestOficialYRetirados(unittest.TestCase):
             self.assertFalse(alerts.es_oficial(tipo), tipo)
 
     def test_criterios_retirados(self):
-        # los umbrales provisionales de SIMPAC (20 y 40 mm en 24 h, 15 mm en 1 h) ya no existen
+        # los umbrales provisionales de SIFEC (20 y 40 mm en 24 h, 15 mm en 1 h) ya no existen
         for nombre in ("LLUVIA_24H_ALERTA", "LLUVIA_24H_EMERGENCIA", "LLUVIA_1H_ALERTA", "evaluar_lluvia",
                        "referencia_lluvia"):
             self.assertFalse(hasattr(alerts, nombre), nombre)

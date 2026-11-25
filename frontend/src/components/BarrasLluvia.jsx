@@ -151,7 +151,7 @@ export default function BarrasLluvia({ origen, porGps, ciudad, depto, revisada, 
       )}
       {origen && ahora.error && <p className="mt-1 text-sm text-nivel-alerta">No se pudo revisar la lluvia de las estaciones de SENAMHI.</p>}
       {origen && ahora.datos && cercanas.length === 0 && (
-        <p className="mt-1 text-sm text-muted-foreground">No hay estaciones de SENAMHI con lluvia de la última hora y referencia que SIMPAC pueda revisar.</p>
+        <p className="mt-1 text-sm text-muted-foreground">No hay estaciones de SENAMHI con lluvia de la última hora y referencia que SIFEC pueda revisar.</p>
       )}
       {cercanas.length > 0 && (
         <>

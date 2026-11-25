@@ -261,7 +261,7 @@ export default function StatusPanel({
                     {zona.resumenBd.titular}
                     {zona.resumenBd.detalle ? ` ${zona.resumenBd.detalle}` : ""}{" "}
                     <span className="text-xs text-muted-foreground">
-                      (resumen {zona.resumenBd.origen === "llm" ? "redactado automáticamente con las cifras oficiales" : "del servidor de SIMPAC"})
+                      (resumen {zona.resumenBd.origen === "llm" ? "redactado automáticamente con las cifras oficiales" : "del servidor de SIFEC"})
                     </span>
                   </p>
                 )}
@@ -366,7 +366,7 @@ export default function StatusPanel({
                     </Explica>
                   )}
                   <p className="text-xs text-muted-foreground">
-                    Las alertas de ríos usan los niveles de ANA. Los avisos (amarillo, naranja y rojo) vienen de SENAMHI, y SIMPAC
+                    Las alertas de ríos usan los niveles de ANA. Los avisos (amarillo, naranja y rojo) vienen de SENAMHI, y SIFEC
                     los resume en palabras simples: el aviso oficial es el que publica SENAMHI. “Atentos a la lluvia” es otra cosa:
                     una estación automática de SENAMHI midió más lluvia que la referencia que SENAMHI usa para ese lugar, en la
                     última hora o sumando las últimas 6 horas. Esa referencia cambia de un lugar a otro: es baja donde casi no
@@ -384,7 +384,7 @@ export default function StatusPanel({
                   {rios.length > 0 && (
                     <p className="text-xs text-muted-foreground">
                       Las franjas junto al río Mashcón marcan la zona que podría inundarse si el río se desborda. Las rayadas son
-                      una estimación de SIMPAC hecha con el relieve; las lisas vienen del estudio de INDECI de 2005 para la ciudad;
+                      una estimación de SIFEC hecha con el relieve; las lisas vienen del estudio de INDECI de 2005 para la ciudad;
                       ninguna es un mapa oficial vigente. Se pintan de ámbar cuando hay señales en la cuenca (lluvia fuerte medida,
                       aviso naranja o rojo de SENAMHI por lluvias, el río cerca de su nivel de alerta o un aviso hidrológico
                       amarillo), de naranja o rojo solo cuando ANA mide el río sobre su nivel de alerta o de emergencia o SENAMHI
@@ -394,7 +394,7 @@ export default function StatusPanel({
                   )}
                   <p className="text-xs text-muted-foreground">
                     El medidor del río compara la última lectura de ANA con los niveles de alerta y emergencia que ANA publica para
-                    esa estación; “cerca” (80 % del caudal de alerta) es un criterio de SIMPAC. Las distancias al río y a la zona
+                    esa estación; “cerca” (80 % del caudal de alerta) es un criterio de SIFEC. Las distancias al río y a la zona
                     son en línea recta desde tu ubicación o desde el centro de la ciudad elegida.
                   </p>
                 </div>

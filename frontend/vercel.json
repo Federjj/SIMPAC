@@ -4,6 +4,13 @@
   "buildCommand": "npm run build",
   "outputDirectory": "dist",
   "trailingSlash": false,
+  "redirects": [
+    {
+      "source": "/descargas/SIMPAC.apk",
+      "destination": "/descargas/SIFEC.apk",
+      "permanent": true
+    }
+  ],
   "rewrites": [
     {
       "source": "/:ruta((?!assets/|iconos/|descargas/|sw\\.js|manifest\\.webmanifest).*)",
@@ -42,7 +49,7 @@
       ]
     },
     {
-      "source": "/descargas/SIMPAC.apk",
+      "source": "/descargas/SIFEC.apk",
       "headers": [
         {
           "key": "Content-Type",
@@ -50,7 +57,7 @@
         },
         {
           "key": "Content-Disposition",
-          "value": "attachment; filename=\"SIMPAC.apk\""
+          "value": "attachment; filename=\"SIFEC.apk\""
         },
         {
           "key": "Cache-Control",

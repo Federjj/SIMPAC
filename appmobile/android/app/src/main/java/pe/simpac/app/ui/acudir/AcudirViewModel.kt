@@ -6,7 +6,7 @@ import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
-import pe.simpac.app.SimpacApp
+import pe.simpac.app.SifecApp
 import pe.simpac.app.dominio.Acudir
 import pe.simpac.app.dominio.Departamentos
 import pe.simpac.app.dominio.Geo
@@ -27,7 +27,7 @@ data class EstadoAcudir(
 )
 
 class AcudirViewModel(app: Application) : AndroidViewModel(app) {
-    private val contenedor = (app as SimpacApp).contenedor
+    private val contenedor = (app as SifecApp).contenedor
     private val _estado = MutableStateFlow(EstadoAcudir())
     val estado: StateFlow<EstadoAcudir> = _estado
 

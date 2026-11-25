@@ -9,7 +9,7 @@ vigente para llenar la serie.
                   y corrige los suyos; si nada cambió, la fila no se toca (ni cuenta en el
                   rowcount del executemany, que es lo que dice el latido).
 
-La categoría de los meses del IGP la calcula SIMPAC (igp.categoria); la de los del ENFEN es
+La categoría de los meses del IGP la calcula SIFEC (igp.categoria); la de los del ENFEN es
 la oficial de la tabla de su informe. Los datos de la prueba de punta a punta son los reales
 del 22-09-2026: ICEN.txt del IGP (último mes 2026-05) y la Tabla 3 del Informe Técnico ENFEN
 N° 16 (2025-08 a 2026-07). Sin Postgres ni red: solo librería estándar.
@@ -224,7 +224,7 @@ class TestSerieIGP(unittest.TestCase):
         self.assertEqual(serie_icen_igp([]), ([], 0))
 
     def test_categoria_de_la_nota_tecnica_2024(self):
-        # la de los meses del IGP la calcula SIMPAC: el ICEN.txt no trae categoría
+        # la de los meses del IGP la calcula SIFEC: el ICEN.txt no trae categoría
         filas = _filas_igp([igp.PuntoICEN(2026, 5, 1.98), igp.PuntoICEN(2024, 6, -0.97)])
         self.assertEqual(filas, [("2024-06", -0.97, "Fría", "IGP"), ("2026-05", 1.98, "Cálida moderada", "IGP")])
 

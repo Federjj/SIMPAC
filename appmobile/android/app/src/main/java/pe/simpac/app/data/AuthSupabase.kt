@@ -31,11 +31,11 @@ data class SesionGuardada(
     /** true si vence en menos de `margenSeg` segundos (se refresca antes). */
     fun porVencer(ahoraSeg: Long = System.currentTimeMillis() / 1000, margenSeg: Long = 60): Boolean = expiraEnSeg - ahoraSeg < margenSeg
 
-    fun aJson(): String = JsonSimpac.encodeToString(serializer(), this)
+    fun aJson(): String = JsonSifec.encodeToString(serializer(), this)
 
     companion object {
         fun desdeJson(texto: String?): SesionGuardada? = try {
-            texto?.takeIf { it.isNotBlank() }?.let { JsonSimpac.decodeFromString(serializer(), it) }
+            texto?.takeIf { it.isNotBlank() }?.let { JsonSifec.decodeFromString(serializer(), it) }
         } catch (_: Exception) { null }
     }
 }
@@ -134,7 +134,7 @@ class AuthSupabase(
     suspend fun salir(accessToken: String) { try { enviar(peticionSalir(accessToken)) } catch (_: Exception) { } }
 
     companion object {
-        private fun objeto(cuerpo: String): JsonObject? = try { JsonSimpac.parseToJsonElement(cuerpo).jsonObject } catch (_: Exception) { null }
+        private fun objeto(cuerpo: String): JsonObject? = try { JsonSifec.parseToJsonElement(cuerpo).jsonObject } catch (_: Exception) { null }
         private fun texto(o: JsonObject?, nombre: String): String? = try { o?.get(nombre)?.jsonPrimitive?.content?.takeIf { it != "null" } } catch (_: Exception) { null }
 
         /**

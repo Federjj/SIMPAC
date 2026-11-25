@@ -4,7 +4,7 @@
 // aviso: amarillo más oscuro que el de las áreas del mapa (#EBEB3B), para que un ícono blanco
 // encima o un ícono amarillo sobre fondo blanco se lean.
 export const NIVEL_HEX = { normal: "#3BEB40", aviso: "#EAB308", alerta: "#F58E27", emergencia: "#DB0404", sin_dato: "#9CA3AF" };
-// Estados de un río en el mapa (lib/lenguaje.js textoRio). "atento" es criterio de SIMPAC.
+// Estados de un río en el mapa (lib/lenguaje.js textoRio). "atento" es criterio de SIFEC.
 export const RIO_HEX = {
   normal: NIVEL_HEX.normal,
   atento: "#EBEB3B",
@@ -28,7 +28,7 @@ export const NOWCAST_HEX = { 1: "#3BA5EB", 2: "#3B3BEB", 3: "#7B2FBE" };
 // Zonas que un río vigilado podría afectar (lib/zonaRio.js): relleno y trazo oscuro del rayado por
 // nivel de la zona (los mismos tonos que avisos y ríos). Sin señales, azul de agua: la zona sigue
 // siendo una zona que podría inundarse (un gris no se leía como peligro). El rayado son los
-// patrones simpac-rayado-* de map/iconos.js. Como los rellenos de ámbar, naranja y rojo son los
+// patrones sifec-rayado-* de map/iconos.js. Como los rellenos de ámbar, naranja y rojo son los
 // de las áreas de los avisos, layers/zonasRio.js pone las zonas con borde blanco y trazo oscuro.
 export const ZONA_HEX = { emergencia: "#DB0404", alerta: "#F58E27", atentos: "#EAB308", sin_senales: "#1D4ED8" };
 export const ZONA_OSCURO = { emergencia: "#991B1B", alerta: "#C2410C", atentos: "#A16207", sin_senales: "#1E3A8A" };

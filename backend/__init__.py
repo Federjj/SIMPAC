@@ -1,5 +1,5 @@
 """
-Backend de SIMPAC.
+Backend de SIFEC.
 
   app.py         API FastAPI async (Docker: servicio backend)
   celery_app.py  worker + beat (Docker: servicio worker)

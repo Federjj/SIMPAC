@@ -13,6 +13,7 @@ import kotlinx.coroutines.flow.map
 import pe.simpac.app.BuildConfig
 import pe.simpac.app.dominio.Departamentos
 
+// El DataStore conserva el nombre "simpac_ajustes": renombrarlo perderia el departamento elegido y los ajustes de quien ya usa la app.
 private val Context.almacenAjustes: DataStore<Preferences> by preferencesDataStore(name = "simpac_ajustes")
 
 /** Lo que la persona configura: departamento, notificaciones, GPS y capas del mapa. Las direcciones de la API y la web son fijas (del build). */

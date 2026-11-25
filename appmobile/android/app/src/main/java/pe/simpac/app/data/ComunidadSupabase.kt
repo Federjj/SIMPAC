@@ -117,7 +117,7 @@ class ComunidadSupabase(
     }
 
     private inline fun <reified T> lista(cuerpo: String): List<T> =
-        JsonSimpac.decodeFromString(ListSerializer(kotlinx.serialization.serializer<T>()), cuerpo)
+        JsonSifec.decodeFromString(ListSerializer(kotlinx.serialization.serializer<T>()), cuerpo)
 
     /** Crea el reporte y devuelve la fila como la guardo la BD (con id, expira_en y estado). */
     suspend fun crearReporte(tipo: String, subtipo: String?, descripcion: String?, fotoUrl: String?, lat: Double, lon: Double): ReporteVigente {

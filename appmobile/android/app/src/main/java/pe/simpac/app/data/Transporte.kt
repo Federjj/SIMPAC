@@ -45,7 +45,7 @@ object TransporteOkHttp : TransporteHttp {
         }
         val peticion = Request.Builder().url(p.url).method(p.metodo, cuerpo).apply {
             header("Accept", "application/json")
-            header("User-Agent", "SIMPAC-Android")
+            header("User-Agent", "SIFEC-Android")
             p.cabeceras.forEach { (k, v) -> header(k, v) }
         }.build()
         try {

@@ -17,7 +17,7 @@ import { opcionesPopup, popupZonaRio } from "../popups";
 import { rotuloLinea } from "../rotuloLinea";
 
 // Zonas que un río vigilado podría afectar si se desborda (primero el Mashcón; vista rio_zona_mapa):
-//   - la franja rayada: estimación de SIMPAC con el relieve (terreno bajo junto al río; Copernicus);
+//   - la franja rayada: estimación de SIFEC con el relieve (terreno bajo junto al río; Copernicus);
 //   - las manchas lisas: el mapa de inundaciones del estudio INDECI-PNUD 2005, pasado a coordenadas.
 // Ninguna es un mapa oficial vigente: marcan dónde mirar, no hasta dónde llegará el agua. Se pintan
 // del nivel de la zona (lib/zonaRio.js: ANA, avisos hidrológicos y de lluvia de SENAMHI, lluvia
@@ -78,7 +78,7 @@ function popupAura(rio, est) {
     nota: [
       aviso && t ? `Última medición de ANA: ${t.frase}` : null,
       accion,
-      "El aura marca el cauce que hay que vigilar, no hasta dónde llegaría el agua. Al acercarte (zoom 13) se ve la franja de atención junto al río y, si SIMPAC las estimó con el relieve, las zonas que podría afectar.",
+      "El aura marca el cauce que hay que vigilar, no hasta dónde llegaría el agua. Al acercarte (zoom 13) se ve la franja de atención junto al río y, si SIFEC las estimó con el relieve, las zonas que podría afectar.",
       `Trazo del río: ${fila.fuente}.`,
     ],
     enlace: aviso && enlaceSeguro(aviso.url) ? { href: aviso.url, texto: "Ver el aviso de SENAMHI" } : null,
@@ -145,7 +145,7 @@ function estilo(z, nivel) {
   if (z.tipo === "estimada" && z.subtipo === "bajo_2m")
     return {
       borde: true, color: ZONA_OSCURO[nivel], weight: 2.5, opacity: 1,
-      fillColor: `url(#simpac-rayado-${nivel})`, fillOpacity: 1,
+      fillColor: `url(#sifec-rayado-${nivel})`, fillOpacity: 1,
     };
   if (z.tipo === "estudio" && z.subtipo === "menor")
     return {
@@ -243,7 +243,7 @@ export default {
   refreshMs: 5 * 60_000, // señales de lluvia y avisos: cada 5 min
   // la forma dice de dónde sale la zona (muestras en gris) y el color, el nivel de hoy
   legend: [
-    { forma: "rayado", color: "#475569", label: "Rayada: zona que podría inundarse si el río se desborda (estimación SIMPAC con el relieve; también en los ríos del país que la tienen, desde zoom 13)" },
+    { forma: "rayado", color: "#475569", label: "Rayada: zona que podría inundarse si el río se desborda (estimación SIFEC con el relieve; también en los ríos del país que la tienen, desde zoom 13)" },
     { zona: true, color: "#475569", label: "Lisa: zona inundable según el estudio INDECI-PNUD 2005 (Mashcón); tenue: terreno algo más alto, estimación con el relieve" },
     { zona: true, color: ZONA_HEX.emergencia, label: "Rojo: el río pasó su nivel de emergencia (ANA) o hay aviso hidrológico rojo (SENAMHI)" },
     { zona: true, color: ZONA_HEX.alerta, label: "Naranja: pasó su nivel de alerta (ANA) o hay aviso hidrológico naranja" },
@@ -259,9 +259,9 @@ export default {
     { forma: "circulo", color: NIVEL_HEX.alerta, label: "Círculo: zona a vigilar alrededor de una estación en alerta cuyo río no tiene trazo cargado" },
   ],
   fuente:
-    "Zona baja: estimación de SIMPAC con el relieve (Copernicus GLO-30 © DLR e.V. 2010-2014 y © Airbus Defence and " +
+    "Zona baja: estimación de SIFEC con el relieve (Copernicus GLO-30 © DLR e.V. 2010-2014 y © Airbus Defence and " +
     "Space GmbH 2014-2018, provisto bajo COPERNICUS por la Unión Europea y la ESA); no es un mapa oficial de " +
-    "inundación. Zona inundable: INDECI-PNUD (2005), digitalizado por SIMPAC. Señales: ANA y SENAMHI. Trazo del " +
+    "inundación. Zona inundable: INDECI-PNUD (2005), digitalizado por SIFEC. Señales: ANA y SENAMHI. Trazo del " +
     "Mashcón: © colaboradores de OpenStreetMap (ODbL). Trazo y franja de los ríos del país: ANA - GeoSNIRH (la franja " +
     "es una banda de ancho fijo junto al trazo, referencial).",
   load: () =>

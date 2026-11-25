@@ -9,7 +9,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
-import pe.simpac.app.SimpacApp
+import pe.simpac.app.SifecApp
 import pe.simpac.app.dominio.Comunidad
 import pe.simpac.app.ubicacion.MotivoSinPosicion
 import pe.simpac.app.ubicacion.Ubicacion
@@ -49,7 +49,7 @@ data class EstadoNuevo(
  * al limpiarse el ViewModel se cancela con viewModelScope y se dejan de pedir posiciones al telefono.
  */
 class ReporteNuevoViewModel(app: Application) : AndroidViewModel(app) {
-    private val contenedor = (app as SimpacApp).contenedor
+    private val contenedor = (app as SifecApp).contenedor
     private val repo = contenedor.repositorio
     private val sesion = contenedor.sesion
 

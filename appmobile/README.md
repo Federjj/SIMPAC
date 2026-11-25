@@ -1,6 +1,6 @@
-# SIMPAC — App Android nativa (Kotlin + Jetpack Compose)
+# SIFEC — App Android nativa (Kotlin + Jetpack Compose)
 
-La app Android de SIMPAC es una **app nativa en Kotlin con Jetpack Compose** (HU-20 y HU-21 del
+La app Android de SIFEC es una **app nativa en Kotlin con Jetpack Compose** (HU-20 y HU-21 del
 backlog) que vive en **`appmobile/android/`**. Lee los mismos datos oficiales que la web (Supabase con
 la publishable key y la API de solo lectura de FastAPI), muestra el semáforo de tu zona con su titular
 en lenguaje claro, las alertas vigentes, a dónde acudir cerca de ti, un **mapa nativo** (osmdroid,
@@ -48,7 +48,7 @@ ciclo de vida y `onDetach` al salir), que replica la lógica y los colores de la
 |---|---|---|---|
 | Avisos de SENAMHI (prendida) | Polígonos de `aviso_vigente` que rigen hoy (hora del Perú) con relleno del color del nivel al 35 % y borde (amarillo `#EAB308`, naranja `#F58E27`, rojo `#DB0404`); insignia con el glifo del fenómeno (gota, gota con rayo, copo, termómetro, viento) en el ancla mayor o el centroide; solo se dibujan los que tocan la vista. Hoja: título en palabras, nivel ("Naranja (nivel 3 de 4)"), texto del día, qué hacer, vigencia, departamentos, "Ver el aviso oficial" | SENAMHI (áreas simplificadas, `backend` tarea `avisos`) | 5 |
 | Ríos (prendida) | Los ~100 ríos de `rio_cauce_mapa.cauce_lejos` (~50 m, 35 000 vértices) con halo blanco y el color del estado de `Cauces.estadoRio` (la peor estación de `caudal_actual` o, si es más alto, el aviso hidrológico de `rio_cauce_senal`); el Mashcón desde `rio_vigilado_mapa.cauce` con sus afluentes; discos de las estaciones de ANA con el color del estado; nombres de hasta 8 ríos a la vista desde zoom 11; trazo fino (`cauce`, ~6 m) por río visible desde zoom 13. Hoja: "Río X - tranquilo 0.42 m³/s (ANA, hoy 20:00)", umbrales de alerta y emergencia, frase y acción, aviso hidrológico si manda, fuente del trazo | ANA (niveles y GeoSNIRH), SENAMHI (avisos hidrológicos), OSM (Mashcón) | 5 (simplificado con Douglas-Peucker por debajo de zoom 10) |
-| Zonas que podrían inundarse (prendida) | `rio_zona_mapa` (Mashcón: estimadas bajo_2m rayada con borde oscuro y bajo_3m lisa tenue; estudio INDECI-PNUD 2005 lisa) y `rio_cauce_zona_mapa` (40 zonas de 20 ríos), con el color del nivel de la zona de hoy; se piden solo por los ríos cuya caja toca la vista (nunca el país entero). Hoja: "Zona que podría inundarse si el río se desborda - estimación de SIMPAC con el relieve (Copernicus), no es un mapa oficial", método, fuente, licencia y atribución | SIMPAC con Copernicus GLO-30; INDECI-PNUD 2005 | 12 |
+| Zonas que podrían inundarse (prendida) | `rio_zona_mapa` (Mashcón: estimadas bajo_2m rayada con borde oscuro y bajo_3m lisa tenue; estudio INDECI-PNUD 2005 lisa) y `rio_cauce_zona_mapa` (40 zonas de 20 ríos), con el color del nivel de la zona de hoy; se piden solo por los ríos cuya caja toca la vista (nunca el país entero). Hoja: "Zona que podría inundarse si el río se desborda - estimación de SIFEC con el relieve (Copernicus), no es un mapa oficial", método, fuente, licencia y atribución | SIFEC con Copernicus GLO-30; INDECI-PNUD 2005 | 12 |
 | Estaciones de SENAMHI (apagada) | Puntos pequeños (M azul claro `#3BA5EB`, H azul `#3B3BEB`) por caja alrededor de la vista. Hoja: nombre, tipo, departamento, código | SENAMHI | 10 |
 | A dónde acudir (apagada) | Marcadores por tipo con glifo (cruz, escudo, llama) por caja alrededor de la vista. Hoja: nombre, categoría, "Atiende las 24 horas, según la fuente" solo si la fuente lo dice, dónde, "Llamar" (`ACTION_DIAL`), "Cómo llegar" (`geo:`), fuente y fecha | SUSALUD RENIPRESS, MININTER vía CENEPRED, CGBVP | 11 |
 | Tu ubicación | Punto azul con halo y botón flotante "Centrar en tu ubicación": lectura activa de alta precisión de hasta 20 s con rueda de progreso en el propio botón (no se puede tocar dos veces) y zoom 15 si la posición es precisa (100 m o menos). Cada causa tiene su mensaje y su acción: sin permiso lo pide ahí mismo y al concederlo centra (ya no manda a Inicio); con la ubicación del teléfono apagada, aviso con "Activar" (ajustes del sistema); sin señal, "No se pudo obtener tu posición; prueba a cielo abierto" con "Reintentar". Al abrir, el mapa centra en tu punto o en la capital del departamento elegido (zoom 13). Desde Inicio, "Ver el río en el mapa" lleva a la pestaña Mapa encuadrando tu punto y el cauce del río destacado | GPS del teléfono (ver "Ubicación del teléfono") | - |
@@ -201,7 +201,7 @@ Solo se pide para reportar, votar y comentar".
 
 **Navegación.** Pestañas Inicio, Alertas, Mapa, Comunidad y Cuenta; rutas `comunidad/nuevo` y
 `comunidad/{id}` dentro de la pestaña Comunidad (`ui/Navegacion.kt Rutas`). `EstadoCompartido.abrirReporte`
-la pone `AppSimpac` y la usa el mapa al tocar el pin de un reporte. "Ver en el mapa" encuadra el punto
+la pone `AppSifec` y la usa el mapa al tocar el pin de un reporte. "Ver en el mapa" encuadra el punto
 del reporte en la pestaña Mapa. La notificación sigue abriendo la pestaña que dice su ruta
 (`/alertas`, `/cuenta`, `/comunidad`; `/acudir` ahora abre Inicio).
 
@@ -268,7 +268,7 @@ appmobile/android/
                                        de notificacion, red_release.xml / red_debug.xml (https; http solo
                                        para 10.0.2.2/localhost en release, libre en debug)
   app/src/main/java/pe/simpac/app/
-    SimpacApp.kt                       Application: contenedor (ajustes, repositorio, almacen seguro)
+    SifecApp.kt                       Application: contenedor (ajustes, repositorio, almacen seguro)
                                        y canal de notificaciones "alertas" (importancia alta)
     MainActivity.kt                    abre la pestana que pide la notificacion (extra "ruta")
     dominio/                           logica pura, probada en JVM: Nivel, Departamentos (slug del tema
@@ -283,7 +283,7 @@ appmobile/android/
                                        AlmacenSeguro (EncryptedSharedPreferences: token de FCM y sesion),
                                        AuthSupabase (GoTrue REST), Sesion (estado de la sesion),
                                        ComunidadSupabase (escrituras con sesion), Repositorio (consultas)
-    push/                              PushSimpac (temas "pais" y "zona_<slug>"), ServicioMensajes
+    push/                              PushSifec (temas "pais" y "zona_<slug>"), ServicioMensajes
     ubicacion/                         ubicacion en primer plano (fused o LocationManager): lectura con
                                        motivo, afinado por precision, posicion para la zona
     ui/                                Navegacion (barra de 5 y rutas de comunidad), tema, componentes y
@@ -380,7 +380,7 @@ emulador muestra "System UI isn't responding": tocar *Wait*; no es un error de l
 Repetido el 2026-10-24 en la integración (mismo AVD, Android 17 con Play services 26.16.60, APK
 instalado con `adb install -r -g`, Docker de la PC reconstruido): Inicio con el disco amarillo "AVISO",
 "Cajamarca: 3 avisos de SENAMHI por lluvias (el más alto, amarillo).", "Generado el 24 oct, 16:48
-(hace 5 min), por reglas de SIMPAC con datos oficiales", chips "3 alertas oficiales" y "Río Cajamarca:
+(hace 5 min), por reglas de SIFEC con datos oficiales", chips "3 alertas oficiales" y "Río Cajamarca:
 tranquilo en Jesús Túnel (0.58 m3/s)", El Niño (CO 18-2026); Alertas con los avisos 432 y 435 y la
 lluvia de 24 h; Cuenta con el interruptor encendido ("Recibirás avisos de alerta o emergencia de
 Cajamarca y del país"; `POST_NOTIFICATIONS` concedido, canal `alertas` de importancia 4); **la
@@ -399,7 +399,7 @@ Capacitor no lo sufría porque su WebView venía del XML con `match_parent`, y l
 seguía dando `100vh = 845` con el mismo WebView 155. **Arreglo**: `layoutParams =
 ViewGroup.LayoutParams(MATCH_PARENT, MATCH_PARENT)` en `ui/mapa/MapaScreen.kt`; con eso `100vh = 705`,
 el contenedor de Leaflet mide 649 px, cargan 16 tiles y la captura del emulador muestra el mapa, el
-chip "SIMPAC · Aviso amarillo en Cajamarca", el selector de ciudad, el pronóstico y la hoja "Mira cómo
+chip "SIFEC · Aviso amarillo en Cajamarca", el selector de ciudad, el pronóstico y la hoja "Mira cómo
 está tu zona". Sin excepciones de `pe.simpac.app` en logcat.
 
 ## Notificaciones push (Firebase Cloud Messaging)
@@ -427,11 +427,11 @@ calma cuando la zona baja de alerta a normal/aviso:
 ```json
 {
   "topic": "zona_cajamarca",
-  "notification": { "title": "SIMPAC: ALERTA en Cajamarca", "body": "<titular_zona.titular_corto>" },
+  "notification": { "title": "SIFEC: ALERTA en Cajamarca", "body": "<titular_zona.titular_corto>" },
   "data": { "nivel": "alerta", "zona": "Cajamarca", "generado_en": "2026-10-20T17:11:02+00:00", "ruta": "/alertas" }
 }
 ```
-y `"title": "SIMPAC: vuelve la calma en Cajamarca"` al bajar. El tema `pais` recibe los mismos
+y `"title": "SIFEC: vuelve la calma en Cajamarca"` al bajar. El tema `pais` recibe los mismos
 mensajes de todas las zonas.
 
 ### Cómo activarlo (consola de Firebase)
@@ -439,7 +439,8 @@ mensajes de todas las zonas.
 1. En <https://console.firebase.google.com> crear el proyecto (el del equipo se llama **appsimpac**)
    o abrirlo. Google Analytics no hace falta.
 2. *Agregar app > Android*: nombre del paquete **`pe.simpac.app`** (tiene que ser exactamente ese),
-   apodo "SIMPAC"; la huella SHA-1 no es necesaria para FCM.
+   apodo "SIFEC" (el registro del equipo quedó con el apodo SIMPAC, que es solo una etiqueta); la huella
+   SHA-1 no es necesaria para FCM.
 3. Descargar **`google-services.json`** y copiarlo en **`appmobile/android/app/google-services.json`**.
    Está en `.gitignore`: no se sube al repo; cada persona que compile lo pone en su copia.
 4. Recompilar (`assembleDebug`). En la app, Cuenta > prender el interruptor y aceptar el permiso.
@@ -465,7 +466,7 @@ primera corrida de la tarea `push` (21:58 UTC) envió una vez las 6 alertas vige
 emergencia; Piura, Huancavelica, Lima, Ayacucho y Arequipa alerta) a `pais` y a sus `zona_<slug>`, y
 las corridas siguientes no repitieron nada (`enviados 0`). `docker compose exec worker python -m
 backend.ingesta.push --prueba --zona Cajamarca` llegó al emulador suscrito a `zona_cajamarca` (título
-"SIMPAC: prueba en Cajamarca", canal `alertas`; la primera vez tardó unos minutos mientras FCM
+"SIFEC: prueba en Cajamarca", canal `alertas`; la primera vez tardó unos minutos mientras FCM
 propagaba la suscripción) y al tocarla la app abrió la pestaña Alertas. Detalle técnico de la tarea
 (reglas, latido, siembra de `push_estado`): `docs/README-tecnico.md` §5.6.12.
 
@@ -518,34 +519,62 @@ Google Play exige que el AAB vaya firmado con una llave propia (la "upload key")
 
 1. Crear el keystore:
    ```bash
-   keytool -genkeypair -v -keystore simpac-upload.jks -alias simpac -keyalg RSA -keysize 2048 -validity 10000
+   keytool -genkeypair -v -keystore sifec-upload.jks -alias sifec -keyalg RSA -keysize 2048 -validity 10000
    ```
-   Guardarlo fuera del repo (por ejemplo `C:\Users\<usuario>\claves\simpac-upload.jks`).
+   Guardarlo fuera del repo (por ejemplo `C:\Users\<usuario>\claves\sifec-upload.jks`).
 2. Decirle a Gradle dónde está, por cualquiera de las dos vías (`app/build.gradle.kts` lee primero el
    archivo y, si no existe, las variables; sin ninguna, el release se compila sin firmar):
    - Archivo `appmobile/android/key.properties` (no versionado):
      ```properties
-     storeFile=C:/Users/<usuario>/claves/simpac-upload.jks
+     storeFile=C:/Users/<usuario>/claves/sifec-upload.jks
      storePassword=<contrasena del almacen>
-     keyAlias=simpac
+     keyAlias=sifec
      keyPassword=<contrasena de la llave>
      ```
    - O variables de entorno (útiles en un CI): `SIMPAC_KEYSTORE_FILE`, `SIMPAC_KEYSTORE_PASSWORD`,
      `SIMPAC_KEY_ALIAS`, `SIMPAC_KEY_PASSWORD`.
 3. Subir la versión antes de cada publicación en `app/build.gradle.kts`: `versionCode` (entero,
-   siempre mayor; hoy `2`, porque la app de Capacitor fue la `1`) y `versionName` (hoy `2.0`).
+   siempre mayor; hoy `3`: la app de Capacitor fue la `1`, el último APK publicado como SIMPAC la `2`
+   y el primero con el nombre SIFEC es el `3`) y `versionName` (hoy `2.1`). Con el `versionCode`
+   mayor, el teléfono instala el APK nuevo como actualización y no pide desinstalar.
 4. Generar el **AAB** con `.\gradlew.bat bundleRelease` (`app/build/outputs/bundle/release/app-release.aab`)
    o el **APK firmado** con `assembleRelease`. Comprobar la firma: `apksigner verify --print-certs
    app-release.apk` (en `$ANDROID_HOME/build-tools/36.0.0/`) o `jarsigner -verify app-release.aab`.
    El release va con R8 (`isMinifyEnabled`) y las reglas de `proguard-rules.pro` para
    kotlinx.serialization y OkHttp.
 
+## APK de descarga directa en la web (`frontend/public/descargas/SIFEC.apk`)
+
+La página `/app` de la web y el botón "Descargar la app" de `/cuenta` sirven el archivo
+`frontend/public/descargas/SIFEC.apk` (ruta `/descargas/SIFEC.apk`; la ruta vieja
+`/descargas/SIMPAC.apk` redirige con 301). Se regenera a mano porque hace falta la llave de Stadia
+Maps (`-Psimpac.stadiaKey=...`, nunca en el repo). **Hoy no hay keystore propio**: todos los APK
+publicados (el `2.0` del 23-11-2026 y el `2.1` del 25-11-2026) salen de `assembleDebug` firmados con
+la llave de depuración (`~/.android/debug.keystore`) de la PC del equipo. Android solo instala una
+actualización encima si lleva la misma firma, así que mientras no exista el keystore del proyecto hay
+que seguir compilando en esa misma PC y con esa misma receta; el día que se pase a `assembleRelease`
+con la llave propia (ver "Firma de la app"), quien ya tenga la app deberá desinstalarla una vez.
+Pasos, desde `appmobile/android/` en PowerShell y con `JAVA_HOME` y `ANDROID_HOME` definidos:
+
+1. Subir `versionCode` y `versionName` en `app/build.gradle.kts` (el `2.1` publicado va con `3`).
+2. `.\gradlew.bat assembleDebug "-Psimpac.apiUrl=https://simpac-production.up.railway.app" "-Psimpac.webUrl=https://simpac-v7nf.vercel.app" "-Psimpac.stadiaKey=<llave>"`
+   (entrecomillar cada `-P`: PowerShell parte el punto). Sale `app/build/outputs/apk/debug/app-debug.apk`.
+3. Copiarlo sobre `frontend/public/descargas/SIFEC.apk` y comprobar con `aapt dump badging` que dice
+   `versionCode='3'` (o el nuevo) y `package: name='pe.simpac.app'`, y con Python `zipfile` que
+   `resources.arsc` no contiene `SIMPAC` (el `application-label` dice SIFEC desde el 10-11-2026, así
+   que no distingue un APK viejo de uno nuevo; lo que distingue es el `versionCode`).
+4. Desplegar la web (Vercel) para que `/descargas/SIFEC.apk` sea el archivo nuevo.
+
+**Estado al 25-11-2026:** el `SIFEC.apk` publicado es el `2.1` (`versionCode 3`) compilado ese día con
+el código ya renombrado: ningún texto dice SIMPAC por dentro; misma firma de depuración que el `2.0`,
+así que se instala encima sin desinstalar.
+
 ## Publicar en Google Play
 
 1. **Cuenta de desarrollador** en <https://play.google.com/console>: pago único de 25 USD y
    verificación de identidad (una cuenta personal nueva debe hacer además una prueba cerrada con al
    menos 12 probadores durante 14 días antes de publicar en producción).
-2. **Crear la app**: nombre `SIMPAC`, idioma español (Perú), tipo *App*, gratis.
+2. **Crear la app**: nombre `SIFEC`, idioma español (Perú), tipo *App*, gratis.
 3. **Ficha de la tienda**: descripción corta y larga en lenguaje claro, ícono 512x512, portada
    1024x500 y al menos 2 capturas (`adb exec-out screencap -p > captura.png`).
 4. **Contenido de la app**: política de privacidad pública (ubicación solo en primer plano, para la
@@ -563,6 +592,9 @@ Google Play exige que el AAB vaya firmado con una llave propia (la "upload key")
 
 ## Límites y pendientes
 
+- **Keystore propio**: el APK publicado (`frontend/public/descargas/SIFEC.apk`, `2.1`) va firmado con
+  la llave de depuración de una sola PC (ver "APK de descarga directa en la web"); crear la llave del
+  proyecto pronto y, al cambiar a ella, avisar que hay que desinstalar la app una vez.
 - El mapa es nativo desde el 04-11-2026 (ver "Mapa nativo"); **falta probarlo en un teléfono real**
   y con la llave de Stadia en un release.
 - Cuentas y comunidad nativas desde el 19-11-2026 (ver "Comunidad y cuentas"). La sesión de la app
@@ -600,7 +632,7 @@ y ninguna animación se repite al recomponer ni al volver a una pestaña.
 | `Estados.kt` | `ContenidoConEstado(cargando, error, onReintentar, esqueleto, contenido)` cruza esqueleto, error y contenido con fundido de 220 ms y tamaño animado; `ErrorReintentar(mensaje, onReintentar)` (icono, título, mensaje, botón, aparece con fundido; antes estaba en `Comunes.kt`); `EstadoVacio(icono, titulo, texto, accionTexto, onAccion)` sobrio y centrado | Toda pantalla que lea datos; listas sin resultados ("No hay alertas vigentes...") y pantallas sin sesión |
 | `Animaciones.kt` | `Transiciones` (pestañas: fundido 200 ms; detalle: deslizamiento del 30 % + fundido 250 ms con sus inversos al volver; `aparecer` / `desaparecer` para `AnimatedVisibility`); `AparecerEscalonado(indice)` (fundido + subida de 12 dp con 35 ms por elemento, hasta 6, solo la primera vez: `rememberSaveable`); `Modifier.presionable(interactionSource)` (escala a 0,97 al pulsar); `ContadorAnimado(valor)` (el número sube o baja); `Haptica.toque / confirmar / rechazar(view)` con `HapticFeedbackConstants`, sin permisos | Entrada escalonada de las primeras tarjetas de cada pantalla, tarjetas que se tocan, contadores de votos y comentarios, vibración al votar, enviar o fallar |
 | `Refrescar.kt` | `RefrescarAlTirar(refrescando, onRefrescar) { ... }` sobre `PullToRefreshBox` de Material 3 | Listas y pantallas con scroll que se recargan; `refrescando` es "recargando con datos ya en pantalla" (el primer cargado va con esqueleto) |
-| `Avisador.kt` | `LocalAvisador` (un `SnackbarHostState` en el `Scaffold` de `AppSimpac`, encima de la barra inferior) y `Avisador.avisar(mensaje, accion, duracion, onAccion)`, con un ámbito que vive lo que la app | Confirmaciones y errores breves ("Voto registrado", "Sin conexión" con "Reintentar") desde cualquier pantalla, también justo antes de navegar |
+| `Avisador.kt` | `LocalAvisador` (un `SnackbarHostState` en el `Scaffold` de `AppSifec`, encima de la barra inferior) y `Avisador.avisar(mensaje, accion, duracion, onAccion)`, con un ámbito que vive lo que la app | Confirmaciones y errores breves ("Voto registrado", "Sin conexión" con "Reintentar") desde cualquier pantalla, también justo antes de navegar |
 | `Comunes.kt` | `Seccion(titulo, modifier, accion) { ... }` (forma `medium` 14 dp, sin sombra, borde fino `outline`; `accion` opcional a la derecha del título), `bordeTarjeta()`, `AvisoDato` con tintas para claro y oscuro, `temaOscuro()`, `Cargando` (rueda, solo para esperas cortas sin silueta, como "Revisando tu sesión...") | Secciones de todas las pantallas |
 
 `ui/Navegacion.kt` aplica `Transiciones` al `NavHost` (pestañas con fundido; `comunidad/nuevo` y
@@ -610,8 +642,8 @@ global; tocar una pestaña da una vibración corta. `ui/theme/Theme.kt` define l
 seleccionados, snackbar, error) con la misma escala de grises azulados en claro y oscuro.
 
 **Pantalla de arranque.** `androidx.core:core-splashscreen` 1.0.1: `MainActivity` usa el tema
-`Theme.SIMPAC.Splash` (`res/values/themes.xml`: fondo `@color/ic_launcher_background`, icono
+`Theme.SIFEC.Splash` (`res/values/themes.xml`: fondo `@color/ic_launcher_background`, icono
 `@drawable/ic_splash`, la gota al 80 % centrada en el área segura, y `postSplashScreenTheme`
-`Theme.SIMPAC`), llama `installSplashScreen()` antes de `super.onCreate` y pasa sola al tema normal con
+`Theme.SIFEC`), llama `installSplashScreen()` antes de `super.onCreate` y pasa sola al tema normal con
 el primer cuadro de Compose. El fondo de la ventana (`@color/fondo_app`, con variante en `values-night`)
 es el mismo de la app para que no haya un destello al arrancar.

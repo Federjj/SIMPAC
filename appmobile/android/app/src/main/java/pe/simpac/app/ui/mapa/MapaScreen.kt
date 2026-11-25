@@ -106,7 +106,7 @@ import pe.simpac.app.ui.componentes.presionable
 import pe.simpac.app.ui.componentes.temaOscuro
 
 /**
- * Pestana Mapa: mapa nativo (osmdroid) con las capas de SIMPAC. Arriba, el selector de dia (Hoy /
+ * Pestana Mapa: mapa nativo (osmdroid) con las capas de SIFEC. Arriba, el selector de dia (Hoy /
  * Manana / Pasado, que mueve avisos y pronostico) y el chip con el nivel de tu zona; abajo la barra de
  * capas; al tocar algo, una hoja inferior de Material 3 en lenguaje claro. Solo existe la barra
  * inferior de la app: nada de barras duplicadas.
@@ -138,7 +138,7 @@ fun MapaScreen(compartido: EstadoCompartido, vm: MapaViewModel = viewModel()) {
     var buscandoUbicacion by remember { mutableStateOf(false) }
 
     val gestor = remember {
-        OsmdroidSimpac.preparar(contexto)
+        OsmdroidSifec.preparar(contexto)
         val mapa = MapView(contexto).apply {
             layoutParams = ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
         }
@@ -368,7 +368,7 @@ fun MapaScreen(compartido: EstadoCompartido, vm: MapaViewModel = viewModel()) {
                                 if (!Ubicacion.enPeru(p)) {
                                     // el mapa solo cubre el Perú: fuera de esa caja el mapa se iria al borde (mar) sin nada que ver
                                     Haptica.rechazar(vista)
-                                    avisador.avisar("Tu ubicación está fuera del Perú: el mapa de SIMPAC solo cubre el país", duracion = SnackbarDuration.Long)
+                                    avisador.avisar("Tu ubicación está fuera del Perú: el mapa de SIFEC solo cubre el país", duracion = SnackbarDuration.Long)
                                 } else {
                                     // con una posicion precisa (100 m o menos) se acerca a zoom 15 para ver la cuadra; si no, 13
                                     val precisa = (p.precisionM ?: Float.MAX_VALUE) <= 100f
@@ -426,7 +426,7 @@ fun MapaScreen(compartido: EstadoCompartido, vm: MapaViewModel = viewModel()) {
                 )
             }
             Text(
-                OsmdroidSimpac.atribucion + extra.joinToString("") { ", $it" },
+                OsmdroidSifec.atribucion + extra.joinToString("") { ", $it" },
                 Modifier.align(Alignment.BottomStart).fillMaxWidth()
                     .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.85f))
                     .padding(horizontal = 8.dp, vertical = 2.dp),

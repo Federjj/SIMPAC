@@ -15,9 +15,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
-/** Colores de SIMPAC: azul de la marca y neutros claros como la web. Sin colores dinamicos del sistema
+/** Colores de SIFEC: azul de la marca y neutros claros como la web. Sin colores dinamicos del sistema
  *  para que el semaforo (dominio/Nivel.kt) sea siempre el mismo. */
-val AzulSimpac = Color(0xFF1D4ED8)
+val AzulSifec = Color(0xFF1D4ED8)
 val AzulOscuro = Color(0xFF0F172A)
 val FondoClaro = Color(0xFFF8FAFC)
 val TextoOscuro = Color(0xFF0F172A)
@@ -35,11 +35,11 @@ val GrisBorde = Color(0xFFE2E8F0)
  * interruptor apagado, el borde de los campos de texto, de los botones y chips con borde).
  * `outlineVariant` es el gris fino de las tarjetas (`bordeTarjeta`) y de los separadores. */
 private val EsquemaClaro = lightColorScheme(
-    primary = AzulSimpac,
+    primary = AzulSifec,
     onPrimary = Color.White,
     primaryContainer = Color(0xFFDBEAFE),
     onPrimaryContainer = Color(0xFF1E3A8A),
-    secondary = AzulSimpac,
+    secondary = AzulSifec,
     onSecondary = Color.White,
     secondaryContainer = Color(0xFFDBEAFE),
     onSecondaryContainer = Color(0xFF1E3A8A),
@@ -89,14 +89,14 @@ private val EsquemaOscuro = darkColorScheme(
     outlineVariant = Color(0xFF334155),
     inverseSurface = Color(0xFFE5E7EB),
     inverseOnSurface = AzulOscuro,
-    inversePrimary = AzulSimpac,
+    inversePrimary = AzulSifec,
     error = Color(0xFFFCA5A5),
     onError = Color(0xFF450A0A),
     errorContainer = Color(0xFF7F1D1D),
     onErrorContainer = Color(0xFFFECACA),
 )
 
-val TipografiaSimpac = Typography(
+val TipografiaSifec = Typography(
     headlineLarge = TextStyle(fontFamily = FontFamily.SansSerif, fontWeight = FontWeight.Bold, fontSize = 30.sp, lineHeight = 36.sp),
     headlineMedium = TextStyle(fontFamily = FontFamily.SansSerif, fontWeight = FontWeight.Bold, fontSize = 24.sp, lineHeight = 30.sp),
     titleLarge = TextStyle(fontFamily = FontFamily.SansSerif, fontWeight = FontWeight.SemiBold, fontSize = 20.sp, lineHeight = 26.sp),
@@ -108,18 +108,18 @@ val TipografiaSimpac = Typography(
 )
 
 /** Esquinas: small 8 dp (franjas, chips de texto), medium 14 dp (tarjetas), large 20 dp (hojas, fotos). */
-val FormasSimpac = Shapes(
+val FormasSifec = Shapes(
     small = RoundedCornerShape(8.dp),
     medium = RoundedCornerShape(14.dp),
     large = RoundedCornerShape(20.dp),
 )
 
 @Composable
-fun SimpacTheme(oscuro: Boolean = isSystemInDarkTheme(), contenido: @Composable () -> Unit) {
+fun SifecTheme(oscuro: Boolean = isSystemInDarkTheme(), contenido: @Composable () -> Unit) {
     MaterialTheme(
         colorScheme = if (oscuro) EsquemaOscuro else EsquemaClaro,
-        typography = TipografiaSimpac,
-        shapes = FormasSimpac,
+        typography = TipografiaSifec,
+        shapes = FormasSifec,
         content = contenido,
     )
 }

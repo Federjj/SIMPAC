@@ -30,7 +30,7 @@ object Nowcast {
     fun horizonte(min: Int?): Horizonte = HORIZONTES.firstOrNull { it.minutos == min } ?: HORIZONTES.first()
 
     const val FUENTE = "Nowcasting de SENAMHI: estimación automática con satélite, «referencial y aún en etapa de calibración». " +
-        "No es un aviso. SIMPAC usa azules para no confundirlo con los avisos. Si SENAMHI no publica hace más de 30 min, no se muestra."
+        "No es un aviso. SIFEC usa azules para no confundirlo con los avisos. Si SENAMHI no publica hace más de 30 min, no se muestra."
     const val ACLARA = "Es una estimación automática de SENAMHI con imágenes de satélite, todavía en calibración. Puede fallar y no es un aviso oficial."
 
     enum class EstadoNota { FRESCO, VACIO, VIEJO, ERROR }

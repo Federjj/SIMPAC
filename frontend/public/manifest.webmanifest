@@ -1,6 +1,6 @@
 {
-  "name": "SIMPAC: ríos, lluvia y El Niño en el Perú",
-  "short_name": "SIMPAC",
+  "name": "SIFEC: ríos, lluvia y El Niño en el Perú",
+  "short_name": "SIFEC",
   "description": "Mapa con los datos oficiales de lluvia, ríos y El Niño en el Perú, explicados en lenguaje claro.",
   "lang": "es-PE",
   "start_url": "/",

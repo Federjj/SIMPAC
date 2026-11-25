@@ -249,7 +249,7 @@ private fun BloqueUbicacion(estado: EstadoNuevo, vm: ReporteNuevoViewModel, envi
                     }
                     if (estado.soloAproximada) {
                         Text(
-                            "La app solo tiene permiso de ubicación aproximada (unos 2 km). Para marcar el reporte donde estás, cambia el permiso de SIMPAC a \"Precisa\" en los ajustes del teléfono.",
+                            "La app solo tiene permiso de ubicación aproximada (unos 2 km). Para marcar el reporte donde estás, cambia el permiso de SIFEC a \"Precisa\" en los ajustes del teléfono.",
                             style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                         OutlinedButton(

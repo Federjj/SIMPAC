@@ -48,7 +48,7 @@ object Alertas {
     fun fuenteTexto(a: AlertaActual): String = when (a.tipo) {
         "aviso" -> "SENAMHI"
         "caudal", "nivel_bajo" -> "ANA"
-        "lluvia" -> "estación de SENAMHI, comparada con su referencia por SIMPAC"
+        "lluvia" -> "estación de SENAMHI, comparada con su referencia por SIFEC"
         else -> "fuente oficial"
     }
 }

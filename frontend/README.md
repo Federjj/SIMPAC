@@ -1,4 +1,4 @@
-# SIMPAC — Frontend
+# SIFEC — Frontend
 
 Web en **React + Vite + Tailwind + shadcn/ui + Leaflet + react-router** que lee directo de Supabase.
 Al 14-10-2026 la web está completa: el **mapa** con sus capas, el inicio **"Tu zona ahora"** (hoja
@@ -46,7 +46,7 @@ dibujan **sobre el mapa** a pantalla completa en celular y tablet (`< lg`, 1024 
 **columna de 28-30 rem** junto al mapa desde `lg`. `MapView` nunca se desmonta: al volver a `/` el
 mapa sigue vivo y donde estaba. Mientras una página tapa el mapa, el `<main>` del mapa lleva
 `inert` y `aria-hidden` (sus controles tapados no se alcanzan con teclado ni lector de pantalla).
-Cada página cambia `document.title` ("Alertas y avisos · SIMPAC") y pasa el foco a su `h1`
+Cada página cambia `document.title` ("Alertas y avisos · SIFEC") y pasa el foco a su `h1`
 (`components/PanelPagina.jsx`). Con recarga directa de cualquier ruta nginx cae en `index.html`
 (`try_files`), verificado el 20-10-2026 en `:8080` para `/alertas`, `/comunidad`, `/chat`,
 `/cuenta` y `/noexiste`. Los popups del mapa enlazan a las páginas con `<a data-ruta href>` y
@@ -187,7 +187,7 @@ petición por clave mientras dure su TTL (un error no se queda cacheado).
   hace más de 30 min (lo decide la vista), no se muestran y el chip lo dice.
 
 **Íconos.** `map/iconos.js` (puro) tiene los glifos (`GLIFOS`, `glifoSvg(nombre)`), su versión como
-imagen (`glifoDataUri`, `ESTILO_GLIFOS`) y sus degradados (`DEFS_SVG`, ids `simpac-*`), que
+imagen (`glifoDataUri`, `ESTILO_GLIFOS`) y sus degradados (`DEFS_SVG`, ids `sifec-*`), que
 `main.jsx` monta una vez con `montarDefsIconos()`. Los mismos glifos van en el mapa, la franja, los
 popups y las leyendas (`components/Glifo.jsx`). Los botones y el panel siguen con Lucide.
 
@@ -278,9 +278,9 @@ Lo que se lee en 5 segundos al abrir la app (14-10-2026; ajustes de celular del 
   igual nivel el más cercano), `riosTrazados`, `rioCercano` (entre vigilados y trazados), `rioEnDepto`,
   `rioParaVer`, `chipSinZonas`, `metrosAlCauce`, `puntoCercanoDelCauce`, `distancias`,
   `chipsDistancia` (con un río trazado: "A 820 m del río Rímac (trazo de ANA)", "Dentro/Fuera de la
-  zona que podría inundarse (estimación SIMPAC con el relieve)" si tiene filas en `rio_cauce_zona_mapa`
+  zona que podría inundarse (estimación SIFEC con el relieve)" si tiene filas en `rio_cauce_zona_mapa`
   o "Este río no tiene mapa de zonas; la franja junto al cauce es solo referencial" si no; a más de
-  30 km, "El río con trazo más cercano está a 34 km (Chicama)"; "Aquí SIMPAC no vigila ríos con mapa de
+  30 km, "El río con trazo más cercano está a 34 km (Chicama)"; "Aquí SIFEC no vigila ríos con mapa de
   zonas todavía" solo si el departamento no tiene ningún río con trazo ni vigilado; frases en
   `lib/lenguaje.js FRASES_RIO_PAIS`), `titularCorto`
   (prioridad: río vigilado en alerta/emergencia > `alerta_actual` en alerta/emergencia, con la causa
@@ -364,7 +364,7 @@ muestra el valor final).
 solo reemplaza el **texto** del titular cuando está fresco (menos de 90 min desde `revisado_en`),
 mide 110 caracteres o menos, coincide en `nivel` con el calculado aquí y el nivel no es alerta ni
 emergencia (ahí manda la frase determinista con fuente y hora); el semáforo y la instrucción nunca
-dependen de él. Si se usa, la tarjeta dice "Resumen del servidor de SIMPAC" o "redactado
+dependen de él. Si se usa, la tarjeta dice "Resumen del servidor de SIFEC" o "redactado
 automáticamente con las cifras oficiales" (`origen` `llm`). Desde el 20-10-2026 (integrado el 24-10)
 `getTitular` pide también **`titular_corto`** (≤ 110, que el worker escribe desde la migración
 `20261020040343`) y la tarjeta usa esa columna (hoy en Cajamarca: "Cajamarca: 3 avisos de SENAMHI por
@@ -412,7 +412,7 @@ zona, la posición, el panorama, los ríos vigilados e `irAlMapa` / `verRioEnMap
   registros ("11 registros entre el 12/10/2026 y el 19/10/2026").
 - **Comunidad** (`/comunidad`): reportes vigentes (`report`, hasta 500, caché 60 s, refresco cada
   2 min y botón) ordenados por `puntajeReporte` = confianza (la calcula la BD con los votos) menos
-  la lejanía (criterio SIMPAC: 50 km restan tanto como bajar de 1 a 0 de confianza; a más de 100 km
+  la lejanía (criterio SIFEC: 50 km restan tanto como bajar de 1 a 0 de confianza; a más de 100 km
   no se castiga más), desde el GPS o la ciudad elegida; `TarjetaReporte` con tipo e ícono, hace
   cuánto, distancia, estado según la comunidad, vence en, foto, `Votos` y "Ver en el mapa" (zoom
   16). Sin sesión se ve todo y aparece "Entra para reportar, votar y comentar".
@@ -445,7 +445,7 @@ zona, la posición, el panorama, los ríos vigilados e `irAlMapa` / `verRioEnMap
   `caudal_actual`; lluvia: `lectura_lluvia` por `cod` con mm por hora y temperatura; gráfico SVG
   propio (`GraficoSerie`, con texto resumen para lectores de pantalla), último / máximo / mínimo,
   tabla de las 120 lecturas más nuevas (botón para todas) y **CSV** (`;`, UTF-8 con BOM,
-  `simpac_rio_mashcon_7d.csv`). Si no hay lecturas en el rango dice desde cuándo hay datos.
+  `sifec_rio_mashcon_7d.csv`). Si no hay lecturas en el rango dice desde cuándo hay datos.
 - **Descargar la app** (`/app`, `pages/DescargarApp.jsx`): ver "Descargar la app".
 - **Navegación**: `Sidebar` (desde `md`) y `BarraInferior` (más angosto que `md`: 5 pestañas de
   56 px con `safe-area-inset-bottom`, contador de alertas en Alertas y el nombre de la persona en
@@ -493,7 +493,7 @@ contraseña (6 caracteres o más) y un nombre para mostrar (2 a 80 letras); nada
 - Textos fijos en `lib/comunidad.js`: `POR_QUE_CUENTA` ("Para consultar no hace falta cuenta. Solo
   se pide para reportar, votar, comentar y chatear."), `DISCLAIMER`, `AVISO_REPORTE`, `NORMAS_CHAT`.
   El subtítulo "SIFEC · Sistema Inteligente de Acceso a Información del Fenómeno El Niño" va en la
-  barra lateral y en Cuenta (`SUBTITULO_SIFEC`); la web se llama SIMPAC.
+  barra lateral y en Cuenta (`SUBTITULO_SIFEC`); es el nombre largo de la web.
 
 ## Ríos vigilados: el río resaltado, la zona que podría afectar y los desbordes pasados
 Primero el **Mashcón** (Cajamarca); los datos se cargan una vez con `backend/mapas/cargar_rios.py`
@@ -553,7 +553,7 @@ insistir), la capa de zonas dice "aún no están cargadas" y el panel no nombra 
 |---|---|---|
 | Emergencia | ANA mide el río sobre su nivel de emergencia (de crecida) o SENAMHI tiene un aviso hidrológico **rojo** vigente de su estación | rojo |
 | Alerta | ANA, sobre su nivel de alerta, o aviso hidrológico **naranja** | naranja |
-| Atentos | el río al 80 % de su caudal de alerta (criterio SIMPAC), aviso hidrológico **amarillo**, aviso de lluvia **naranja o rojo** en curso que toca la cuenca, o una estación de la cuenca que pasó la referencia de SENAMHI | ámbar |
+| Atentos | el río al 80 % de su caudal de alerta (criterio SIFEC), aviso hidrológico **amarillo**, aviso de lluvia **naranja o rojo** en curso que toca la cuenca, o una estación de la cuenca que pasó la referencia de SENAMHI | ámbar |
 | Sin señales | nada de lo anterior | azul (sigue siendo una zona que podría inundarse) |
 
   Solo lo que trata del río mismo (ANA o el aviso hidrológico) sube a naranja o rojo. Un río muy bajo
@@ -565,7 +565,7 @@ insistir), la capa de zonas dice "aún no están cargadas" y el panel no nombra 
   dando un aviso hidrológico con fin conocido hasta ese fin; si su `visto_en` pasa de 3 h, el popup
   dice que la web de SENAMHI no responde desde esa hora y que es su último aviso conocido
   (`hidro_viejo`).
-  Rayada = estimación de SIMPAC con el relieve; lisa = estudio INDECI-PNUD 2005 (ninguna es un mapa
+  Rayada = estimación de SIFEC con el relieve; lisa = estudio INDECI-PNUD 2005 (ninguna es un mapa
   oficial vigente). Todas con borde blanco y trazo oscuro (ámbar, naranja y rojo son también los
   rellenos de las áreas de los avisos). Desde zoom 13 los polígonos (en zoom 13, con el aura suave
   debajo) y desde zoom 14 «zona que podría inundarse» escrito junto al río donde cabe; si hay
@@ -605,7 +605,7 @@ zonas (`riosParaZonas`, `ZONAS_DESDE = 12`), el ancho de la franja (`anchoFranja
    **peor** de sus estaciones de crecida (un umbral de nivel bajo cuenta como tranquilo); si hay un
    aviso hidrológico vigente de **crecida** más alto, el color del aviso (`estadoRio`, misma regla que
    `estadoCauce`). Popup con el nombre, el estado en palabras o el aviso, los niveles y la medición
-   de ANA con su hora, cuántas estaciones tiene y cuál manda, y "SIMPAC resalta el cauce con el trazo
+   de ANA con su hora, cuántas estaciones tiene y cuál manda, y "SIFEC resalta el cauce con el trazo
    de <fuente> (<licencia>); el nivel es de la estación X de ANA".
 2. El Mashcón nunca se duplica (`rio_vigilado` manda; `vigilado` en la vista) y un río sin trazo no
    se inventa: queda su disco y la nota de la capa cuenta cuántas estaciones están sin trazo
@@ -632,7 +632,7 @@ zonas (`riosParaZonas`, `ZONAS_DESDE = 12`), el ancho de la franja (`anchoFranja
    caché 60 min, nunca el país entero; `null` si la vista no existe) y las dibuja desde zoom 13 con los
    mismos estilos del Mashcón: `bajo_2m` rayada, `bajo_3m` lisa y tenue, borde blanco, color por
    `estadoRio` (azul sin señales). Popup en lenguaje claro con el método, la fuente, la licencia y
-   "Estimación de SIMPAC con el relieve; no es un mapa oficial." (`FRASES_RIO_PAIS.metodo`); nunca
+   "Estimación de SIFEC con el relieve; no es un mapa oficial." (`FRASES_RIO_PAIS.metodo`); nunca
    metros. Hoy 20 ríos tienen zonas (`backend/mapas/zonas_relieve.py`, `README-tecnico.md` §5.6.11); un
    río sin filas no dibuja nada y la nota de la capa (`notaZonasPais`, actualizada en vivo con
    `avisar`) dice cuántos ríos a la vista tienen zonas y cuántos franja.
@@ -646,7 +646,7 @@ zonas (`riosParaZonas`, `ZONAS_DESDE = 12`), el ancho de la franja (`anchoFranja
    `?simular=rio:tumbes:alerta` (ningún río del país estaba en alerta o emergencia por crecida).
 10. **La tarjeta "Tu zona ahora"** elige el río más cercano entre los vigilados del departamento y los
    ríos trazados (`lib/zonaAhora.js riosTrazados`, `rioCercano`): chips de distancia con "(trazo de
-   ANA)", Dentro/Fuera con "(estimación SIMPAC con el relieve)" si el río tiene zonas, "Ver el río X en
+   ANA)", Dentro/Fuera con "(estimación SIFEC con el relieve)" si el río tiene zonas, "Ver el río X en
    el mapa" que encuadra a la persona y el tramo más cercano del cauce a zoom 16 (`rioParaVer`, no los
    1700 km del Marañón). Verificado el 24-10 en `:8080`: Lima "A 820 m del río Rímac (trazo de ANA)" y
    "Fuera de la zona que podría inundarse, a 680 m"; Tumbes "A 1.1 km del río Tumbes"; Iquitos "A 1.9 km
@@ -668,7 +668,7 @@ INDECI con la URL de su campaña; la zona segura oficial la define la municipali
 muestra "Si hay emergencia: 105 Policía · 116 Bomberos · 106 SAMU" con `tel:`
 (`data/emergencias.js`, con la salvedad de que gob.pe no lista a Cajamarca entre las regiones con
 SAMU), las 3 tarjetas con distancia en línea recta, dirección, teléfono ("Sin teléfono en la fuente"
-si no hay), "24 h" solo si `atiende_24h = true`, y "Ver en el mapa" (evento `simpac:acudir-ver`
+si no hay), "24 h" solo si `atiende_24h = true`, y "Ver en el mapa" (evento `sifec:acudir-ver`
 para abrir el popup del punto); sin posición solo los números. Verificado contra la BD el
 19-10-2026 desde el centro de Cajamarca: Hospital II Cajamarca 24 h a 450 m, Comisaría Central a
 170 m, Bomberos N° 59 a 450 m. No hay albergues ni zonas seguras: ninguna fuente oficial abierta los
@@ -710,20 +710,20 @@ La app la usa cualquier persona, no un meteorólogo. Todo texto sale de `src/lib
 solo diccionario: lo mismo se dice igual en la hoja, la barra lateral, las páginas y los popups).
 Cada dato va en tres capas: qué pasa (una frase), qué significa o qué hacer, y el número con su mes
 y su fuente en chico. Primero la zona del usuario (departamento de la ciudad elegida o del GPS) y
-después el país. Nunca se dice "todo normal" a secas: solo lo que SIMPAC mide.
+después el país. Nunca se dice "todo normal" a secas: solo lo que SIFEC mide.
 
 | Dato | Regla | Fuente |
 |---|---|---|
 | Estado ENFEN | Vigilancia / Alerta / Sin alerta, con número y fecha del comunicado | Comunicado oficial ENFEN |
 | Mar frente al Perú (ICEN) | neutra -0.7..+0.5 · débil..+1.3 · moderada..+2.1 · fuerte..+3.5 · extraordinaria | Nota Técnica ENFEN 01-2024 |
 | Pacífico central (RONI) | El Niño/La Niña si \|x\| ≥ 0.5; débil, moderado, fuerte, muy fuerte cada 0.5 | NOAA CPC (desde feb-2026) |
-| Ríos (caudal m³/s) | % del caudal que activa la alerta; "atento" desde el 80 % | ANA; "atento" es criterio SIMPAC |
-| Ríos (nivel en m) | cuánto falta para el nivel de alerta; "atento" a 0.5 m | ANA; "atento" es criterio SIMPAC |
+| Ríos (caudal m³/s) | % del caudal que activa la alerta; "atento" desde el 80 % | ANA; "atento" es criterio SIFEC |
+| Ríos (nivel en m) | cuánto falta para el nivel de alerta; "atento" a 0.5 m | ANA; "atento" es criterio SIFEC |
 | Ríos con nivel bajo | si UEMERGENCIA < UALERTA el peligro es que baje (vaciante); en el semáforo vale como máximo `aviso` ("Río muy bajo") | ANA |
 | Lluvia por hora (intensidad) | ligera ≤2 · moderada ≤15 · fuerte ≤30 · muy fuerte ≤60 · torrencial | AEMET (referencia); solo para el color y el tamaño del punto en el mapa, no para las alertas |
 | Lluvia sobre la referencia | pasa si `pp_1h > umbral_1h` o `pp_6h > umbral_6h` (mayor estricto; solo si la estación trae `pp_1h` y `umbral_1h > 0`). Nivel siempre `aviso`, con el rótulo "Atentos a la lluvia"; siempre "no es un aviso oficial" | Referencia de SENAMHI por estación (capa `g_umbrales`). `referenciaLluvia` (`lenguaje.js`) es la misma regla que `backend/alerts.py` |
-| Lluvia del mes | clases oficiales ±15/±30/±60 %; si lo normal es < 10 mm se habla en mm | SENAMHI; lo de 10 mm es criterio SIMPAC |
-| Instrucción en alerta o emergencia | una sola frase: la del río (`textoRio(c).accion`, `fraseCorta`) o, si el nivel viene solo de un aviso de SENAMHI por lluvias, `ACCION_AVISO` | textos fijos de SIMPAC (`lenguaje.js`, `zonaRio.js`); el aviso oficial es el de SENAMHI, INDECI y Defensa Civil |
+| Lluvia del mes | clases oficiales ±15/±30/±60 %; si lo normal es < 10 mm se habla en mm | SENAMHI; lo de 10 mm es criterio SIFEC |
+| Instrucción en alerta o emergencia | una sola frase: la del río (`textoRio(c).accion`, `fraseCorta`) o, si el nivel viene solo de un aviso de SENAMHI por lluvias, `ACCION_AVISO` | textos fijos de SIFEC (`lenguaje.js`, `zonaRio.js`); el aviso oficial es el de SENAMHI, INDECI y Defensa Civil |
 
 ## Qué tabla alimenta cada parte
 
@@ -817,7 +817,7 @@ evaluados y descartados con datos; 5b, fuentes autoalojadas, pendiente: siguen e
   `docker run --rm -v "$PWD/frontend/nginx.conf:/etc/nginx/conf.d/default.conf:ro" nginx:alpine nginx -t`.
   Brotli no se sirve (nginx:alpine no trae el módulo).
 - **Chunks** (`manualChunks`): `react`, `leaflet` y `supabase` en archivos propios; un cambio en el
-  código de SIMPAC solo invalida `index-*.js` y las páginas perezosas, no los vendors que el
+  código de SIFEC solo invalida `index-*.js` y las páginas perezosas, no los vendors que el
   navegador ya tiene. Radix no se separa (dependencia circular con React en otro chunk).
 - **`index.html`**: `preconnect` a Supabase (URL inyectada con `%VITE_SUPABASE_URL%`), Stadia y
   Google Fonts, y las fuentes por `<link>` (ya no hay `@import` en `index.css`); manifest y
@@ -877,7 +877,7 @@ tiempo de script; en la consola `document.querySelectorAll("*").length` y
 nginx. Comparar siempre la misma vista, el mismo tamaño de ventana y la misma pestaña.
 
 ## App Android
-**Desde el 20-10-2026 la app de SIMPAC es nativa en Kotlin + Jetpack Compose** y vive en
+**Desde el 20-10-2026 la app de SIFEC es nativa en Kotlin + Jetpack Compose** y vive en
 `appmobile/android/` (`applicationId` `pe.simpac.app`, `versionCode 2`; guía en `appmobile/README.md`,
 técnica en `docs/README-tecnico.md` §8.4). Lee Supabase y la API por su cuenta y abre **esta web en un
 WebView solo en la pestaña Mapa** (URL configurable; por defecto `http://10.0.2.2:8080`, el Docker de la
@@ -898,20 +898,22 @@ las dependencias `@capacitor/*`, la rama nativa de `hooks/useGeolocation.js` (ah
 app actual (Kotlin) en **`appmobile/README.md`**.
 
 ## Descargar la app
-Desde el 19-11-2026 la web ofrece el APK de la app Android (HU-32): página **`/app`** ("SIMPAC en tu
+Desde el 19-11-2026 la web ofrece el APK de la app Android (HU-32): página **`/app`** ("SIFEC en tu
 celular", `pages/DescargarApp.jsx`, lazy como las demás), acceso **"Descargar la app"** (ícono
 `Smartphone`) bajo "Iniciar sesión" en `Sidebar` (la barra inferior del celular conserva sus 5 pestañas;
-en el celular se llega desde Cuenta) y tarjeta **"Lleva SIMPAC en tu celular"** al pie de `/cuenta`, con
+en el celular se llega desde Cuenta) y tarjeta **"Lleva SIFEC en tu celular"** al pie de `/cuenta`, con
 y sin sesión. El botón **"Descargar para Android (APK)"** (`BotonDescargarApk`, exportado por la
-página) es un `<a href>` a `URL_APK` = `/descargas/SIMPAC.apk` con el atributo `download`: el APK
-está en `public/descargas/SIMPAC.apk` (Vite lo copia al build), es del mismo origen y Vercel lo sirve
+página) es un `<a href>` a `URL_APK` = `/descargas/SIFEC.apk` con el atributo `download`: el APK
+está en `public/descargas/SIFEC.apk` (Vite lo copia al build), es del mismo origen y Vercel lo sirve
 con `Content-Disposition: attachment` y `Cache-Control: no-cache` (la CDN lo cachea por despliegue y el
 navegador siempre revalida; reglas solo para esa ruta exacta en `vercel.json`, `netlify.toml` y
 `nginx.conf`, que además declara el tipo `.apk`), así que el navegador descarga sin abrir nada y
-siempre la versión desplegada. En iPhone y iPad (`esIos()`) el botón se reemplaza por un aviso. `enlaceApkAbsoluto()` arma la dirección completa para "Copiar enlace". `public/sw.js` deja
+siempre la versión desplegada. La ruta vieja `/descargas/SIMPAC.apk` (hasta el 25-11-2026) responde
+**301** a la nueva en los tres, para que los enlaces ya compartidos sigan funcionando. En iPhone y iPad (`esIos()`) el botón se reemplaza por un aviso. `enlaceApkAbsoluto()` arma la dirección completa para "Copiar enlace". `public/sw.js` deja
 pasar `/descargas/` sin tocarlo, solo guarda como cáscara respuestas HTML, lee el fallback solo de
-su propia caché y subió a `simpac-v2` para borrar la caché anterior (donde el SW viejo podía guardar
-el manifest o una descarga como `/index.html`). Para publicar una versión
+su propia caché; su `VERSION` es `sifec-v3` (cambió con el nombre el 25-11-2026) y al activarse borra
+toda caché distinta, incluida la anterior (donde el SW viejo podía guardar el manifest o una descarga
+como `/index.html`). Para publicar una versión
 nueva basta con reemplazar el archivo y desplegar (unos 18 MB por versión en el historial de git). La página dice qué es la app (nativa, mapa, alertas de tu zona y
 notificaciones al entrar en alerta o emergencia), tamaño aproximado (unos 18 MB), requisitos (Android 8 o
 más nuevo), los 4 pasos de instalación, que todavía no está en Play Store y la firma el equipo del
@@ -1023,7 +1025,7 @@ Resumen de lo integrado el 24-10 (detalle en "Inicio: Tu zona ahora" y en "Ríos
 a 10; `npm test` 157, `npm run build` OK):
 - `lib/zonaAhora.js` elige el río más cercano entre los vigilados del departamento y los ríos con trazo
   de ANA (`rio_cauce_mapa`); chips "A X km del río Y (trazo de ANA)", "Dentro/Fuera de la zona que
-  podría inundarse (estimación SIMPAC con el relieve)" cuando el río tiene filas en
+  podría inundarse (estimación SIFEC con el relieve)" cuando el río tiene filas en
   `rio_cauce_zona_mapa`, y "Este río no tiene mapa de zonas; la franja junto al cauce es solo
   referencial" cuando no. "Ver el río X en el mapa" encuadra a la persona y el tramo más cercano.
 - Capa `zona` (`map/layers/zonasRio.js`): zonas de `rio_cauce_zona_mapa` por río visible desde zoom 12

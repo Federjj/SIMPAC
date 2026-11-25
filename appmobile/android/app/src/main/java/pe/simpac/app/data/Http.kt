@@ -27,7 +27,7 @@ object Http {
         val peticion = Request.Builder().url(url).get().apply {
             cabeceras.forEach { (k, v) -> header(k, v) }
             header("Accept", "application/json")
-            header("User-Agent", "SIMPAC-Android")
+            header("User-Agent", "SIFEC-Android")
         }.build()
         try {
             cliente.newCall(peticion).execute().use { respuesta ->
@@ -66,7 +66,7 @@ class ClienteSupabase(private val urlBase: String, private val clave: String) {
     }
 }
 
-/** API de solo lectura de SIMPAC (FastAPI): GET /health y GET /api/snapshot. */
+/** API de solo lectura de SIFEC (FastAPI): GET /health y GET /api/snapshot. */
 class ClienteApi {
     fun urlSnapshot(apiBase: String): HttpUrl =
         (apiBase.trimEnd('/') + "/api/snapshot").toHttpUrlOrNull()

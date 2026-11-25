@@ -78,7 +78,7 @@ function Tarjeta({ p, onVerEnMapa, compacto }) {
   const ver = () => {
     onVerEnMapa?.({ lat: p.lat, lon: p.lon, clave: p.clave });
     // la capa del mapa (map/layers/acudir.js) abre el popup de este punto cuando lo dibuja
-    window.dispatchEvent(new CustomEvent("simpac:acudir-ver", { detail: { clave: p.clave } }));
+    window.dispatchEvent(new CustomEvent("sifec:acudir-ver", { detail: { clave: p.clave } }));
   };
   return (
     <li className="flex items-start gap-2.5 px-3 py-2.5">

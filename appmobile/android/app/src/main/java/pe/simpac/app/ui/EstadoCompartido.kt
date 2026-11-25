@@ -16,7 +16,7 @@ class EstadoCompartido : ViewModel() {
     fun encuadreAtendido() { _encuadre.value = null }
 
     /**
-     * Abrir el detalle de un reporte ciudadano (id uuid). Lo pone AppSimpac (navega a comunidad/{id});
+     * Abrir el detalle de un reporte ciudadano (id uuid). Lo pone AppSifec (navega a comunidad/{id});
      * el mapa lo usa al tocar un pin de reporte y, si es nulo, muestra el detalle en su propia hoja.
      */
     var abrirReporte: ((String) -> Unit)? = null

@@ -342,7 +342,7 @@ export default function ElNinoPanel({ enfen, mar, icen, icenTmp, onVerEvento, on
               que miran al mar, como el oeste de Cajamarca (Contumazá, San Miguel, Santa Cruz), sobre todo de diciembre
               a abril; en el resto de la sierra de Cajamarca el efecto es menor y cambia de un año a otro. Índice
               Costero El Niño (ICEN): ENFEN e IGP; la categoría es la oficial del ENFEN y, en los meses que solo
-              publica el IGP, la calcula SIMPAC con los mismos cortes.
+              publica el IGP, la calcula SIFEC con los mismos cortes.
               {mar?.detalle ? ` ${mar.detalle}` : ""}
             </p>
           </div>

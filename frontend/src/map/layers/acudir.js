@@ -41,7 +41,7 @@ export const GLIFO_ACUDIR = {
 // render() lo consuma.
 let pedidoPendiente = null;
 if (typeof window !== "undefined") {
-  window.addEventListener("simpac:acudir-ver", (e) => {
+  window.addEventListener("sifec:acudir-ver", (e) => {
     pedidoPendiente = e.detail?.clave ?? null;
   });
 }
@@ -219,7 +219,7 @@ export default {
       map.on("movestart", alMover);
       map.on("moveend", alParar);
       map.on("moveend", dibujar);
-      window.addEventListener("simpac:acudir-ver", pedido);
+      window.addEventListener("sifec:acudir-ver", pedido);
       claveAbrir = pedidoPendiente; // el pedido que llegó mientras la capa se encendía
       pedidoPendiente = null;
       dibujar();
@@ -229,7 +229,7 @@ export default {
       map.off("moveend", alParar);
       map.off("moveend", dibujar);
       clearTimeout(esperaAbrir);
-      window.removeEventListener("simpac:acudir-ver", pedido);
+      window.removeEventListener("sifec:acudir-ver", pedido);
       turno++;
       puntos.clearLayers(); // MapView no recarga la capa al reencenderla: sin esto se dibujarían encima otra vez
       puestos.clear();

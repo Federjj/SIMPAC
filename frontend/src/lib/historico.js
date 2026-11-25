@@ -137,8 +137,8 @@ export function aCsv(columnas, filas) {
   return `﻿${lineas.join("\r\n")}\r\n`;
 }
 
-// Nombre del archivo: "simpac_rio_mashcon_7d.csv"
+// Nombre del archivo: "sifec_rio_mashcon_7d.csv".
 export function nombreCsv(tipo, id, rango) {
   const limpio = (id ?? "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "");
-  return `simpac_${tipo}_${limpio || "estacion"}_${rango}.csv`;
+  return `sifec_${tipo}_${limpio || "estacion"}_${rango}.csv`;
 }

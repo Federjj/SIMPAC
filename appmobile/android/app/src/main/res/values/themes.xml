@@ -2,15 +2,15 @@
 <resources>
     <!-- Tema de la ventana (la interfaz la pinta Compose: ui/theme/Theme.kt). El fondo de la ventana es
          el mismo de la app (claro u oscuro segun values-night) para que no haya un destello al arrancar. -->
-    <style name="Theme.SIMPAC" parent="android:Theme.Material.Light.NoActionBar">
+    <style name="Theme.SIFEC" parent="android:Theme.Material.Light.NoActionBar">
         <item name="android:windowBackground">@color/fondo_app</item>
     </style>
 
     <!-- Pantalla de arranque (androidx.core:core-splashscreen): fondo azul oscuro del icono y la gota
-         centrada; al dibujar el primer cuadro pasa a Theme.SIMPAC. Es el tema de MainActivity en el manifest. -->
-    <style name="Theme.SIMPAC.Splash" parent="Theme.SplashScreen">
+         centrada; al dibujar el primer cuadro pasa a Theme.SIFEC. Es el tema de MainActivity en el manifest. -->
+    <style name="Theme.SIFEC.Splash" parent="Theme.SplashScreen">
         <item name="windowSplashScreenBackground">@color/ic_launcher_background</item>
         <item name="windowSplashScreenAnimatedIcon">@drawable/ic_splash</item>
-        <item name="postSplashScreenTheme">@style/Theme.SIMPAC</item>
+        <item name="postSplashScreenTheme">@style/Theme.SIFEC</item>
     </style>
 </resources>

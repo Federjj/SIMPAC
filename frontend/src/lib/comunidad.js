@@ -39,7 +39,7 @@ export function textoDistancia(km) {
 
 // Puntaje de un reporte: su confianza (la calcula la BD con los votos, 0 a 1) menos un castigo por
 // lejanía (50 km restan tanto como pasar de 1 a 0 de confianza; a más de 100 km no se castiga más).
-// Sin posición, solo cuenta la confianza. Criterio SIMPAC para ordenar la lista, nada más.
+// Sin posición, solo cuenta la confianza. Criterio SIFEC para ordenar la lista, nada más.
 export function puntajeReporte(r, km) {
   const confianza = Number.isFinite(r?.confianza) ? r.confianza : 0.5;
   const lejania = km == null ? 0 : Math.min(km, 100) / 50;

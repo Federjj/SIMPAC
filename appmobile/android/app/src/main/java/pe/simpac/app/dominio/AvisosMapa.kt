@@ -11,7 +11,7 @@ import java.time.ZonedDateTime
 object AvisosMapa {
     val COLOR_NIVEL = mapOf(2 to "amarillo", 3 to "naranja", 4 to "rojo")
     val ETIQUETA_NIVEL = mapOf(2 to "Amarillo (nivel 2 de 4)", 3 to "Naranja (nivel 3 de 4)", 4 to "Rojo (nivel 4 de 4, el más grave)")
-    const val FIRMA = "Ícono, zona simplificada y resumen de SIMPAC, basados en el aviso de SENAMHI."
+    const val FIRMA = "Ícono, zona simplificada y resumen de SIFEC, basados en el aviso de SENAMHI."
     val GLIFOS = setOf("gota", "gota_rayo", "copo", "termometro", "termometro_frio", "viento")
 
     /** El backend guarda 'temperatura': el titulo dice si es por calor o por frio. */

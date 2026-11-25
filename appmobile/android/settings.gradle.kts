@@ -1,4 +1,4 @@
-// Proyecto Android nativo de SIMPAC (Kotlin + Jetpack Compose). Un solo modulo: app.
+// Proyecto Android nativo de SIFEC (Kotlin + Jetpack Compose). Un solo modulo: app.
 pluginManagement {
     repositories {
         google {
@@ -30,5 +30,5 @@ plugins {
     id("org.gradle.toolchains.foojay-resolver-convention") version "1.0.0"
 }
 
-rootProject.name = "SIMPAC"
+rootProject.name = "SIFEC"
 include(":app")

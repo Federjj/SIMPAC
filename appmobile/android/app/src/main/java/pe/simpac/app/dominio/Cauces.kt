@@ -10,7 +10,7 @@ import java.text.DecimalFormat
 import java.text.DecimalFormatSymbols
 import java.util.Locale
 
-/** Estado del cauce y del disco de una estacion de rio (lib/lenguaje.js textoRio). "atento" es criterio de SIMPAC. */
+/** Estado del cauce y del disco de una estacion de rio (lib/lenguaje.js textoRio). "atento" es criterio de SIFEC. */
 enum class EstadoCauce(val clave: String, val orden: Int, val etiqueta: String) {
     SD("sd", 0, "Sin nivel de alerta"),
     NORMAL("normal", 1, "Tranquilo"),
@@ -79,7 +79,7 @@ object Cauces {
     private val DE_AVISO = mapOf(2 to NivelZona.ATENTOS, 3 to NivelZona.ALERTA, 4 to NivelZona.EMERGENCIA)
     private val CAUCE_DE_AVISO = mapOf(2 to EstadoCauce.ATENTO, 3 to EstadoCauce.ALERTA, 4 to EstadoCauce.EMERGENCIA)
     private val TENDENCIA = mapOf("Ascendente" to "subiendo", "Descendente" to "bajando", "Estable" to "estable")
-    const val NOTA_ATENTO = "“Cerca” es un criterio de SIMPAC (80 % del caudal de alerta, o menos de 50 cm del nivel), no un aviso de ANA."
+    const val NOTA_ATENTO = "“Cerca” es un criterio de SIFEC (80 % del caudal de alerta, o menos de 50 cm del nivel), no un aviso de ANA."
     const val ACCION_ALERTA = "Aléjate de la orilla y no cruces el río."
     const val ACCION_EMERGENCIA = "Aléjate de la orilla, no cruces el río y sigue las indicaciones de Defensa Civil."
 
@@ -195,7 +195,7 @@ object Cauces {
             when (t.estado) {
                 EstadoCauce.EMERGENCIA -> senales += SenalZona("ana", NivelZona.EMERGENCIA, "El río pasó su nivel de emergencia (ANA)", "Lleva $medida; su nivel de emergencia es ${num(t.ue)} $unidad.")
                 EstadoCauce.ALERTA -> senales += SenalZona("ana", NivelZona.ALERTA, "El río pasó su nivel de alerta (ANA)", "Lleva $medida; su nivel de alerta es ${num(t.ua)} $unidad.")
-                EstadoCauce.ATENTO -> senales += SenalZona("ana", NivelZona.ATENTOS, "El río está cerca de su nivel de alerta", "${t.frase} “Cerca” es un criterio de SIMPAC, no un aviso de ANA.")
+                EstadoCauce.ATENTO -> senales += SenalZona("ana", NivelZona.ATENTOS, "El río está cerca de su nivel de alerta", "${t.frase} “Cerca” es un criterio de SIFEC, no un aviso de ANA.")
                 else -> {}
             }
         }

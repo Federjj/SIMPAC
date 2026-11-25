@@ -66,7 +66,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil.compose.SubcomposeAsyncImage
 import coil.request.ImageRequest
-import pe.simpac.app.SimpacApp
+import pe.simpac.app.SifecApp
 import pe.simpac.app.data.EstadoSesion
 import pe.simpac.app.dominio.Comunidad
 import pe.simpac.app.dominio.ReporteOrdenado
@@ -86,7 +86,7 @@ import pe.simpac.app.ui.componentes.temaOscuro
 /** Estado de la sesion (data/Sesion.kt) para cualquier pantalla. */
 @Composable
 fun estadoSesion(): State<EstadoSesion> =
-    (LocalContext.current.applicationContext as SimpacApp).contenedor.sesion.estado.collectAsState()
+    (LocalContext.current.applicationContext as SifecApp).contenedor.sesion.estado.collectAsState()
 
 /** Glifo del tipo de reporte sobre un disco del color del tipo (misma idea que components/IconoReporte.jsx). */
 @Composable

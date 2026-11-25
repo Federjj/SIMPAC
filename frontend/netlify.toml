@@ -16,6 +16,14 @@
 [build.environment]
   NODE_VERSION = "22"
 
+# Nombre viejo del APK (hasta el 25-11-2026): 301 a la ruta nueva para que los enlaces ya compartidos
+# sigan funcionando. Va antes de la regla de la SPA: como ese archivo ya no existe, la primera regla
+# que coincide gana.
+[[redirects]]
+  from = "/descargas/SIMPAC.apk"
+  to = "/descargas/SIFEC.apk"
+  status = 301
+
 # SPA: sin force, un archivo que existe se sirve antes que esta regla (como try_files en nginx).
 # Diferencia con nginx y Vercel: /assets/noexiste.js aquí responde index.html (200) y no 404.
 [[redirects]]
@@ -51,10 +59,10 @@
   [headers.values]
     Cache-Control = "no-cache"
 
-# El APK de la app Android (public/descargas/SIMPAC.apk): descarga directa, siempre la versión actual.
+# El APK de la app Android (public/descargas/SIFEC.apk): descarga directa, siempre la versión actual.
 [[headers]]
-  for = "/descargas/SIMPAC.apk"
+  for = "/descargas/SIFEC.apk"
   [headers.values]
     Content-Type = "application/vnd.android.package-archive"
-    Content-Disposition = 'attachment; filename="SIMPAC.apk"'
+    Content-Disposition = 'attachment; filename="SIFEC.apk"'
     Cache-Control = "no-cache"

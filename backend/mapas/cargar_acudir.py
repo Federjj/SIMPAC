@@ -69,7 +69,7 @@ from backend.ingesta.departamentos import DEPARTAMENTOS, nombre_departamento
 log = logging.getLogger("cargar_acudir")
 
 DATOS = Path(__file__).resolve().parents[1] / "data" / "acudir"
-CACHE_PAIS = Path(tempfile.gettempdir()) / "simpac_acudir"      # CSV del país (20 MB): no va al repo
+CACHE_PAIS = Path(tempfile.gettempdir()) / "sifec_acudir"      # CSV del país (20 MB): no va al repo
 ARCHIVOS = {
     "fuentes": "fuentes.json",
     "renipress": "renipress_cajamarca.csv",

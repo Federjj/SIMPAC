@@ -1,5 +1,5 @@
 """
-Prototipo de SIMPAC sin dependencias (SQLite + http.server), congelado.
+Prototipo de SIFEC sin dependencias (SQLite + http.server), congelado.
 
 Fue la primera versión: sirve para mostrar los conectores funcionando sin Docker
 ni Supabase. Lo que corre en producción es app.py + celery_app.py + ingesta/.

@@ -234,7 +234,7 @@ def _estado_crecida(c: dict) -> str | None:
     """
     Estado de una estación de ANA con umbrales de crecida, como textoRio (lib/lenguaje.js):
     emergencia | alerta | atento (80 % del caudal de alerta o a menos de 50 cm del nivel; criterio
-    SIMPAC) | normal. None si no se puede evaluar (sin dato, sin umbral) o si vigila nivel bajo.
+    SIFEC) | normal. None si no se puede evaluar (sin dato, sin umbral) o si vigila nivel bajo.
     """
     v, ua, ue = c.get("valor"), c.get("umbral_alerta"), c.get("umbral_emergencia")
     if v is None or ua is None or (ue is not None and ue < ua):
@@ -275,7 +275,7 @@ def _rio_vigilado(rio: dict, caudales: list[dict], ahora: datetime) -> dict:
                                       f"{_num(caudal['umbral_alerta'])} {caudal['unidad']}"))
         elif estado == "atento":
             senales.append(("atentos", f"está cerca de su nivel de alerta (lleva {medida}; el nivel de alerta de ANA es "
-                                       f"{_num(caudal['umbral_alerta'])} {caudal['unidad']}; 'cerca' es un criterio de SIMPAC)"))
+                                       f"{_num(caudal['umbral_alerta'])} {caudal['unidad']}; 'cerca' es un criterio de SIFEC)"))
     hidros = [h for h in (rio.get("avisos_hidro") or [])
               if h.get("sentido") == "crecida" and h.get("nivel") in DE_AVISO_HIDRO
               and not (_fecha(h.get("fin")) and _fecha(h["fin"]) <= ahora)]
@@ -469,7 +469,7 @@ def _frase_principal(i: dict) -> str:
         return f"{d}: {_describir(i)}."
     r, l = i["rios"], i["lluvia"]
     if i["nivel"] == "sin_dato":
-        return (f"{d}: sin avisos de SENAMHI vigentes. SIMPAC no tiene aquí ríos con nivel de alerta de ANA "
+        return (f"{d}: sin avisos de SENAMHI vigentes. SIFEC no tiene aquí ríos con nivel de alerta de ANA "
                 "ni estaciones de SENAMHI con lluvia reciente que pueda revisar.")
     partes = []
     if r["con_nivel_de_alerta"]:
@@ -492,7 +492,7 @@ def _frase_cerca(i: dict) -> str | None:
     k = i["rios"]["cerca_de_su_nivel"]
     if not k or i["rios_crecida"]:
         return None
-    return f"{_plural(k, 'río está cerca', 'ríos están cerca')} de su nivel de alerta de ANA (criterio de SIMPAC)."
+    return f"{_plural(k, 'río está cerca', 'ríos están cerca')} de su nivel de alerta de ANA (criterio de SIFEC)."
 
 
 def _frase_lluvia(i: dict) -> str | None:
@@ -595,7 +595,7 @@ def titular_corto(i: dict) -> str:
             texto = f"{d}: {_unir(partes)}."
         return _acortar(texto, MAX_CORTO)
     if i["nivel"] == "sin_dato":
-        return _acortar(f"{d}: sin avisos de SENAMHI; SIMPAC no tiene aquí ríos ni estaciones de lluvia que pueda revisar.",
+        return _acortar(f"{d}: sin avisos de SENAMHI; SIFEC no tiene aquí ríos ni estaciones de lluvia que pueda revisar.",
                         MAX_CORTO)
     r, l = i["rios"]["con_nivel_de_alerta"], i["lluvia"]["estaciones"]
     if r and l:
@@ -612,7 +612,7 @@ def titular_corto(i: dict) -> str:
 # Redacción con el modelo: prompt con las cifras fijadas y validación de la salida
 # ---------------------------------------------------------------------------------------
 SISTEMA = (
-    "Eres el redactor de SIMPAC, un servicio público del Perú que resume el estado hidrometeorológico de cada "
+    "Eres el redactor de SIFEC, un servicio público del Perú que resume el estado hidrometeorológico de cada "
     "departamento para personas sin formación técnica. Escribe UN solo titular en español del Perú, en lenguaje "
     "claro y directo, de 240 caracteres como máximo, en un solo párrafo, sin emojis, sin enlaces, sin comillas, "
     "sin listas ni saltos de línea. Usa SOLO los hechos que recibes: no calcules, no agregues cifras, lugares, "
@@ -627,7 +627,7 @@ SISTEMA = (
 def hechos(i: dict) -> str:
     """Los insumos como líneas en español: es lo único que el modelo puede poner en palabras."""
     lineas = [f"Departamento: {i['departamento']}",
-              f"Nivel general calculado por SIMPAC: {i['nivel']} (rótulo: {i['etiqueta']})",
+              f"Nivel general calculado por SIFEC: {i['nivel']} (rótulo: {i['etiqueta']})",
               f"Alertas y avisos oficiales vigentes: {i['alertas_oficiales']}"]
     for a in i["avisos_senamhi"]:
         lineas.append(f"Aviso de SENAMHI ({a['referencia']}), color {a['color']}: {a['detalle']}")
@@ -640,7 +640,7 @@ def hechos(i: dict) -> str:
         lineas.append(f"Estación de SENAMHI que midió más lluvia que su referencia (no es aviso oficial): {e['detalle']}")
     r, l = i["rios"], i["lluvia"]
     lineas.append(f"Ríos de ANA en el departamento: {r['estaciones']} estaciones, {r['con_nivel_de_alerta']} con nivel "
-                  f"de alerta; {r['pasan_su_nivel']} lo pasan; {r['cerca_de_su_nivel']} cerca de su nivel (criterio SIMPAC)")
+                  f"de alerta; {r['pasan_su_nivel']} lo pasan; {r['cerca_de_su_nivel']} cerca de su nivel (criterio SIFEC)")
     if l["estaciones"]:
         lineas.append(f"Lluvia de SENAMHI en la última hora: {l['con_lluvia']} de {l['estaciones']} estaciones con lluvia; "
                       f"máximo {_num(l['max_mm_hora'])} mm" + (f" en {l['estacion_max']}" if l["estacion_max"] else "")
@@ -678,7 +678,7 @@ def pedir_llm(i: dict, clave_api: str, modelo: str, abrir=urllib.request.urlopen
         "x-api-key": clave_api,
         "anthropic-version": VERSION_API,
         "content-type": "application/json",
-        "User-Agent": "SIMPAC-titular/1.0 (+https://github.com/Federjj/SIMPAC)",
+        "User-Agent": "SIFEC-titular/1.0 (+https://github.com/Federjj/SIMPAC)",
     })
     try:
         with abrir(pedido, timeout=TIMEOUT_S) as r:

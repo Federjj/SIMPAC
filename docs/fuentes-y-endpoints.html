@@ -104,7 +104,7 @@
   <header class="hero">
     <p class="eyebrow">Inventario técnico · Adquisición de datos · Conectores</p>
     <h1>Fuentes y Endpoints</h1>
-    <p class="lede">Endpoints reales de cada organismo, capturados por inspección de red, para alimentar los conectores de SIMPAC. Enfoque: datos hidrometeorológicos y de riesgo de la provincia de Cajamarca.</p>
+    <p class="lede">Endpoints reales de cada organismo, capturados por inspección de red, para alimentar los conectores de SIFEC. Enfoque: datos hidrometeorológicos y de riesgo de la provincia de Cajamarca.</p>
     <div class="metaline">
       <span><b>Proyecto</b> SIFEC</span>
       <span><b>Fecha</b> 06 sep 2026</span>
@@ -130,7 +130,7 @@
     <div class="col">
       <p class="eyebrow"><span class="secnum">01</span> &nbsp;Cobertura</p>
       <h2>De cada necesidad de la app a su fuente</h2>
-      <p>Cada fila conecta una función de SIMPAC con el endpoint que la alimenta. Todos son públicos y sin autenticación; los marcados como tiempo real se actualizan por hora o por evento.</p>
+      <p>Cada fila conecta una función de SIFEC con el endpoint que la alimenta. Todos son públicos y sin autenticación; los marcados como tiempo real se actualizan por hora o por evento.</p>
     </div>
     <div class="tablewrap">
       <table style="min-width:760px">
@@ -156,7 +156,7 @@
     <div class="col">
       <p class="eyebrow"><span class="secnum">02</span> &nbsp;Cómo se convierte el dato en alerta</p>
       <h2>El motor de umbrales</h2>
-      <p>El núcleo de SIMPAC es comparar los datos en tiempo real contra umbrales por zona. Dos entradas cuantitativas (lluvia horaria de SENAMHI y caudal de ANA, que ya trae sus propios umbrales) más el aviso oficial de SENAMHI producen un nivel de alerta que alimenta el titular, el mapa y la notificación push.</p>
+      <p>El núcleo de SIFEC es comparar los datos en tiempo real contra umbrales por zona. Dos entradas cuantitativas (lluvia horaria de SENAMHI y caudal de ANA, que ya trae sus propios umbrales) más el aviso oficial de SENAMHI producen un nivel de alerta que alimenta el titular, el mapa y la notificación push.</p>
     </div>
     <figure>
       <div class="figbox">
@@ -286,7 +286,7 @@ Puntos:  POST …/VisorPorCuenca/ServicioGeneral.asmx/ListarMapaGEO
 Config:  POST /sigridv3/entorno/traer  →  { extension, mapa_base, shape(WKT),
          capas_activas: "cartografiaPeligros=[…]; cartografiaRiesgos=[…];
                          elementosExpuestos=[…]; …" }</pre>
-      <p>Las capas se sirven por <strong>ArcGIS REST (MapServer / FeatureServer)</strong> — consumibles con <code>identify</code>/<code>query</code> o como WMS. Hay muchos escenarios de riesgo de Cajamarca (p. ej. deslizamiento en Contumazá, fuente INGEMMET). Uso en SIMPAC: capa de contexto de riesgo y para el <strong>cruce</strong> (¿el reporte cae en zona de peligro alto?). No es tiempo real.</p>
+      <p>Las capas se sirven por <strong>ArcGIS REST (MapServer / FeatureServer)</strong> — consumibles con <code>identify</code>/<code>query</code> o como WMS. Hay muchos escenarios de riesgo de Cajamarca (p. ej. deslizamiento en Contumazá, fuente INGEMMET). Uso en SIFEC: capa de contexto de riesgo y para el <strong>cruce</strong> (¿el reporte cae en zona de peligro alto?). No es tiempo real.</p>
     </div>
   </section>
 
@@ -369,10 +369,10 @@ https://www.cpc.ncep.noaa.gov/data/indices/wksst8110.for   # TSM semanal Niño 1
 <script>
   (function(){
     var root=document.documentElement, btn=document.getElementById('themeToggle'), stored=null;
-    try{stored=localStorage.getItem('simpac-theme');}catch(e){}
+    try{stored=localStorage.getItem('sifec-theme');}catch(e){}
     if(stored==='dark'||stored==='light') root.setAttribute('data-theme',stored);
     function cur(){var t=root.getAttribute('data-theme'); if(t)return t; return (window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches)?'dark':'light';}
     function lab(){btn.textContent=cur()==='dark'?'Claro':'Oscuro';} lab();
-    btn.addEventListener('click',function(){var n=cur()==='dark'?'light':'dark'; root.setAttribute('data-theme',n); try{localStorage.setItem('simpac-theme',n);}catch(e){} lab();});
+    btn.addEventListener('click',function(){var n=cur()==='dark'?'light':'dark'; root.setAttribute('data-theme',n); try{localStorage.setItem('sifec-theme',n);}catch(e){} lab();});
   })();
 </script>

@@ -104,7 +104,7 @@ export function usePanorama(depto) {
   const lluviaRevisada =
     nacional?.resumen?.alertas != null && Array.isArray(datos.lluviaAhora) && !errores.lluviaAhora;
 
-  // Qué vigila SIMPAC en la zona: ríos con nivel de alerta de ANA y estaciones de SENAMHI
+  // Qué vigila SIFEC en la zona: ríos con nivel de alerta de ANA y estaciones de SENAMHI
   // con lluvia de la última hora y referencia (las que la regla puede revisar). `lluviaFuera`:
   // las mismas estaciones en el resto del país (en todo el país sin departamento).
   const cobertura = {

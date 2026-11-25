@@ -16,9 +16,9 @@ import pe.simpac.app.dominio.Departamentos
  *   "pais"          -> alertas y emergencias de todo el pais
  *   "zona_<slug>"   -> las del departamento (Departamentos.slugTema)
  * El backend solo envia niveles alerta y emergencia (nunca aviso ni lluvia medida) y un mensaje
- * "SIMPAC: vuelve la calma en <Departamento>" cuando baja de alerta a normal/aviso.
+ * "SIFEC: vuelve la calma en <Departamento>" cuando baja de alerta a normal/aviso.
  */
-object PushSimpac {
+object PushSifec {
     /** true si Firebase quedo configurado en esta instalacion (hubo google-services.json al compilar). */
     fun disponible(contexto: Context): Boolean = try {
         FirebaseApp.getApps(contexto).isNotEmpty()

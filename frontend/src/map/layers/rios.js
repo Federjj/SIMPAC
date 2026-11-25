@@ -63,9 +63,9 @@ const num = (v) => Number(v).toLocaleString("es-PE", { maximumFractionDigits: 2 
 const minuscula = (t) => t.charAt(0).toLowerCase() + t.slice(1);
 const NOTA_CAUCE =
   "Las franjas junto al río marcan la zona que podría afectar si se desborda (capa «Zonas que un río podría afectar»).";
-// las zonas estimadas (si SIMPAC las tiene para el río) y la franja de atención van en la otra capa
+// las zonas estimadas (si SIFEC las tiene para el río) y la franja de atención van en la otra capa
 const SIN_ZONAS =
-  "Si SIMPAC estimó zonas que este río podría afectar (con el relieve; no es un mapa oficial) se ven en la capa «Zonas que un río podría afectar» al acercarse; la franja punteada junto al cauce, solo en alerta o emergencia, es referencial.";
+  "Si SIFEC estimó zonas que este río podría afectar (con el relieve; no es un mapa oficial) se ven en la capa «Zonas que un río podría afectar» al acercarse; la franja punteada junto al cauce, solo en alerta o emergencia, es referencial.";
 const ESPERA_VISTA_MS = 150; // tras moveend, antes de revisar detalle y nombres
 const GUIA_PX = 6; // simplificación de la guía del nombre (píxeles con el zoom de ahora)
 // "2021-01-11" -> "11/01/2021"
@@ -257,13 +257,13 @@ function popupCauce(rio, est) {
           (sinAviso.length
             ? `; ${sinAviso.length === 1 ? "la otra estación de ANA en este río" : "las otras estaciones de ANA en este río"} (${lista(sinAviso, 4)}) no ${sinAviso.length === 1 ? "tiene" : "tienen"} aviso y ${sinAviso.length === 1 ? "se muestra" : "se muestran"} con su propia medición.`
             : "."),
-        "SIMPAC resalta todo el trazo del río con el color del aviso; el aviso de SENAMHI no dice qué tramo abarca.",
+        "SIFEC resalta todo el trazo del río con el color del aviso; el aviso de SENAMHI no dice qué tramo abarca.",
       ]
     : lecturas.length > 1
       ? `Este río tiene ${lecturas.length} estaciones de ANA (${lista(lecturas.map((x) => x.estacion), 4)}); el trazo toma el estado de la peor.`
       : null;
   const trazo =
-    `SIMPAC resalta el cauce con el trazo de ${fila.fuente} (${licenciaCorta(fila.licencia)}); ` +
+    `SIFEC resalta el cauce con el trazo de ${fila.fuente} (${licenciaCorta(fila.licencia)}); ` +
     (c
       ? `el nivel es de la estación ${c.estacion} de ANA.`
       : "ANA no tiene una estación de caudal en este río: el color es el del aviso hidrológico de SENAMHI.");
@@ -449,7 +449,7 @@ export default {
   refreshMs: 10 * 60_000, // la ingesta es horaria
   legend: [
     { forma: "rio", color: RIO_HEX.normal, label: "Tranquilo" },
-    { forma: "rio", color: RIO_HEX.atento, label: "Cerca del nivel de alerta (criterio SIMPAC)" },
+    { forma: "rio", color: RIO_HEX.atento, label: "Cerca del nivel de alerta (criterio SIFEC)" },
     { forma: "rio", color: RIO_HEX.alerta, label: "Pasó el nivel de alerta" },
     { forma: "rio", color: RIO_HEX.emergencia, label: "Pasó el nivel de emergencia" },
     { forma: "rio", color: RIO_HEX.sd, label: "Sin nivel de alerta publicado" },

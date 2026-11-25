@@ -6,7 +6,7 @@ import pe.simpac.app.dominio.Lluvia
 import java.net.URLEncoder
 
 /**
- * Fuentes de imagenes (tiles) de las capas de lluvia que no son datos de SIMPAC sino imagenes de
+ * Fuentes de imagenes (tiles) de las capas de lluvia que no son datos de SIFEC sino imagenes de
  * otro servidor, como en la web: la lluvia observada de SENAMHI (WMS de IDESEP, map/senamhi.js) y
  * la lluvia por satelite de la NASA (WMTS de GIBS, map/layers/lluviaSatelite.js). osmdroid las pide
  * tile por tile y las guarda en su cache de tiles.

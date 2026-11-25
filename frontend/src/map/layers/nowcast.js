@@ -109,7 +109,7 @@ export default {
   legend: [1, 2, 3].map((n) => ({ forma: "mancha", color: NOWCAST_HEX[n], label: NIVELES[n].label })),
   fuente:
     "Nowcasting de SENAMHI: estimación automática con satélite, «referencial y aún en etapa de calibración». " +
-    "No es un aviso. SIMPAC usa azules para no confundirlo con los avisos. Si SENAMHI no publica hace más de 30 min, " +
+    "No es un aviso. SIFEC usa azules para no confundirlo con los avisos. Si SENAMHI no publica hace más de 30 min, " +
     "no se muestra.",
   // las localidades del pronóstico sirven para decir "cerca de" en el popup. Un error de la base
   // no rechaza la carga: la capa dice enseguida "No se pudo consultar" (MapView reintentaría en

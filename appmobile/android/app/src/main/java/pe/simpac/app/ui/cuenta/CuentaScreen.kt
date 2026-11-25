@@ -76,7 +76,7 @@ import pe.simpac.app.data.EstadoSesion
 import pe.simpac.app.dominio.Comunidad
 import pe.simpac.app.dominio.Departamentos
 import pe.simpac.app.dominio.Tiempo
-import pe.simpac.app.push.PushSimpac
+import pe.simpac.app.push.PushSifec
 import pe.simpac.app.ui.Intents
 import pe.simpac.app.ui.componentes.AparecerEscalonado
 import pe.simpac.app.ui.componentes.Cargando
@@ -177,7 +177,7 @@ private fun Confirmacion(estado: EstadoCuenta, vm: CuentaViewModel) {
 @Composable
 private fun Recuperar(estado: EstadoCuenta, vm: CuentaViewModel) {
     val vista = LocalView.current
-    Seccion("Tu cuenta de SIMPAC") {
+    Seccion("Tu cuenta de SIFEC") {
         Text(Comunidad.POR_QUE_CUENTA, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Spacer(Modifier.height(10.dp))
         Text("Olvidé mi contraseña", style = MaterialTheme.typography.titleMedium)
@@ -196,7 +196,7 @@ private fun Recuperar(estado: EstadoCuenta, vm: CuentaViewModel) {
 private fun Formulario(estado: EstadoCuenta, vm: CuentaViewModel) {
     val vista = LocalView.current
     val registro = estado.modo == ModoCuenta.REGISTRO
-    Seccion("Tu cuenta de SIMPAC") {
+    Seccion("Tu cuenta de SIFEC") {
         Text(Comunidad.POR_QUE_CUENTA, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Spacer(Modifier.height(10.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -380,7 +380,7 @@ private fun AjustesYAcerca(vm: AjustesViewModel) {
         if (ok) vm.cambiarNotificaciones(true)
     }
     fun prender() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && !PushSimpac.notificacionesPermitidas(contexto)) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && !PushSifec.notificacionesPermitidas(contexto)) {
             pedirNotificaciones.launch(Manifest.permission.POST_NOTIFICATIONS)
         } else vm.cambiarNotificaciones(true)
     }
@@ -410,8 +410,8 @@ private fun AjustesYAcerca(vm: AjustesViewModel) {
                         } else null,
                     )
                 }
-                if (c.notificaciones && !PushSimpac.notificacionesPermitidas(contexto)) {
-                    LineaFuente("Android tiene las notificaciones de SIMPAC apagadas: actívalas en Ajustes del teléfono.")
+                if (c.notificaciones && !PushSifec.notificacionesPermitidas(contexto)) {
+                    LineaFuente("Android tiene las notificaciones de SIFEC apagadas: actívalas en Ajustes del teléfono.")
                 }
             }
         }
@@ -445,7 +445,7 @@ private fun AjustesYAcerca(vm: AjustesViewModel) {
     }
 
     AparecerEscalonado(3) {
-        Seccion("Acerca de SIMPAC") {
+        Seccion("Acerca de SIFEC") {
             Text("Versión ${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE}). Proyecto académico que reúne datos hidrometeorológicos oficiales del Perú para El Niño, con foco en Cajamarca. No es una app oficial de SENAMHI, ANA ni INDECI.", style = MaterialTheme.typography.bodyMedium)
             Spacer(Modifier.height(6.dp))
             val giro by animateFloatAsState(if (fuentesAbiertas) 180f else 0f, tween(200, easing = FastOutSlowInEasing), label = "flechaFuentes")
@@ -461,7 +461,7 @@ private fun AjustesYAcerca(vm: AjustesViewModel) {
                     LineaFuente("ANA: caudales y umbrales de ríos, trazo de los ríos (GeoSNIRH; RJ 056-2018-ANA y Carta Nacional del IGN).")
                     LineaFuente("ENFEN: comunicado oficial del estado de El Niño costero. IGP: ICEN. NOAA: RONI.")
                     LineaFuente("A dónde acudir: RENIPRESS de SUSALUD (ODC-By), padrón de comisarías del MININTER vía CENEPRED, bomberos del CGBVP, gob.pe.")
-                    LineaFuente("Comunidad: reportes de las mismas personas que usan SIMPAC, validados con sus votos; no son información oficial.")
+                    LineaFuente("Comunidad: reportes de las mismas personas que usan SIFEC, validados con sus votos; no son información oficial.")
                     LineaFuente("Mapa base de la app y de la web: Stadia Maps, OpenMapTiles y OpenStreetMap (ODbL). Trazo del Mashcón: OpenStreetMap. Relieve de las zonas estimadas: Copernicus GLO-30.")
                     Spacer(Modifier.height(6.dp))
                     Text("Licencias de software", style = MaterialTheme.typography.labelLarge)

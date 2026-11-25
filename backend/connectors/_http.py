@@ -1,5 +1,5 @@
 """
-Helpers HTTP mínimos para los conectores de SIMPAC.
+Helpers HTTP mínimos para los conectores de SIFEC.
 
 Usa solo la librería estándar (urllib) para que los prototipos corran sin
 instalar nada. En producción se recomienda migrar a `httpx`/`requests` con
@@ -19,7 +19,7 @@ from typing import Any
 
 log = logging.getLogger(__name__)
 
-USER_AGENT = "SIMPAC/0.1 (proyecto academico UPN; contacto: equipo-simpac)"
+USER_AGENT = "SIFEC/0.1 (proyecto academico UPN; contacto: equipo-sifec)"
 TIMEOUT = 30
 INTENTOS = 3   # intentos totales ante fallas transitorias de red
 

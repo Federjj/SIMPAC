@@ -221,7 +221,7 @@ private fun ContenidoInicio(
                     AvisoDato("Sin conexión: se muestra lo último guardado, de las ${Tiempo.horaCorta(estado.obtenidoEn)}.", fuerte = true)
                 }
                 AnimatedVisibility(visible = estado.desactualizado, enter = Transiciones.aparecer, exit = Transiciones.desaparecer) {
-                    AvisoDato("Dato desactualizado: SIMPAC no actualiza esta zona desde hace ${Tiempo.haceTexto(estado.titularRevisadoMs).removePrefix("hace ")}. Verifica con los canales oficiales.")
+                    AvisoDato("Dato desactualizado: SIFEC no actualiza esta zona desde hace ${Tiempo.haceTexto(estado.titularRevisadoMs).removePrefix("hace ")}. Verifica con los canales oficiales.")
                 }
                 AnimatedVisibility(visible = estado.ubicacionApagada, enter = Transiciones.aparecer, exit = Transiciones.desaparecer) {
                     AvisoUbicacionApagada(estado.departamento)
@@ -287,7 +287,7 @@ private fun ExplicacionGps(onUsarGps: () -> Unit, onSinGps: () -> Unit) {
         Text("Tu ubicación", style = MaterialTheme.typography.headlineMedium, textAlign = TextAlign.Center)
         Spacer(Modifier.height(12.dp))
         Text(
-            "SIMPAC usa tu ubicación solo mientras la app está abierta, para saber en qué departamento estás, " +
+            "SIFEC usa tu ubicación solo mientras la app está abierta, para saber en qué departamento estás, " +
                 "darte el pronóstico de la localidad más cercana y calcular a cuánto quedan la posta, la comisaría y los bomberos. " +
                 "No la guarda ni la comparte. Si prefieres, elige tu departamento a mano.",
             style = MaterialTheme.typography.bodyLarge,
@@ -382,7 +382,7 @@ private fun TarjetaTitular(estado: EstadoInicio) {
     Seccion("Tu zona ahora") {
         AnimatedContent(targetState = estado.titular, modifier = Modifier.fillMaxWidth(), transitionSpec = { fundido() }, label = "titular") { t ->
             if (t == null) {
-                Text("SIMPAC todavía no tiene un titular para ${estado.departamento}. No significa que todo esté en calma: revisa las alertas y los canales oficiales.", style = MaterialTheme.typography.bodyLarge)
+                Text("SIFEC todavía no tiene un titular para ${estado.departamento}. No significa que todo esté en calma: revisa las alertas y los canales oficiales.", style = MaterialTheme.typography.bodyLarge)
             } else {
                 Column(Modifier.fillMaxWidth()) {
                     Text(t.titular_corto ?: t.titular ?: "", style = MaterialTheme.typography.titleLarge, modifier = Modifier.testTag("titular"))
@@ -392,7 +392,7 @@ private fun TarjetaTitular(estado: EstadoInicio) {
                     }
                     Spacer(Modifier.height(6.dp))
                     LineaFuente("Generado el ${Tiempo.horaCorta(estado.titularGeneradoMs)} (${Tiempo.haceTexto(estado.titularGeneradoMs)}), " +
-                        if (t.origen == "llm") "redactado por un modelo de lenguaje con cifras oficiales y validado" else "por reglas de SIMPAC con datos oficiales")
+                        if (t.origen == "llm") "redactado por un modelo de lenguaje con cifras oficiales y validado" else "por reglas de SIFEC con datos oficiales")
                 }
             }
         }

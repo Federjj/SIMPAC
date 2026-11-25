@@ -1,5 +1,5 @@
 """
-Job de ingesta de SIMPAC (prototipo).
+Job de ingesta de SIFEC (prototipo).
 
 Corre una "pasada": trae datos de las fuentes, los guarda en SQLite y recalcula
 las alertas vigentes. Ejecutar periódicamente (cada hora) con cron / Programador

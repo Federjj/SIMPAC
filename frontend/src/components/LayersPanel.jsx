@@ -236,7 +236,7 @@ export default function LayersPanel({
       </div>
       <p className="mt-2 text-[0.62rem] leading-snug text-muted-foreground">
         Ríos: ANA. Lluvia, avisos y mapas: SENAMHI. Pronóstico y nowcasting: SENAMHI. {ATRIBUCION_SENAMHI} Lluvia por
-        satélite: NASA. El Niño: ENFEN, IGP y NOAA. Zonas de ríos: estimación SIMPAC (Copernicus DEM), INDECI-PNUD 2005 y
+        satélite: NASA. El Niño: ENFEN, IGP y NOAA. Zonas de ríos: estimación SIFEC (Copernicus DEM), INDECI-PNUD 2005 y
         ANA. Trazo de ríos: © OpenStreetMap.
       </p>
     </div>

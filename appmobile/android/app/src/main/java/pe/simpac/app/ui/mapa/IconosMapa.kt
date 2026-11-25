@@ -383,7 +383,7 @@ object IconosMapa {
 
     /**
      * Rayado a 45 grados de una zona bajo_2m: franjas del tono oscuro del nivel sobre blanco tenue (como
-     * simpac-rayado-*). Un shader por nivel, compartido por todos los poligonos de ese nivel (antes se
+     * sifec-rayado-*). Un shader por nivel, compartido por todos los poligonos de ese nivel (antes se
      * dibujaba un bitmap nuevo por poligono cada vez que llegaban zonas).
      */
     fun shaderRayado(res: Resources, nivel: NivelZona): Shader = rayados.getOrPut(nivel) {

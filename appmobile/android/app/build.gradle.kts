@@ -85,8 +85,10 @@ android {
         applicationId = "pe.simpac.app"      // el mismo que la app de Capacitor: la reemplaza
         minSdk = 26
         targetSdk = 36
-        versionCode = 2
-        versionName = "2.0"
+        // 3 / 2.1: primer release con el nombre SIFEC (25-11-2026); el 2 / 2.0 fue el ultimo publicado como SIMPAC.
+        // Subir siempre el versionCode para que el telefono instale la app nueva como actualizacion.
+        versionCode = 3
+        versionName = "2.1"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         buildConfigField("String", "SUPABASE_URL", "\"$supabaseUrl\"")
         buildConfigField("String", "SUPABASE_KEY", "\"$supabaseKey\"")
@@ -159,7 +161,7 @@ gradle.taskGraph.whenReady {
                 "simpac.webUrl=${webUrlConfigurada ?: "(sin definir)"}",
         )
     }
-    if (empaquetaRelease) logger.lifecycle("Release de SIMPAC con API $apiUrlConfigurada y web $webUrlConfigurada")
+    if (empaquetaRelease) logger.lifecycle("Release de SIFEC con API $apiUrlConfigurada y web $webUrlConfigurada")
     if (empaquetaRelease && stadiaKey.isBlank()) {
         logger.warn("Release sin simpac.stadiaKey: el mapa usara los tiles de OpenStreetMap (MAPNIK), que no son para distribuir una app (politica de uso de OSM). Da la llave de Stadia Maps con -Psimpac.stadiaKey=...")
     }
@@ -171,7 +173,7 @@ dependencies {
     androidTestImplementation(composeBom)
 
     implementation(libs.androidx.core.ktx)
-    // Pantalla de arranque (Theme.SIMPAC.Splash en res/values/themes.xml e installSplashScreen() en MainActivity)
+    // Pantalla de arranque (Theme.SIFEC.Splash en res/values/themes.xml e installSplashScreen() en MainActivity)
     implementation(libs.androidx.core.splashscreen)
     implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation(libs.androidx.activity.compose)
@@ -198,7 +200,7 @@ dependencies {
     implementation(libs.coil.compose)
 
     // La dependencia de FCM va siempre; sin google-services.json FirebaseApp no se inicializa y
-    // la app lo detecta (push/PushSimpac.kt).
+    // la app lo detecta (push/PushSifec.kt).
     implementation(platform(libs.firebase.bom))
     implementation(libs.firebase.messaging)
 

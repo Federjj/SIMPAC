@@ -3,7 +3,7 @@ package pe.simpac.app.dominio
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
-import pe.simpac.app.data.JsonSimpac
+import pe.simpac.app.data.JsonSifec
 import pe.simpac.app.data.ReporteVigente
 import java.util.Locale
 import kotlin.math.min
@@ -159,7 +159,7 @@ object Comunidad {
     // ---- errores en lenguaje claro ----
 
     private fun objeto(cuerpo: String?): JsonObject? = try {
-        cuerpo?.takeIf { it.isNotBlank() }?.let { JsonSimpac.parseToJsonElement(it).jsonObject }
+        cuerpo?.takeIf { it.isNotBlank() }?.let { JsonSifec.parseToJsonElement(it).jsonObject }
     } catch (_: Exception) { null }
 
     private fun campo(o: JsonObject?, nombre: String): String = try {

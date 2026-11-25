@@ -241,7 +241,7 @@ class TestHand(unittest.TestCase):
 def _fc(rio="rimac", **cambios):
     anillo = [[-76.9, -12.0], [-76.89, -12.0], [-76.89, -11.99], [-76.9, -11.99], [-76.9, -12.0]]
     base = {"metodo": "HAND sobre Copernicus GLO-30, umbral ~2 m / ~3 m, tramo de 60 km alrededor de la ciudad de Lima",
-            "fuente": "Estimación SIMPAC", "licencia": "Aviso Copernicus", "atribucion": "Copernicus; ANA",
+            "fuente": "Estimación SIFEC", "licencia": "Aviso Copernicus", "atribucion": "Copernicus; ANA",
             "fecha_fuente": "2026-10-20", "nota": "Estimación, no es un mapa oficial."}
     feats = []
     for n, subtipo, area in ((2, "bajo_2m", 1.5), (3, "bajo_3m", 2.5)):

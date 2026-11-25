@@ -10,6 +10,7 @@ import { MAX_MENSAJE, NORMAS_CHAT, groserias, hace, mensajeErrorBD, mensajesVisi
 import { cn } from "@/lib/utils";
 
 const SONDEO_MS = 10_000;
+// sessionStorage; la clave conserva el nombre anterior del producto a propósito (no se pierden los ocultos).
 const CLAVE_OCULTOS = "simpac.chat.ocultos";
 const leerOcultos = () => {
   try {

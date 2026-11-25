@@ -90,7 +90,7 @@ export function rotuloLinea(
       guia.setLatLngs([...pts].reverse()); // vuelve a armar el trazo (mismo <path>)
       borrar();
     }
-    const id = `simpac-guia-${L.stamp(guia)}`;
+    const id = `sifec-guia-${L.stamp(guia)}`;
     path.id = id;
     const largo = path.getTotalLength();
     if (!largo) return borrar();

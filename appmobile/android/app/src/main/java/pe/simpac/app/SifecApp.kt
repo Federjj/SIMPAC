@@ -27,6 +27,7 @@ class Contenedor(app: Application) {
     val repositorio = Repositorio(
         supabase = ClienteSupabase(BuildConfig.SUPABASE_URL, BuildConfig.SUPABASE_KEY),
         api = ClienteApi(),
+        // El directorio "simpac_cache" conserva su nombre: cambiarlo perderia lo guardado por quien ya tiene la app.
         cache = CacheDisco(File(app.filesDir, "simpac_cache")),
     ).apply {
         comunidad = ComunidadSupabase(BuildConfig.SUPABASE_URL, BuildConfig.SUPABASE_KEY, token = { sesion.token() })
@@ -35,7 +36,7 @@ class Contenedor(app: Application) {
     init { sesion.iniciar() }
 }
 
-class SimpacApp : Application() {
+class SifecApp : Application() {
     companion object {
         const val CANAL_ALERTAS = "alertas"
     }

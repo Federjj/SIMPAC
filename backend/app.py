@@ -1,5 +1,5 @@
 """
-API de SIMPAC — FastAPI asíncrono.
+API de SIFEC — FastAPI asíncrono.
 
 Sirve un snapshot cacheado en Redis (rápido con muchos usuarios); el frontend
 sigue leyendo Supabase directo para lo detallado. Es de solo lectura: el refresco
@@ -25,8 +25,8 @@ async def lifespan(app: FastAPI):
         await app.state.redis.aclose()
 
 
-app = FastAPI(title="SIMPAC API", version="0.2.0", lifespan=lifespan)
-# CORS solo para la web de SIMPAC (SIMPAC_CORS_ORIGENES; por defecto nginx :8080, Vite :5173 y la
+app = FastAPI(title="SIFEC API", version="0.2.0", lifespan=lifespan)
+# CORS solo para la web de SIFEC (SIMPAC_CORS_ORIGENES; por defecto nginx :8080, Vite :5173 y la
 # app Android), solo GET: a otro origen el navegador no le entrega la respuesta. La API es de solo
 # lectura y los datos son públicos, pero así nadie monta otra web encima de ella sin que se note.
 app.add_middleware(
@@ -39,7 +39,7 @@ app.add_middleware(
 
 @app.get("/health")
 async def health():
-    return {"ok": True, "service": "simpac-api"}
+    return {"ok": True, "service": "sifec-api"}
 
 
 @app.get("/api/snapshot")

@@ -32,7 +32,7 @@ export default {
   ],
   fuente:
     "Pronóstico oficial de SENAMHI para cada localidad (hoy, mañana y pasado), no para toda la zona. Donde no hay " +
-    "ícono, SENAMHI no publica pronóstico: no quiere decir que no llueva. Ícono y resumen de SIMPAC.",
+    "ícono, SENAMHI no publica pronóstico: no quiere decir que no llueva. Ícono y resumen de SIFEC.",
   load: getPronosticoVigente,
   render(group, filas, { opcion, map, acomodo }) {
     // null: la vista aún no existe en la base (falta la migración)

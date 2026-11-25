@@ -35,7 +35,7 @@ export const NIVEL = {
     dot: "bg-nivel-emergencia",
     strip: "bg-nivel-emergencia",
   },
-  // Sin datos para evaluar (cargando, error, o SIMPAC no vigila nada en la zona): nunca
+  // Sin datos para evaluar (cargando, error, o SIFEC no vigila nada en la zona): nunca
   // se muestra "Normal" en verde por algo que no se midió.
   sin_dato: {
     label: "Sin datos",
@@ -114,7 +114,7 @@ export function etiqueta(nivel, alertas) {
   return "Atentos a la lluvia";
 }
 
-// Primero la zona del usuario, después el resto del país. Solo afirma lo que SIMPAC
+// Primero la zona del usuario, después el resto del país. Solo afirma lo que SIFEC
 // revisa en esa zona: `cobertura` = { rios, lluvia, lluviaFuera, lluviaRevisada } (ríos con
 // nivel de alerta de ANA; estaciones de SENAMHI del departamento, y del resto del país, con
 // lluvia de la última hora y referencia; y si esas lecturas ya pasaron por la regla del
@@ -150,7 +150,7 @@ export function frasesEstado(alertas, depto, cobertura = { rios: 0, lluvia: 0, l
     local = `En ${depto}: ${describir(aqui)}.`;
   } else if (depto && sinCobertura) {
     local = lluviaRevisada
-      ? `En ${depto}: SIMPAC no tiene aquí ríos con nivel de alerta ni estaciones de SENAMHI con lluvia de las últimas 3 horas que pueda revisar.`
+      ? `En ${depto}: SIFEC no tiene aquí ríos con nivel de alerta ni estaciones de SENAMHI con lluvia de las últimas 3 horas que pueda revisar.`
       : `En ${depto}: no se pudo revisar la lluvia de las estaciones de SENAMHI. No hay ríos con nivel de alerta de ANA aquí.`;
   } else if (depto) {
     const r = rios
@@ -166,7 +166,7 @@ export function frasesEstado(alertas, depto, cobertura = { rios: 0, lluvia: 0, l
     local = `En ${depto}: ${[r, l].filter(Boolean).join(", y ")}.`;
     if (!hayLluvia) {
       local += lluviaRevisada
-        ? " Aquí no hay estaciones de SENAMHI con lluvia de las últimas 3 horas que SIMPAC pueda revisar."
+        ? " Aquí no hay estaciones de SENAMHI con lluvia de las últimas 3 horas que SIFEC pueda revisar."
         : " No se pudo revisar la lluvia de las estaciones de SENAMHI.";
     }
     if (!rios) local += " No hay ríos con nivel de alerta de ANA aquí.";

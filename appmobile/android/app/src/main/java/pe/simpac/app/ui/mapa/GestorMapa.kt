@@ -88,7 +88,7 @@ private class FuenteStadia(private val llave: String, retina: Boolean) : XYTileS
 }
 
 /** Configuracion de osmdroid (una vez por proceso): User-Agent = applicationId y cache de tiles en el cache de la app. */
-object OsmdroidSimpac {
+object OsmdroidSifec {
     @Volatile private var listo = false
     val conLlaveStadia: Boolean get() = BuildConfig.STADIA_KEY.isNotBlank()
     val atribucion: String
@@ -222,7 +222,7 @@ class GestorMapa(
     private var sateliteDescarga: CacheManager.CacheManagerTask? = null
 
     init {
-        mapa.setTileSource(OsmdroidSimpac.fuenteTiles(mapa.context))
+        mapa.setTileSource(OsmdroidSifec.fuenteTiles(mapa.context))
         mapa.setMultiTouchControls(true)
         mapa.setTilesScaledToDpi(true)
         // los botones de zoom de osmdroid (cuadrados blancos, ajenos a Material 3 y al modo oscuro) van

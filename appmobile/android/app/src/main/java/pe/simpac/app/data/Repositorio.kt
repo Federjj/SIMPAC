@@ -52,7 +52,7 @@ class Repositorio(
     }
 
     private inline fun <reified T> lista(cuerpo: String): List<T> =
-        JsonSimpac.decodeFromString(ListSerializer(kotlinx.serialization.serializer<T>()), cuerpo)
+        JsonSifec.decodeFromString(ListSerializer(kotlinx.serialization.serializer<T>()), cuerpo)
 
     /** titular_zona del departamento (null si la tarea titular aun no escribio ese departamento). */
     suspend fun titular(departamento: String): Resultado<TitularZona?> = consultar(
@@ -125,11 +125,11 @@ class Repositorio(
         )
     }
 
-    /** Snapshot de la API de SIMPAC (contexto El Nino, resumen, alertas con 'oficial', caudales). */
+    /** Snapshot de la API de SIFEC (contexto El Nino, resumen, alertas con 'oficial', caudales). */
     suspend fun snapshot(apiUrl: String): Resultado<Snapshot> = consultar(
         "snapshot:$apiUrl",
         { api.snapshot(apiUrl) },
-        { JsonSimpac.decodeFromString(Snapshot.serializer(), it) },
+        { JsonSifec.decodeFromString(Snapshot.serializer(), it) },
     )
 
     /** Departamento en el que esta la persona: la estacion de SENAMHI mas cercana; si falla, la capital mas cercana. */
@@ -250,7 +250,7 @@ class Repositorio(
 
     /**
      * Escrituras con sesion (crear reporte, votar, comentar, foto, mis reportes, perfil). Lo pone el
-     * Contenedor (SimpacApp) al arrancar; null si la app no tiene Supabase configurado.
+     * Contenedor (SifecApp) al arrancar; null si la app no tiene Supabase configurado.
      */
     var comunidad: ComunidadSupabase? = null
     private fun comunidadOFalla(): ComunidadSupabase = comunidad ?: throw ErrorConsulta("Falta la dirección o la llave pública de Supabase")
@@ -380,7 +380,7 @@ class Repositorio(
         val matriz = pe.simpac.app.dominio.Lluvia.GIBS_MATRIZ
         val celda = "5/16/9"   // una celda (z/y/x) sobre el Peru
         fun head(url: String): okhttp3.Response = Http.cliente.newCall(
-            okhttp3.Request.Builder().url(url).head().header("User-Agent", "SIMPAC-Android").build(),
+            okhttp3.Request.Builder().url(url).head().header("User-Agent", "SIFEC-Android").build(),
         ).execute()
         val anunciada: Long = try {
             head("$base/default/$matriz/$celda.png").use { r ->
@@ -402,7 +402,7 @@ class Repositorio(
     /** GET de prueba de una imagen WMS de SENAMHI (una celda del pais): false si el servidor no responde. */
     suspend fun pruebaWms(url: String): Boolean = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
         try {
-            Http.cliente.newCall(okhttp3.Request.Builder().url(url).get().header("User-Agent", "SIMPAC-Android").build()).execute().use { r ->
+            Http.cliente.newCall(okhttp3.Request.Builder().url(url).get().header("User-Agent", "SIFEC-Android").build()).execute().use { r ->
                 r.isSuccessful && (r.header("Content-Type") ?: "").startsWith("image/")
             }
         } catch (_: java.io.IOException) { false }

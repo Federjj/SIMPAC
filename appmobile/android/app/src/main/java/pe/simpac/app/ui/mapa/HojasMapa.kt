@@ -258,7 +258,7 @@ private fun HojaRio(r: RioDibujo, obtenidoEn: Long?) {
         r.departamento?.let { LineaFuente(it) }
         if (aviso != null) {
             val hasta = Tiempo.parsearMs(aviso.fin)?.let { ", vigente hasta el ${Tiempo.horaCorta(it)}" } ?: ""
-            Parrafo("Hay un aviso hidrológico ${est.cauce.color} de SENAMHI para este río (N.º ${aviso.numero ?: "?"}$hasta). SIMPAC resalta todo el trazo con el color del aviso; el aviso no dice qué tramo abarca.")
+            Parrafo("Hay un aviso hidrológico ${est.cauce.color} de SENAMHI para este río (N.º ${aviso.numero ?: "?"}$hasta). SIFEC resalta todo el trazo con el color del aviso; el aviso no dice qué tramo abarca.")
             if (t != null && c != null) Parrafo("Última medición de ANA en ${c.estacion}: ${t.frase}")
         } else if (t != null) {
             // con una senal en la cuenca, la medicion va con su estacion: lo que mide ANA y lo que puede pasar son dos
@@ -275,7 +275,7 @@ private fun HojaRio(r: RioDibujo, obtenidoEn: Long?) {
             FilasAna(t, c.unidad)
             LineaFuente("Medido: ${Cauces.lecturaRio(c) ?: "sin fecha"}")
         }
-        Parrafo("Si SIMPAC estimó zonas que este río podría afectar (con el relieve; no es un mapa oficial) se ven en la capa \"Zonas que podrían inundarse\" al acercarse (zoom ${Cauces.ZONAS_DESDE}).")
+        Parrafo("Si SIFEC estimó zonas que este río podría afectar (con el relieve; no es un mapa oficial) se ven en la capa \"Zonas que podrían inundarse\" al acercarse (zoom ${Cauces.ZONAS_DESDE}).")
         aviso?.url?.takeIf { it.startsWith("https://") }?.let { url ->
             BotonHoja("Ver el aviso de SENAMHI") { Intents.abrirNavegador(contexto, url) }
         }
@@ -342,10 +342,10 @@ private fun HojaZona(z: ZonaDibujo, obtenidoEn: Long?) {
         Titulo(titulo)
         Pastilla(z.estadoZona.nivel.titulo, Paleta.zona(z.nivel))
         if (z.tipo == "estimada") {
-            Text("Zona que podría inundarse si el río se desborda - estimación de SIMPAC con el relieve (Copernicus), no es un mapa oficial.", style = MaterialTheme.typography.titleMedium)
+            Text("Zona que podría inundarse si el río se desborda - estimación de SIFEC con el relieve (Copernicus), no es un mapa oficial.", style = MaterialTheme.typography.titleMedium)
             QUE_ES[z.subtipo]?.let { Parrafo(it) }
         } else {
-            Text("Mapa de inundaciones del estudio INDECI-PNUD 2005, pasado a coordenadas por SIMPAC; no es un mapa oficial vigente.", style = MaterialTheme.typography.titleMedium)
+            Text("Mapa de inundaciones del estudio INDECI-PNUD 2005, pasado a coordenadas por SIFEC; no es un mapa oficial vigente.", style = MaterialTheme.typography.titleMedium)
             z.texto?.let { Parrafo(it) }
         }
         val principal = z.estadoZona.senales.firstOrNull()
@@ -458,7 +458,7 @@ private fun HojaLocalidad(sel: Seleccion.Localidad, obtenidoEn: Long?) {
         (f.url ?: PronosticoMapa.urlLocalidad(f.codigo)).takeIf { it.startsWith("https://") }?.let { url ->
             BotonHoja("Ver el pronóstico en SENAMHI") { Intents.abrirNavegador(contexto, url) }
         }
-        LineaFuente("Ícono y resumen de SIMPAC, basados en el texto de SENAMHI. Leído el ${Tiempo.horaCorta(obtenidoEn)}.")
+        LineaFuente("Ícono y resumen de SIFEC, basados en el texto de SENAMHI. Leído el ${Tiempo.horaCorta(obtenidoEn)}.")
     }
 }
 
@@ -477,7 +477,7 @@ private fun HojaNowcast(sel: Seleccion.ManchaNowcast, estado: EstadoMapa) {
         val emision = Tiempo.parsearMs(m.mancha.emision)
         LineaFuente("Emitido ${Nowcast.hhmm(m.mancha.emision)}${emision?.let { " (${Nowcast.textoHace(System.currentTimeMillis() - it)})" } ?: ""}")
         BotonHoja("Ver el nowcasting en SENAMHI") { Intents.abrirNavegador(contexto, Nowcast.URL_VISOR) }
-        LineaFuente("Basado en el nowcasting de SENAMHI; colores de SIMPAC. Leído el ${Tiempo.horaCorta(estado.nowcast?.obtenidoEn)}.")
+        LineaFuente("Basado en el nowcasting de SENAMHI; colores de SIFEC. Leído el ${Tiempo.horaCorta(estado.nowcast?.obtenidoEn)}.")
     }
 }
 
@@ -790,7 +790,7 @@ private fun Leyenda(capa: Capa, estado: EstadoMapa) {
                 MuestraGlifo("nieve", "Nieve o granizo")
                 MuestraGlifo("sol_nube", "Sin lluvia")
                 Muestra(0xFF0F172A, "Aro negro: tu localidad", anillo = true)
-                LineaFuente("Pronóstico oficial de SENAMHI para cada localidad (hoy, mañana y pasado), no para toda la zona. Donde no hay ícono, SENAMHI no publica pronóstico: no quiere decir que no llueva. Ícono y resumen de SIMPAC.")
+                LineaFuente("Pronóstico oficial de SENAMHI para cada localidad (hoy, mañana y pasado), no para toda la zona. Donde no hay ícono, SENAMHI no publica pronóstico: no quiere decir que no llueva. Ícono y resumen de SIFEC.")
             }
             Capa.NOWCAST -> {
                 for (n in 1..3) Muestra(Nowcast.COLOR.getValue(n), Nowcast.ETIQUETA.getValue(n), zona = true)
@@ -816,7 +816,7 @@ private fun Leyenda(capa: Capa, estado: EstadoMapa) {
             }
             Capa.RIOS -> {
                 Muestra(Paleta.cauce(EstadoCauce.NORMAL), "Azul: río tranquilo (trazo de ANA)", linea = true)
-                Muestra(Paleta.cauce(EstadoCauce.ATENTO), "Ámbar: cerca del nivel de alerta (criterio SIMPAC)", linea = true)
+                Muestra(Paleta.cauce(EstadoCauce.ATENTO), "Ámbar: cerca del nivel de alerta (criterio SIFEC)", linea = true)
                 Muestra(Paleta.cauce(EstadoCauce.ALERTA), "Naranja: pasó el nivel de alerta (ANA) o aviso hidrológico naranja", linea = true)
                 Muestra(Paleta.cauce(EstadoCauce.EMERGENCIA), "Rojo: pasó el nivel de emergencia o aviso hidrológico rojo", linea = true)
                 Muestra(Paleta.cauce(EstadoCauce.SD), "Gris: sin nivel de alerta publicado; en vista país, los ríos sin alerta", linea = true)
@@ -831,7 +831,7 @@ private fun Leyenda(capa: Capa, estado: EstadoMapa) {
                 Muestra(Paleta.zona(NivelZona.ALERTA), "Naranja: el río pasó su nivel de alerta o hay aviso hidrológico naranja")
                 Muestra(Paleta.zona(NivelZona.EMERGENCIA), "Rojo: pasó su nivel de emergencia o aviso hidrológico rojo")
                 Muestra(Paleta.zona(NivelZona.ALERTA), "Contorno punteado con relleno suave: franja de atención junto al río (referencial, no es un mapa de inundación); solo con el río en alerta o emergencia, desde zoom ${Cauces.DETALLE_DESDE}", punteado = true)
-                LineaFuente("Estimación de SIMPAC con el relieve (Copernicus GLO-30); el Mashcón tiene además el estudio INDECI-PNUD 2005. Trazo y franja de los ríos del país: ANA - GeoSNIRH. No son mapas oficiales: marcan dónde mirar, no hasta dónde llegará el agua.")
+                LineaFuente("Estimación de SIFEC con el relieve (Copernicus GLO-30); el Mashcón tiene además el estudio INDECI-PNUD 2005. Trazo y franja de los ríos del país: ANA - GeoSNIRH. No son mapas oficiales: marcan dónde mirar, no hasta dónde llegará el agua.")
             }
             Capa.DESBORDES -> {
                 Muestra(Incidentes.COLOR_ROMBO, "Desborde, erosión o puente caído documentado (con su año)", rombo = true)

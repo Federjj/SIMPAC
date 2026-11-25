@@ -1,5 +1,5 @@
 """
-API JSON de SIMPAC (prototipo) — servidor de la librería estándar, sin deps.
+API JSON de SIFEC (prototipo) — servidor de la librería estándar, sin deps.
 
     python -m backend.prototipo.api  # sirve en http://localhost:8000
 
@@ -90,7 +90,7 @@ class Handler(BaseHTTPRequestHandler):
 
 def main():
     srv = ThreadingHTTPServer(("127.0.0.1", PORT), Handler)
-    print(f"SIMPAC API en http://localhost:{PORT}  (Ctrl+C para parar)")
+    print(f"SIFEC API en http://localhost:{PORT}  (Ctrl+C para parar)")
     try:
         srv.serve_forever()
     except KeyboardInterrupt:

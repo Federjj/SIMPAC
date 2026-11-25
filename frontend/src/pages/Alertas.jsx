@@ -211,7 +211,7 @@ function RiosVigilados({ rios, depto, onVer }) {
       </h2>
       {rios.length === 0 && (
         <p className="text-sm text-muted-foreground">
-          SIMPAC no tiene todavía un río vigilado con mapa de zonas en {depto}. Por ahora vigila el río Mashcón (Cajamarca).
+          SIFEC no tiene todavía un río vigilado con mapa de zonas en {depto}. Por ahora vigila el río Mashcón (Cajamarca).
         </p>
       )}
       <div className="space-y-2">

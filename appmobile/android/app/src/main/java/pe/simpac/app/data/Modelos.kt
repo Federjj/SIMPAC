@@ -10,7 +10,7 @@ import kotlinx.serialization.json.JsonElement
  */
 
 /** Parser compartido: tolera campos nuevos y nulos en vez de romper la app con un cambio de la BD. */
-val JsonSimpac: Json = Json {
+val JsonSifec: Json = Json {
     ignoreUnknownKeys = true
     isLenient = true
     coerceInputValues = true
@@ -151,7 +151,7 @@ data class EstacionBreve(
     val lon: Double? = null,
 )
 
-/** GET /api/snapshot de la API de SIMPAC (backend/snapshot.py). */
+/** GET /api/snapshot de la API de SIFEC (backend/snapshot.py). */
 @Serializable
 data class ComunicadoEnfen(
     val anio: Int? = null,

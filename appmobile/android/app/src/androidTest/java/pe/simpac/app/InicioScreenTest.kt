@@ -16,7 +16,7 @@ import pe.simpac.app.dominio.Nivel
 import pe.simpac.app.ui.inicio.EstadoInicio
 import pe.simpac.app.ui.inicio.Fuente
 import pe.simpac.app.ui.inicio.InicioContenido
-import pe.simpac.app.ui.theme.SimpacTheme
+import pe.simpac.app.ui.theme.SifecTheme
 
 /** Prueba de Compose UI de la pantalla Inicio con datos falsos (sin red ni Supabase). */
 @RunWith(AndroidJUnit4::class)
@@ -39,12 +39,12 @@ class InicioScreenTest {
         enfen = ComunicadoEnfen(anio = 2026, numero = 18, fecha = "2026-10-16", estado = "Alerta de El Niño Costero"),
         pronostico = listOf(PronosticoVigente(codigo = "06-0011", nombre = "Cajamarca", fecha = "2026-10-20", tipo = "lluvia", posible = true, momento = "en la tarde", tmax = 21, tmin = 7)),
         localidad = "Cajamarca",
-        fuentes = listOf(Fuente("Titular de SIMPAC (por reglas)", "20 oct, 08:05 (hace 1 h)")),
+        fuentes = listOf(Fuente("Titular de SIFEC (por reglas)", "20 oct, 08:05 (hace 1 h)")),
     )
 
     private fun montar(estado: EstadoInicio) {
         regla.setContent {
-            SimpacTheme {
+            SifecTheme {
                 InicioContenido(estado = estado, onReintentar = {}, onUsarGps = {}, onSinGps = {}, onElegirDepartamento = {}, irAlertas = {})
             }
         }
@@ -73,7 +73,7 @@ class InicioScreenTest {
 
     @Test
     fun error_muestra_reintentar() {
-        montar(EstadoInicio(cargando = false, error = "No se pudo leer SIMPAC (sin respuesta)."))
+        montar(EstadoInicio(cargando = false, error = "No se pudo leer SIFEC (sin respuesta)."))
         regla.onNodeWithText("Reintentar").assertIsDisplayed()
     }
 

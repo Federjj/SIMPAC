@@ -1,4 +1,4 @@
-/* Service worker de SIMPAC (lo registra src/pwa.js solo en producción; la app Android nativa no lo usa).
+/* Service worker de SIFEC (lo registra src/pwa.js solo en producción; la app Android nativa no lo usa).
    Guarda la cáscara de la app para que abra rápido y vuelva a abrir sin red:
      - /assets/ (JS y CSS con hash en el nombre): primero la caché; si no está, la red y se guarda;
      - index.html y el manifest: primero la red (así un despliegue nuevo se ve en la siguiente
@@ -7,8 +7,10 @@
    servidores van siempre a la red. Un dato viejo presentado como actual sería engañar: sin red, la
    app misma lo dice ("sin conexión"). */
 // v2 (19-11-2026): deja pasar /descargas/ (el APK) y solo guarda HTML como cáscara; al activarse borra
-// simpac-v1, donde el SW anterior pudo guardar el manifest o una descarga como /index.html.
-const VERSION = "simpac-v2";
+// la caché anterior, donde el SW viejo pudo guardar el manifest o una descarga como /index.html.
+// v3 (25-11-2026): la caché cambia de nombre con el producto; como al activarse se borra toda caché
+// distinta de VERSION, la del nombre anterior se va sola.
+const VERSION = "sifec-v3";
 const CASCARA = ["/", "/index.html", "/manifest.webmanifest"];
 
 self.addEventListener("install", (e) => {

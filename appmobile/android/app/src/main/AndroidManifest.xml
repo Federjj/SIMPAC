@@ -18,7 +18,7 @@
     <uses-feature android:name="android.hardware.camera.any" android:required="false" />
 
     <application
-        android:name=".SimpacApp"
+        android:name=".SifecApp"
         android:allowBackup="true"
         android:dataExtractionRules="@xml/data_extraction_rules"
         android:fullBackupContent="@xml/backup_rules"
@@ -27,13 +27,13 @@
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
         android:networkSecurityConfig="${configRed}"
-        android:theme="@style/Theme.SIMPAC">
+        android:theme="@style/Theme.SIFEC">
 
         <activity
             android:name=".MainActivity"
             android:exported="true"
             android:launchMode="singleTop"
-            android:theme="@style/Theme.SIMPAC.Splash"
+            android:theme="@style/Theme.SIFEC.Splash"
             android:windowSoftInputMode="adjustResize">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
@@ -69,7 +69,7 @@
             android:resource="@drawable/ic_notificacion" />
         <meta-data
             android:name="com.google.firebase.messaging.default_notification_color"
-            android:resource="@color/simpac_azul" />
+            android:resource="@color/sifec_azul" />
     </application>
 
 </manifest>

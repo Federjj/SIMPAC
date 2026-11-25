@@ -12,7 +12,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 
 /**
- * Snackbar global de la app: un solo `SnackbarHostState` en el Scaffold de `AppSimpac` (sale encima de
+ * Snackbar global de la app: un solo `SnackbarHostState` en el Scaffold de `AppSifec` (sale encima de
  * la barra inferior) y un ambito de corrutina que vive lo que la app, asi el aviso se muestra aunque la
  * pantalla que lo pidio ya se haya ido (por ejemplo "Reporte enviado" justo al abrir el detalle).
  *
@@ -44,10 +44,10 @@ class Avisador(val estado: SnackbarHostState, private val ambito: CoroutineScope
     }
 }
 
-/** Lo provee `AppSimpac`; sin proveedor (vistas previas, pruebas) hay uno que no muestra nada. */
+/** Lo provee `AppSifec`; sin proveedor (vistas previas, pruebas) hay uno que no muestra nada. */
 val LocalAvisador = staticCompositionLocalOf { Avisador(SnackbarHostState(), CoroutineScope(Dispatchers.Main.immediate)) }
 
-/** Crea el avisador raiz (solo lo usa `AppSimpac`; las pantallas leen `LocalAvisador.current`). */
+/** Crea el avisador raiz (solo lo usa `AppSifec`; las pantallas leen `LocalAvisador.current`). */
 @Composable
 fun rememberAvisador(): Avisador {
     val ambito = rememberCoroutineScope()

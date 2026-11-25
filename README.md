@@ -1,6 +1,6 @@
-# SIMPAC
+# SIFEC
 
-**Sistema de Información Meteorológica y Prevención de Anomalías de Cajamarca.** Plataforma web (y
+**Sistema Inteligente de Acceso a Información del Fenómeno El Niño.** Plataforma web (y
 app Android) que centraliza datos hidrometeorológicos oficiales del Perú, con foco en Cajamarca, para
 seguir el fenómeno El Niño y sus efectos: avisos de SENAMHI, estado del sistema de alerta del ENFEN,
 ríos de la ANA (el Mashcón vigilado y los 100 ríos del país con estación, 20 de ellos con la zona que
@@ -9,6 +9,15 @@ acudir en una emergencia, explicados en lenguaje claro sobre un mapa. Además de
 Alertas, Comunidad (reportes ciudadanos con cuenta), Chat por departamento, Cuenta e Histórico por
 estación. La app Android (nativa, Kotlin) recibe una notificación cuando su departamento entra en
 alerta o emergencia oficial.
+
+> Hasta el 25-11-2026 el proyecto se llamó SIMPAC. Los identificadores técnicos conservan ese nombre a
+> propósito, porque nadie los ve o porque cambiarlos rompería instalaciones, despliegues y sesiones ya
+> existentes: el paquete `pe.simpac.app` de la app Android y el proyecto de Firebase `appsimpac`, las
+> variables de entorno `SIMPAC_*`, las propiedades `simpac.*` de Gradle (`-Psimpac.apiUrl`,
+> `-Psimpac.webUrl`, `-Psimpac.stadiaKey`), los dominios `simpac-v7nf.vercel.app` y
+> `simpac-production.up.railway.app`, el repositorio `github.com/Federjj/SIMPAC`, las claves guardadas
+> en el navegador (`simpac.*`) y en el teléfono (`simpac_cache`, `simpac_ajustes`, `simpac_seguro`), las migraciones y los
+> nombres de la base de datos, y los archivos de datos (`backend/prototipo/simpac.db`, los csv `simpac_*`).
 
 ## Cómo está armado
 
@@ -139,7 +148,7 @@ Al terminar, `docker compose ps` muestra los servicios en estado `Up`.
 
   En celular las páginas van a pantalla completa sobre el mapa, con una barra inferior de 5 pestañas
   (Mapa, Alertas, Comunidad, Chat, Cuenta); desde 1024 px de ancho, en una columna al lado del mapa.
-- API: <http://localhost:8000/health> (responde `{"ok":true,"service":"simpac-api"}`) y
+- API: <http://localhost:8000/health> (responde `{"ok":true,"service":"sifec-api"}`) y
   <http://localhost:8000/api/snapshot> (JSON de unos 46 KB con el resumen que arma el worker)
 
 Con la contraseña, al arrancar el worker corre una vez todas sus tareas (tarda uno o dos minutos) y
@@ -319,7 +328,7 @@ Para no depender de la base del proyecto:
    docker compose run --rm worker python -m backend.mapas.cargar_cauces_zonas --aplicar
    ```
 
-   Son una estimación de SIMPAC con el modelo de elevación Copernicus GLO-30, no un mapa oficial, y
+   Son una estimación de SIFEC con el modelo de elevación Copernicus GLO-30, no un mapa oficial, y
    la web lo dice en cada zona. Calcularlas para otro río no se hace en Docker (necesita un entorno
    aparte con `backend/requirements-relieve.txt`): ver `docs/README-tecnico.md`, sección 5.6.11.
 
@@ -357,7 +366,7 @@ La capa "Lluvia del mes frente a lo normal" no tiene cargador automático y qued
 `https://simpac-production.up.railway.app` (Railway: `/health` y `/api/snapshot`), con el worker y
 Redis en el mismo proyecto de Railway. La base sigue en Supabase.
 
-Para que SIMPAC se vea desde internet (y no solo en `localhost`) cada pieza va a un servicio en la
+Para que SIFEC se vea desde internet (y no solo en `localhost`) cada pieza va a un servicio en la
 nube; `docker-compose.yml` no cambia y sigue sirviendo para la instalación local. La guía paso a paso,
 con la lista exacta de variables por servicio, las comprobaciones y los costos, está en
 [`docs/README-tecnico.md` §8.5](docs/README-tecnico.md#85-despliegue-en-la-nube-railway-api-worker-redis-y-vercel-web);
@@ -380,7 +389,7 @@ dos servicios del mismo repo (`api` y `worker`), cada uno con sus ajustes en Set
 `${{Redis.REDIS_URL}}`, `SUPABASE_DB_URL` es la del pooler, `SIMPAC_CORS_ORIGENES` lleva el dominio
 de Vercel y la cuenta de servicio de Firebase va en `FIREBASE_CREDENCIALES` como JSON en base64,
 porque Railway no monta archivos). Solo la API recibe dominio público. Comprobación:
-`https://<api>.up.railway.app/health` responde `{"ok":true,"service":"simpac-api"}` y los logs del
+`https://<api>.up.railway.app/health` responde `{"ok":true,"service":"sifec-api"}` y los logs del
 worker muestran las 10 tareas del *beat* terminando con `succeeded`.
 
 Costos: Railway cobra por memoria y CPU usadas (USD 10 por GB-mes y 20 por vCPU-mes); el plan Free
@@ -398,7 +407,7 @@ se escribe a mano en Settings del servicio o se migra a su *Infrastructure as Co
 Desde el 20 de octubre de 2026 la app es **nativa, en Kotlin + Jetpack Compose**, y vive en
 `appmobile/android/` (identificador `pe.simpac.app`, Android 8.0 o superior). Tiene cinco pestañas:
 Inicio (el semáforo de tu departamento con el titular, El Niño, el pronóstico de 3 días y los
-teléfonos 105 y 116), Alertas, Mapa (la web de SIMPAC dentro de la app), Acudir (los lugares más
+teléfonos 105 y 116), Alertas, Mapa (la web de SIFEC dentro de la app), Acudir (los lugares más
 cercanos) y Cuenta (ajustes y el interruptor de **notificaciones**: te avisa cuando tu departamento
 entra en alerta o emergencia oficial y cuando vuelve la calma; nunca por avisos amarillos ni lluvia
 medida). No se compila con Docker. La guía completa (requisitos, compilar, emulador, Firebase, firma y
@@ -441,17 +450,18 @@ sola vez con `keytool` y no se sube al repo (`key.properties`, `*.jks` y `*.keys
 o, si no existe, de las variables de entorno `SIMPAC_KEYSTORE_FILE`, `SIMPAC_KEYSTORE_PASSWORD`,
 `SIMPAC_KEY_ALIAS` y `SIMPAC_KEY_PASSWORD`; sin ninguna de las dos el release se compila sin firmar.
 Antes de cada publicación subir `versionCode` y `versionName` en ese mismo archivo. Identificador de la
-app: `pe.simpac.app`; `versionCode 2`; Android mínimo 8.0 (API 26), `targetSdk` 36.
+app: `pe.simpac.app`; `versionCode 3` (`2.1`, primera versión con el nombre SIFEC); Android mínimo 8.0 (API 26), `targetSdk` 36.
 
 ## Descargar la app
 
-La web tiene la página **`/app`** ("SIMPAC en tu celular", enlace "Descargar la app" en la barra
-lateral y tarjeta "Lleva SIMPAC en tu celular" en Cuenta) con el botón **Descargar para Android
-(APK)**, que descarga directo `https://simpac-v7nf.vercel.app/descargas/SIMPAC.apk`: el APK vive en el
-repo, en **`frontend/public/descargas/SIMPAC.apk`** (Vite lo copia tal cual al build y Vercel lo sirve
+La web tiene la página **`/app`** ("SIFEC en tu celular", enlace "Descargar la app" en la barra
+lateral y tarjeta "Lleva SIFEC en tu celular" en Cuenta) con el botón **Descargar para Android
+(APK)**, que descarga directo `https://simpac-v7nf.vercel.app/descargas/SIFEC.apk`: el APK vive en el
+repo, en **`frontend/public/descargas/SIFEC.apk`** (Vite lo copia tal cual al build y Vercel lo sirve
 como archivo con `Content-Disposition: attachment`; la CDN lo cachea por despliegue y el navegador
-siempre revalida con `no-cache`, ver `frontend/vercel.json`; igual en `netlify.toml` y `nginx.conf`),
-así que no depende de GitHub ni de un release. La página explica qué
+siempre revalida con `no-cache`, ver `frontend/vercel.json`; igual en `netlify.toml` y `nginx.conf`;
+la ruta vieja `/descargas/SIMPAC.apk` redirige con 301 a la nueva en los tres, así los enlaces ya
+compartidos siguen funcionando), así que no depende de GitHub ni de un release. La página explica qué
 trae la app, los requisitos (Android 8 o más nuevo, unos 18 MB), los 4 pasos de instalación (descargar,
 abrir el archivo, permitir que el navegador instale apps de origen desconocido, instalar), que todavía
 no está en Play Store y que la publica el equipo del proyecto, la nota de privacidad (solo pide
@@ -460,18 +470,20 @@ foto a un reporte) y un botón "Copiar enlace" (copia la dirección absoluta) pa
 En iPhone y iPad el botón se reemplaza por un aviso (la app es solo para Android). No consulta nada en
 vivo.
 
-**Publicar una versión nueva**: subir `versionCode` y `versionName`, compilar con la llave del proyecto
-(`.\gradlew.bat assembleRelease` con las `-P` de producción, ver "Firma para publicar"), copiar el APK
-sobre `frontend/public/descargas/SIMPAC.apk` (mismo nombre) y hacer push: Vercel despliega y el botón
+**Publicar una versión nueva**: subir `versionCode` y `versionName`, compilar (`.\gradlew.bat
+assembleDebug` con las `-P` de producción y la llave de Stadia, en la PC del equipo; ver
+`appmobile/README.md`, "APK de descarga directa en la web"), copiar el APK sobre
+`frontend/public/descargas/SIFEC.apk` (mismo nombre) y hacer push: Vercel despliega y el botón
 entrega la versión nueva (el service worker de la web nunca guarda `/descargas/`). **Ojo con la firma**:
-el APK publicado el 19-11-2026 está firmado con la llave de depuración (`assembleDebug`), que es de una
-sola PC; Android solo instala una actualización encima si lleva la misma firma, así que al pasar a la
-llave de release (o compilar en otra PC) quien ya tenga la app deberá desinstalarla una vez. Por eso
+los APK publicados (`2.0` del 23-11-2026 y `2.1` del 25-11-2026) están firmados con la llave de
+depuración (`assembleDebug`), que es de una sola PC; Android solo instala una actualización encima si
+lleva la misma firma, así que al pasar a la llave de release (`assembleRelease`, ver "Firma para
+publicar") o compilar en otra PC, quien ya tenga la app deberá desinstalarla una vez. Por eso
 conviene crear la llave del proyecto pronto y usar siempre la misma. Cada versión suma unos 18 MB al
 historial de git y cada descarga gasta 18 MB de los 100 GB mensuales del plan Hobby de Vercel (unas
 5.000 descargas al mes; al pasarse, Vercel pausa todo el sitio hasta el ciclo siguiente): si el uso crece,
-la alternativa es un release de GitHub con `SIMPAC.apk` adjunto y apuntar `URL_APK` en
-`frontend/src/pages/DescargarApp.jsx` a `https://github.com/Federjj/SIMPAC/releases/latest/download/SIMPAC.apk`
+la alternativa es un release de GitHub con `SIFEC.apk` adjunto y apuntar `URL_APK` en
+`frontend/src/pages/DescargarApp.jsx` a `https://github.com/Federjj/SIMPAC/releases/latest/download/SIFEC.apk`
 (descarga directa igual: GitHub responde con `Content-Disposition: attachment`).
 
 ## Problemas comunes
@@ -546,12 +558,12 @@ El uso que se le da a esta información es de mi (nuestra) entera responsabilida
 | Comisarías | MININTER, padrón de comisarías básicas a noviembre de 2019, servido por CENEPRED/COEN como puntos | ODC-By (ficha de MININTER); la web avisa que el padrón es de 2019 |
 | Compañías de bomberos | CGBVP (directorio del portal: dirección y teléfono) y CENEPRED/COEN (ubicación) | Información pública institucional sin licencia declarada |
 | Defensa Civil, números de emergencia y recomendación de zona segura | Fichas de gob.pe (INDECI, Municipalidad Provincial y Gobierno Regional de Cajamarca, DIRESA) y la campaña "Preparados ante lluvias intensas" de INDECI | Contenido público del Estado; verificados el 14-10-2026, con la fecha guardada por punto |
-| Zonas que podrían inundarse junto a 20 ríos del país | Estimación de SIMPAC con el relieve (Copernicus DEM GLO-30, teselas públicas de AWS) sobre el trazo de ANA - GeoSNIRH | Aviso literal de Copernicus (© DLR e.V. 2010-2014 y © Airbus Defence and Space GmbH 2014-2018, provisto bajo COPERNICUS por la Unión Europea y la ESA) y atribución a la ANA en cada zona; la web las rotula "Estimación de SIMPAC con el relieve; no es un mapa oficial" y nunca da metros |
+| Zonas que podrían inundarse junto a 20 ríos del país | Estimación de SIFEC con el relieve (Copernicus DEM GLO-30, teselas públicas de AWS) sobre el trazo de ANA - GeoSNIRH | Aviso literal de Copernicus (© DLR e.V. 2010-2014 y © Airbus Defence and Space GmbH 2014-2018, provisto bajo COPERNICUS por la Unión Europea y la ESA) y atribución a la ANA en cada zona; la web las rotula "Estimación de SIFEC con el relieve; no es un mapa oficial" y nunca da metros |
 | Mapa base | Stadia Maps (estilo Alidade Smooth) sobre OpenMapTiles y OpenStreetMap | Gratuito en `localhost` y en la app; en un dominio propio pide su llave gratuita; la atribución va siempre en el mapa |
 | Tipografías | Geist e Inter, servidas por Google Fonts | Licencia SIL Open Font |
 | Notificaciones push | Firebase Cloud Messaging (Google), proyecto `appsimpac` | Gratuito (plan Spark); solo llega a quien enciende el interruptor en la app; el servidor envía como mucho un mensaje por cambio de nivel y departamento |
 
-Las zonas que el río Mashcón y los 20 ríos del país podrían afectar son una estimación de SIMPAC a
+Las zonas que el río Mashcón y los 20 ríos del país podrían afectar son una estimación de SIFEC a
 partir del relieve (en el Mashcón, además, del estudio INDECI-PNUD 2005), y la web lo dice en cada una:
 ninguna es un mapa oficial. La franja punteada junto a un río en alerta es una banda de ancho fijo de
 referencia, no un mapa de inundación. La app y la web no son un canal oficial de SENAMHI, la ANA ni

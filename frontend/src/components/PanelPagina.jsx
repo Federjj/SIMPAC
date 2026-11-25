@@ -13,10 +13,10 @@ export default function PanelPagina({ titulo, subtitulo, volver = "/", acciones,
   const h1 = useRef(null);
   const navigate = useNavigate();
   useEffect(() => {
-    document.title = `${titulo} · SIMPAC`;
+    document.title = `${titulo} · SIFEC`;
     h1.current?.focus({ preventScroll: true });
     return () => {
-      document.title = "SIMPAC";
+      document.title = "SIFEC";
     };
   }, [titulo]);
   return (

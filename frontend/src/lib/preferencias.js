@@ -16,6 +16,8 @@
 // Guardar solo las diferencias hace que una capa que la persona nunca tocó siga el defaultVisible
 // del código (si el equipo cambia un defecto, le llega), y que una capa nueva arranque con el suyo.
 
+// La clave conserva el nombre anterior del producto a propósito: renombrarla haría perder las capas y
+// opciones que la gente ya tiene guardadas.
 export const CLAVE = "simpac.mapa";
 export const VERSION = 1;
 // ids que cambiaron de nombre: { viejo: nuevo } (se aplica al leer; p. ej. si "zona" pasara a "zonaRio")

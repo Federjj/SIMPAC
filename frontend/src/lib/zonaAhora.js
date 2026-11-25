@@ -177,7 +177,7 @@ export const LEJOS_M = 30_000;
 // Chips de distancia de la tarjeta: [{ clave, texto, nivel? }] (nivel pinta el chip de la zona).
 //   d = distancias(...)  rio = el río principal  nivelZona = r.estado.nivel (zonaRio)
 // Un río del país con trazo de ANA (rio.trazado, ver riosTrazados) dice "(trazo de ANA)" al lado de
-// la distancia y, si tiene zonas en rio_cauce_zona_mapa, "(estimación SIMPAC con el relieve)" en el
+// la distancia y, si tiene zonas en rio_cauce_zona_mapa, "(estimación SIFEC con el relieve)" en el
 // chip de la zona; el Mashcón conserva sus textos de siempre.
 export function chipsDistancia(d, rio, nivelZona = "sin_senales") {
   if (!d || !rio) return [];
@@ -205,7 +205,7 @@ export function chipsDistancia(d, rio, nivelZona = "sin_senales") {
         d.zona.dentro
           ? { clave: "zona", texto: FRASES_RIO_PAIS.dentroZona, nivel, dentro: true }
           : cerca
-            ? { clave: "zona", texto: `Fuera de la zona que podría inundarse, a ${textoMetros(d.zona.metros)} (estimación SIMPAC con el relieve)`, nivel: "normal" }
+            ? { clave: "zona", texto: `Fuera de la zona que podría inundarse, a ${textoMetros(d.zona.metros)} (estimación SIFEC con el relieve)`, nivel: "normal" }
             : { clave: "zona", texto: FRASES_RIO_PAIS.fueraZona, nivel: "normal" }
       );
     else
@@ -368,12 +368,12 @@ export function titularCorto(p, rios = [], depto = "tu zona", { origen = null } 
     return { ...base, nivel: "normal", etiqueta: ETIQUETA_NIVEL.normal, texto, origen: "calma" };
   }
 
-  // 7. sin cobertura: SIMPAC no vigila nada aquí (nunca verde)
+  // 7. sin cobertura: SIFEC no vigila nada aquí (nunca verde)
   return {
     ...base,
     nivel: "sin_dato",
     etiqueta: ETIQUETA_NIVEL.sin_dato,
-    texto: `En ${depto} SIMPAC todavía no vigila ríos ni estaciones de lluvia que pueda revisar.`,
+    texto: `En ${depto} SIFEC todavía no vigila ríos ni estaciones de lluvia que pueda revisar.`,
     origen: "sin_cobertura",
   };
 }
@@ -418,7 +418,8 @@ export function cajaTuYRio(origen, cauce) {
 // río (caudalDelRio de lib/zonaRio.js); el que llama aplica la simulación de desarrollo.
 export { caudalDelRio } from "./zonaRio.js";
 
-// Pantalla de bienvenida del GPS: si ya se mostró (localStorage "simpac.gps"). Nunca rompe.
+// Pantalla de bienvenida del GPS: si ya se mostró (localStorage "simpac.gps"; la clave conserva el
+// nombre anterior del producto a propósito, así no vuelve a salir a quien ya la vio). Nunca rompe.
 export const CLAVE_GPS = "simpac.gps";
 export function gpsVisto(almacen) {
   try {

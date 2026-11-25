@@ -44,13 +44,13 @@ export default function Cuenta() {
   );
 }
 
-// Tarjeta "Lleva SIMPAC en tu celular": el mismo botón de descarga del APK que la página /app.
+// Tarjeta "Lleva SIFEC en tu celular": el mismo botón de descarga del APK que la página /app.
 function TarjetaApp() {
   return (
     <section className="mt-6 rounded-xl border border-border bg-card p-4" aria-labelledby="tarjeta-app">
       <h2 id="tarjeta-app" className="flex items-center gap-2 text-base font-semibold">
         <Smartphone className="h-5 w-5 text-primary" />
-        Lleva SIMPAC en tu celular
+        Lleva SIFEC en tu celular
       </h2>
       <p className="mt-1 text-sm text-muted-foreground">
         La app Android te avisa con una notificación cuando tu departamento entra en alerta o emergencia oficial, aunque

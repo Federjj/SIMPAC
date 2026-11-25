@@ -13,7 +13,7 @@ import pe.simpac.app.data.AuthSupabase
 import pe.simpac.app.data.ComunidadSupabase
 import pe.simpac.app.data.ErrorAuth
 import pe.simpac.app.data.ErrorConsulta
-import pe.simpac.app.data.JsonSimpac
+import pe.simpac.app.data.JsonSifec
 import pe.simpac.app.data.PeticionHttp
 import pe.simpac.app.data.ReporteVigente
 import pe.simpac.app.data.RespuestaHttp
@@ -145,13 +145,13 @@ class ComunidadTest {
         assertEquals(CLAVE, entrar.cabeceras["apikey"])
         assertEquals("Bearer $CLAVE", entrar.cabeceras["Authorization"])
         assertEquals("application/json", entrar.cabeceras["Content-Type"])
-        val cuerpo = JsonSimpac.parseToJsonElement(entrar.cuerpoTexto!!).jsonObject
+        val cuerpo = JsonSifec.parseToJsonElement(entrar.cuerpoTexto!!).jsonObject
         assertEquals("rosa@correo.pe", cuerpo["email"]!!.jsonPrimitive.content)
         assertEquals("secreta1", cuerpo["password"]!!.jsonPrimitive.content)
 
-        val registro = auth.peticionRegistro("rosa@correo.pe", "secreta1", " Rosa ", "https://simpac.example/cuenta")
-        assertEquals("$URL/auth/v1/signup?redirect_to=https%3A%2F%2Fsimpac.example%2Fcuenta", registro.url)
-        val datos = JsonSimpac.parseToJsonElement(registro.cuerpoTexto!!).jsonObject
+        val registro = auth.peticionRegistro("rosa@correo.pe", "secreta1", " Rosa ", "https://sifec.example/cuenta")
+        assertEquals("$URL/auth/v1/signup?redirect_to=https%3A%2F%2Fsifec.example%2Fcuenta", registro.url)
+        val datos = JsonSifec.parseToJsonElement(registro.cuerpoTexto!!).jsonObject
         assertEquals("Rosa", datos["data"]!!.jsonObject["nombre"]!!.jsonPrimitive.content)
         assertEquals(setOf("email", "password", "data"), datos.keys)   // nada mas que correo, contrasena y nombre
 
@@ -159,8 +159,8 @@ class ComunidadTest {
         assertEquals("$URL/auth/v1/token?grant_type=refresh_token", refrescar.url)
         assertEquals("""{"refresh_token":"rt-1"}""", refrescar.cuerpoTexto)
 
-        val recuperar = auth.peticionRecuperar("rosa@correo.pe", "https://simpac.example/cuenta")
-        assertEquals("$URL/auth/v1/recover?redirect_to=https%3A%2F%2Fsimpac.example%2Fcuenta", recuperar.url)
+        val recuperar = auth.peticionRecuperar("rosa@correo.pe", "https://sifec.example/cuenta")
+        assertEquals("$URL/auth/v1/recover?redirect_to=https%3A%2F%2Fsifec.example%2Fcuenta", recuperar.url)
         assertEquals("""{"email":"rosa@correo.pe"}""", recuperar.cuerpoTexto)
 
         val salir = auth.peticionSalir(TOKEN)
@@ -205,13 +205,13 @@ class ComunidadTest {
 
         // registro con confirmacion por correo: usuario sin sesion
         val t2 = TransporteFalso(listOf(RespuestaHttp(200, """{"id":"$UID","email":"rosa@correo.pe","identities":[{"id":"i1"}]}""")))
-        val r = AuthSupabase(URL, CLAVE, t2).registrar("rosa@correo.pe", "secreta1", "Rosa", "https://simpac.example/cuenta")
+        val r = AuthSupabase(URL, CLAVE, t2).registrar("rosa@correo.pe", "secreta1", "Rosa", "https://sifec.example/cuenta")
         assertNull(r.sesion)
         assertTrue(r.confirmar)
         assertFalse(r.yaExistia)
         // correo que ya existia: identidades vacias
         val t3 = TransporteFalso(listOf(RespuestaHttp(200, """{"id":"$UID","email":"rosa@correo.pe","identities":[]}""")))
-        assertTrue(AuthSupabase(URL, CLAVE, t3).registrar("rosa@correo.pe", "secreta1", "Rosa", "https://simpac.example/cuenta").yaExistia)
+        assertTrue(AuthSupabase(URL, CLAVE, t3).registrar("rosa@correo.pe", "secreta1", "Rosa", "https://sifec.example/cuenta").yaExistia)
         // credenciales malas: ErrorAuth con el mensaje claro y el codigo
         val t4 = TransporteFalso(listOf(RespuestaHttp(400, """{"error_code":"invalid_credentials","msg":"Invalid login credentials"}""")))
         try {
@@ -236,7 +236,7 @@ class ComunidadTest {
         assertEquals("Bearer $TOKEN", p.cabeceras["Authorization"])
         assertEquals("return=representation", p.cabeceras["Prefer"])
         assertEquals("application/json", p.cabeceras["Content-Type"])
-        val fila = JsonSimpac.parseToJsonElement(p.cuerpoTexto!!).jsonObject
+        val fila = JsonSifec.parseToJsonElement(p.cuerpoTexto!!).jsonObject
         assertEquals(setOf("tipo", "subtipo", "descripcion", "foto_url", "geom"), fila.keys)   // autor, estado, confianza los pone la BD
         assertEquals("atasco", fila["tipo"]!!.jsonPrimitive.content)
         assertEquals("leve", fila["subtipo"]!!.jsonPrimitive.content)

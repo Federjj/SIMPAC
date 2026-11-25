@@ -1,5 +1,6 @@
 """
-Configuración de SIMPAC: las variables de entorno se leen aquí y solo aquí.
+Configuración de SIFEC: las variables de entorno se leen aquí y solo aquí.
+Conservan el prefijo SIMPAC_ (nombre anterior del proyecto) para no tocar los despliegues ya configurados.
 
 Se leen al primer uso (no al importar), así los módulos se pueden importar en
 pruebas o en la API aunque falte alguna variable que solo usa el worker.
@@ -55,7 +56,7 @@ CORS_ORIGENES_DEFECTO = ("http://localhost:8080", "http://localhost:5173", "http
 
 def origenes_cors(texto: str | None) -> tuple[str, ...]:
     """
-    'https://simpac.pe, http://localhost:8080' -> ('https://simpac.pe', 'http://localhost:8080').
+    'https://sifec.pe, http://localhost:8080' -> ('https://sifec.pe', 'http://localhost:8080').
     Vacío o solo comas: los de desarrollo y la app (CORS_ORIGENES_DEFECTO). Un '*' se descarta:
     la API ya no se abre a cualquier origen (plan de seguridad); se quita la barra final.
     """

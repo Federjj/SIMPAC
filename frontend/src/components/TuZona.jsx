@@ -98,7 +98,7 @@ export default function TuZona({ zona, depto, gps, plegado = false, onAccion, on
           {instruccion && fuerte && <p className="mt-1.5 text-lg font-bold leading-snug">{instruccion}</p>}
           {titular.interpretado && (
             <p className="mt-0.5 text-[0.66rem] text-muted-foreground">
-              Resumen {titular.interpretado === "llm" ? "redactado automáticamente con las cifras oficiales" : "del servidor de SIMPAC"}; el nivel lo calcula SIMPAC con los datos de ANA y SENAMHI.
+              Resumen {titular.interpretado === "llm" ? "redactado automáticamente con las cifras oficiales" : "del servidor de SIFEC"}; el nivel lo calcula SIFEC con los datos de ANA y SENAMHI.
             </p>
           )}
         </div>

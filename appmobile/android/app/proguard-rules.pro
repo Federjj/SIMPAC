@@ -1,4 +1,4 @@
-# Reglas de R8 para el release de SIMPAC.
+# Reglas de R8 para el release de SIFEC.
 # kotlinx.serialization: conserva los serializadores generados de los modelos.
 -keepattributes *Annotation*, InnerClasses
 -dontnote kotlinx.serialization.AnnotationsKt

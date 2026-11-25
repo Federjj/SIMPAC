@@ -20,7 +20,7 @@ const FONDO = {
 const fondo = (a) => cn(FONDO[a.clase === "seco" ? (a.sol ? "sol" : "nublado") : a.clase], a.posible && "border-dashed border-sky-300");
 
 const PIE =
-  "Ícono y resumen de SIMPAC, basados en SENAMHI. Es el pronóstico para la localidad, no para todo el departamento. " +
+  "Ícono y resumen de SIFEC, basados en SENAMHI. Es el pronóstico para la localidad, no para todo el departamento. " +
   "Toca un día para leer el texto de SENAMHI.";
 
 function Temps({ fila, className }) {

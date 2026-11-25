@@ -12,6 +12,7 @@ import androidx.security.crypto.MasterKey
  */
 class AlmacenSeguro(contexto: Context) {
     companion object {
+        // Se conserva el nombre de SIMPAC: renombrar el archivo cerraria la sesion de quien ya usa la app.
         const val ARCHIVO = "simpac_seguro"
         private const val TOKEN_FCM = "token_fcm"
     }

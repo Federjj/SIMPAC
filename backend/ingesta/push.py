@@ -3,9 +3,9 @@ Avisador push (HU-20): tarea Celery 'push', cada 5 min.
 
 Lee titular_zona (departamento, nivel, titular_corto, generado_en) y manda una notificación por
 Firebase Cloud Messaging (FCM, API HTTP v1) cuando el nivel de una zona CAMBIA de verdad:
-  - sube a alerta o emergencia (o pasa de alerta a emergencia): "SIMPAC: ALERTA en Cajamarca" con
+  - sube a alerta o emergencia (o pasa de alerta a emergencia): "SIFEC: ALERTA en Cajamarca" con
     el titular_corto de cuerpo;
-  - baja de alerta o emergencia a normal o aviso: "SIMPAC: vuelve la calma en Cajamarca".
+  - baja de alerta o emergencia a normal o aviso: "SIFEC: vuelve la calma en Cajamarca".
 Nunca por un aviso amarillo ni por lluvia medida (esos niveles nunca llegan a 'alerta' en
 titular_zona: lib/nivel.js y titular.py _nivel_efectivo), y nunca el mismo mensaje dos veces: la
 tabla push_estado recuerda el último nivel que se notificó por zona (migración push_estado).
@@ -191,7 +191,7 @@ def _hora_iso(momento) -> str:
 def cuerpo_mensaje(fila: dict) -> str:
     """titular_corto; si aún no está (filas anteriores a esa columna), el titular completo."""
     texto = (fila.get("titular_corto") or fila.get("titular") or "").strip()
-    return texto or f"{fila.get('departamento') or 'Tu zona'}: hay un cambio en las fuentes oficiales. Abre SIMPAC."
+    return texto or f"{fila.get('departamento') or 'Tu zona'}: hay un cambio en las fuentes oficiales. Abre SIFEC."
 
 
 def armar_mensaje(zona: str, nivel: str, cuerpo: str, generado_en, tipo: str) -> dict:
@@ -200,11 +200,11 @@ def armar_mensaje(zona: str, nivel: str, cuerpo: str, generado_en, tipo: str) ->
     tipo: 'alerta' (subió), 'calma' (bajó) o 'prueba' (--prueba).
     """
     if tipo == "calma":
-        titulo = f"SIMPAC: vuelve la calma en {zona}"
+        titulo = f"SIFEC: vuelve la calma en {zona}"
     elif tipo == "prueba":
-        titulo = f"SIMPAC: prueba en {zona}"
+        titulo = f"SIFEC: prueba en {zona}"
     else:
-        titulo = f"SIMPAC: {nivel.upper()} en {zona}"
+        titulo = f"SIFEC: {nivel.upper()} en {zona}"
     return {
         "notification": {"title": titulo, "body": cuerpo},
         "data": {"nivel": str(nivel), "zona": str(zona), "generado_en": _hora_iso(generado_en), "ruta": RUTA},
@@ -465,7 +465,7 @@ def prueba(zona: str, abrir=urllib.request.urlopen, ahora: datetime | None = Non
         return 2
     proyecto = cfg.proyecto or info["project_id"]
     hora = ahora.astimezone(HORA_PERU).strftime("%d/%m %H:%M")
-    cuerpo = f"Mensaje de prueba del avisador de SIMPAC ({hora}). Si lo ves, las notificaciones de tu zona funcionan."
+    cuerpo = f"Mensaje de prueba del avisador de SIFEC ({hora}). Si lo ves, las notificaciones de tu zona funcionan."
     mensaje = {**armar_mensaje(zona, "prueba", cuerpo, ahora, "prueba"), "topic": tema_zona(zona)}
     try:
         token = token_vigente(info, abrir)
@@ -478,7 +478,7 @@ def prueba(zona: str, abrir=urllib.request.urlopen, ahora: datetime | None = Non
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="Avisador push de SIMPAC (FCM).")
+    parser = argparse.ArgumentParser(description="Avisador push de SIFEC (FCM).")
     parser.add_argument("--prueba", action="store_true", help="manda un mensaje de prueba al tema de --zona y no toca la BD")
     parser.add_argument("--zona", default="Cajamarca", help="departamento para --prueba (por defecto Cajamarca)")
     args = parser.parse_args(argv)

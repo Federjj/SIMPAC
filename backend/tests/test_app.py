@@ -30,8 +30,8 @@ def _importar_app():
 
 class TestOrigenesCors(unittest.TestCase):
     def test_lista_separada_por_comas(self):
-        self.assertEqual(config.origenes_cors("https://simpac.pe, http://localhost:8080/ ,,"),
-                         ("https://simpac.pe", "http://localhost:8080"))
+        self.assertEqual(config.origenes_cors("https://sifec.pe, http://localhost:8080/ ,,"),
+                         ("https://sifec.pe", "http://localhost:8080"))
 
     def test_vacio_o_comodin_dan_los_de_desarrollo(self):
         for texto in (None, "", " , ", "*", "*, *"):
@@ -42,8 +42,8 @@ class TestOrigenesCors(unittest.TestCase):
     def test_desde_el_entorno(self):
         config.ajustes.cache_clear()
         self.addCleanup(config.ajustes.cache_clear)
-        with mock.patch.dict("os.environ", {"SIMPAC_CORS_ORIGENES": "https://simpac.pe"}):
-            self.assertEqual(config.ajustes().cors_origenes, ("https://simpac.pe",))
+        with mock.patch.dict("os.environ", {"SIMPAC_CORS_ORIGENES": "https://sifec.pe"}):
+            self.assertEqual(config.ajustes().cors_origenes, ("https://sifec.pe",))
         config.ajustes.cache_clear()
         with mock.patch.dict("os.environ", {"SIMPAC_CORS_ORIGENES": ""}):
             self.assertEqual(config.ajustes().cors_origenes, config.CORS_ORIGENES_DEFECTO)
@@ -64,7 +64,7 @@ class TestCors(unittest.TestCase):
         r = self.cliente.get("/health", headers={"Origin": "http://localhost:8080"})
         self.assertEqual(r.status_code, 200)
         self.assertEqual(r.headers.get("access-control-allow-origin"), "http://localhost:8080")
-        self.assertEqual(r.json(), {"ok": True, "service": "simpac-api"})
+        self.assertEqual(r.json(), {"ok": True, "service": "sifec-api"})
 
     def test_otro_origen_no(self):
         r = self.cliente.get("/health", headers={"Origin": "https://ejemplo.com"})

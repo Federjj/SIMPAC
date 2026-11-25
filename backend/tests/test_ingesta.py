@@ -281,7 +281,7 @@ class TestRecolectarYGuardar(_BaseIngesta):
 
     def test_ingesta_no_toca_alertas_de_lluvia(self):
         # 3 mm cada hora (72 mm en 24 h) eran una emergencia con los umbrales retirados de
-        # SIMPAC; ahora las de lluvia las escribe solo la tarea lluvia_nacional
+        # SIFEC; ahora las de lluvia las escribe solo la tarea lluvia_nacional
         p, _ = self._recolectar()
         self.assertEqual(len(p.lluvia), 24)
         conn, resumen = self._guardar(p)

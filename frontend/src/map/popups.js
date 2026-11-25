@@ -188,7 +188,7 @@ export function popupLocalidad(fila, propias, { hoy = fechaPeru() } = {}) {
     `<div class="mini3">${dias}</div>` +
     `<p class="aclara">Vale para esta localidad; a pocos kilómetros puede ser distinto.</p>` +
     enlace(fila.url, "Ver el pronóstico en SENAMHI") +
-    firma("Ícono y resumen de SIMPAC, basados en el texto de SENAMHI.") +
+    firma("Ícono y resumen de SIFEC, basados en el texto de SENAMHI.") +
     `</div>`
   );
 }
@@ -203,7 +203,7 @@ export function popupNowcast({ titulo, cuando, emitido, color, url }) {
     `<p class="aclara">Es una estimación automática de SENAMHI con imágenes de satélite, todavía en calibración. Puede fallar y no es un aviso oficial.</p>` +
     `<p class="meta">${esc(emitido)}</p>` +
     enlace(url, "Ver el nowcasting en SENAMHI") +
-    firma("Basado en el nowcasting de SENAMHI; colores de SIMPAC.") +
+    firma("Basado en el nowcasting de SENAMHI; colores de SIFEC.") +
     `</div>`
   );
 }

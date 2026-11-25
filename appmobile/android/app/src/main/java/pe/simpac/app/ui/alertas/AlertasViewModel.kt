@@ -6,7 +6,7 @@ import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
-import pe.simpac.app.SimpacApp
+import pe.simpac.app.SifecApp
 import pe.simpac.app.data.AlertaActual
 import pe.simpac.app.dominio.Alertas
 
@@ -32,7 +32,7 @@ data class EstadoAlertas(
 }
 
 class AlertasViewModel(app: Application) : AndroidViewModel(app) {
-    private val contenedor = (app as SimpacApp).contenedor
+    private val contenedor = (app as SifecApp).contenedor
     private val _estado = MutableStateFlow(EstadoAlertas())
     val estado: StateFlow<EstadoAlertas> = _estado
 

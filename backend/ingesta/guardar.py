@@ -8,7 +8,7 @@ colgadas para siempre, las que no se refrescan caducan a las SIN_DATOS_HORAS. La
 lluvia las escribe la tarea lluvia_nacional (backend/ingesta/lluvia_nacional.py).
 
 Serie del ICEN (icen_serie, para el gráfico): se guardan los últimos meses del IGP, con la
-categoría que calcula SIMPAC (igp.categoria; la de los meses del ENFEN es la oficial de la
+categoría que calcula SIFEC (igp.categoria; la de los meses del ENFEN es la oficial de la
 tabla de su informe). El latido cuenta en 'icen_serie' los meses escritos (insertados o
 cambiados), no los enviados: la ingesta reenvía los mismos cada hora. Si la migración de
 la tabla todavía no se aplicó, la serie se salta con un aviso y el resto de la pasada se
@@ -121,7 +121,7 @@ def filas_serie(meses: list[tuple[str, float, str]], origen: str) -> list[tuple]
     """
     Filas de icen_serie a partir de [("AAAA-MM", valor, categoría)], en orden de mes. La
     categoría va tal cual: la oficial de la tabla del informe (ENFEN) o la calculada por
-    SIMPAC con igp.categoria (IGP).
+    SIFEC con igp.categoria (IGP).
     """
     return [(mes, valor, categoria, origen) for mes, valor, categoria in sorted(meses)]
 

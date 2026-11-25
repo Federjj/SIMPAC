@@ -589,7 +589,7 @@ export function getTitular(depto) {
 
 // --- rios-frontend-zonas: zonas estimadas y franja de los ríos del país ---
 
-// Zonas que un río del país podría afectar (vista rio_cauce_zona_mapa, estimación de SIMPAC con el
+// Zonas que un río del país podría afectar (vista rio_cauce_zona_mapa, estimación de SIFEC con el
 // relieve: subtipo bajo_2m y bajo_3m), SOLO de los ríos pedidos (`rioAnas`): nunca el país entero de
 // golpe. La capa `zona` pide las de los ríos cuya caja toca la vista desde zoom 12 y "Tu zona ahora"
 // las del río más cercano. Caché por río (60 min: la carga es única); un río sin zonas se recuerda

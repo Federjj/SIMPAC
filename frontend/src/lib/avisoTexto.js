@@ -1,6 +1,6 @@
 // Textos de los avisos de SENAMHI en lenguaje claro: el tooltip de la insignia y el contenido del
 // popup (map/popups.js lo pasa a HTML escapado). Lo que sale del texto oficial va citado tal cual;
-// lo que resume SIMPAC se rotula "basado en el aviso de SENAMHI". El ícono y la lectura (lectura,
+// lo que resume SIFEC se rotula "basado en el aviso de SENAMHI". El ícono y la lectura (lectura,
 // texto_dia) los calcula el worker (backend/ingesta/lectura_aviso.py). Módulo puro (node --test).
 import { DIAS, diaMesCorto, diaSemana, fechaLarga, fechaPeru, hhmmPeru, momentoPeru } from "./tiempo.js";
 
@@ -11,7 +11,7 @@ const numero = (v) => Number(v).toLocaleString("es-PE", { maximumFractionDigits:
 export const COLOR_NIVEL = { 2: "amarillo", 3: "naranja", 4: "rojo" };
 const FENOMENO = { lluvia: "Lluvias", llovizna: "Llovizna", nevada: "Nevadas" };
 const INTENSIDAD_24H = { 2: "moderada", 3: "fuerte", 4: "extrema" };
-export const FIRMA_AVISO = "Ícono, zona simplificada y resumen de SIMPAC, basados en el aviso de SENAMHI.";
+export const FIRMA_AVISO = "Ícono, zona simplificada y resumen de SIFEC, basados en el aviso de SENAMHI.";
 const NO_TODA = "No quiere decir que llueva en toda la zona ni todo el día.";
 
 // El backend guarda 'temperatura': el título dice si es por calor o por frío.

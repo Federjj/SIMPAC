@@ -6,7 +6,7 @@ import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
-import pe.simpac.app.SimpacApp
+import pe.simpac.app.SifecApp
 import pe.simpac.app.data.PerfilPropio
 import pe.simpac.app.data.ReporteVigente
 import pe.simpac.app.dominio.Comunidad
@@ -33,7 +33,7 @@ data class EstadoCuenta(
 
 /** Pestana Cuenta: entrar, crear cuenta, olvide mi contrasena y, con sesion, perfil, mis reportes y salir (pages/Cuenta.jsx). */
 class CuentaViewModel(app: Application) : AndroidViewModel(app) {
-    private val contenedor = (app as SimpacApp).contenedor
+    private val contenedor = (app as SifecApp).contenedor
     private val sesion = contenedor.sesion
     private val repo = contenedor.repositorio
 
@@ -65,7 +65,7 @@ class CuentaViewModel(app: Application) : AndroidViewModel(app) {
                         sesion.recuperar(correo, volverA())
                         _estado.value = _estado.value.copy(
                             enviando = false, modo = ModoCuenta.CONFIRMAR,
-                            confirmacion = "Revisa tu correo" to "Si $correo tiene una cuenta, le enviamos un enlace para elegir una contraseña nueva. El enlace abre la web de SIMPAC; después vuelve a la app y entra con la contraseña nueva. Revisa también la carpeta de spam.",
+                            confirmacion = "Revisa tu correo" to "Si $correo tiene una cuenta, le enviamos un enlace para elegir una contraseña nueva. El enlace abre la web de SIFEC; después vuelve a la app y entra con la contraseña nueva. Revisa también la carpeta de spam.",
                         )
                     } catch (ex: Exception) {
                         _estado.value = _estado.value.copy(enviando = false, aviso = ex.message ?: "No se pudo completar.")
@@ -88,7 +88,7 @@ class CuentaViewModel(app: Application) : AndroidViewModel(app) {
                                     confirmacion = "Revisa tu correo" to if (r.yaExistia)
                                         "Si $correo ya tenía una cuenta, no se crea otra: entra con tu contraseña o pide una nueva. Si no la tenía, te enviamos un enlace para confirmarla."
                                     else
-                                        "Te enviamos un enlace a $correo para confirmar tu cuenta. Hasta que lo abras no podrás entrar. El enlace abre la web de SIMPAC; después vuelve a la app y entra con tu correo y contraseña. Revisa también la carpeta de spam.",
+                                        "Te enviamos un enlace a $correo para confirmar tu cuenta. Hasta que lo abras no podrás entrar. El enlace abre la web de SIFEC; después vuelve a la app y entra con tu correo y contraseña. Revisa también la carpeta de spam.",
                                 )
                             } else {
                                 _estado.value = _estado.value.copy(enviando = false, password = "")

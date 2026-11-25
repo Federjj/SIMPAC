@@ -8,7 +8,7 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
-import pe.simpac.app.SimpacApp
+import pe.simpac.app.SifecApp
 import pe.simpac.app.data.AlertaActual
 import pe.simpac.app.data.ComunicadoEnfen
 import pe.simpac.app.data.PronosticoVigente
@@ -69,7 +69,7 @@ data class EstadoInicio(
 }
 
 class InicioViewModel(app: Application) : AndroidViewModel(app) {
-    private val contenedor = (app as SimpacApp).contenedor
+    private val contenedor = (app as SifecApp).contenedor
     private val repo = contenedor.repositorio
     private val ajustes = contenedor.ajustes
 
@@ -164,7 +164,7 @@ class InicioViewModel(app: Application) : AndroidViewModel(app) {
         val alertas = rAlertas.getOrNull()
         if (titular == null && alertas == null) {
             val motivo = rTitular.exceptionOrNull()?.message ?: rAlertas.exceptionOrNull()?.message ?: "sin respuesta"
-            return@coroutineScope EstadoInicio(cargando = false, error = "No se pudo leer SIMPAC ($motivo). Revisa tu conexión.", departamento = departamento, porGps = porGps, ubicacionApagada = ubicacionApagada)
+            return@coroutineScope EstadoInicio(cargando = false, error = "No se pudo leer SIFEC ($motivo). Revisa tu conexión.", departamento = departamento, porGps = porGps, ubicacionApagada = ubicacionApagada)
         }
 
         val avisos = mutableListOf<String>()
@@ -177,7 +177,7 @@ class InicioViewModel(app: Application) : AndroidViewModel(app) {
         if (vigilados.isNotEmpty() && (rSenalesVig.isFailure || rCaudales.isFailure)) {
             avisos += "No se pudieron leer las señales de hoy del " + vigilados.joinToString(" y del ") { (it.nombre ?: it.id).replaceFirstChar { c -> c.lowercase() } } + "."
         }
-        val errorApi = rSnapshot.exceptionOrNull()?.let { "Sin contexto El Niño: la API de SIMPAC no respondió (${it.message}). Dirección: $apiUrl" }
+        val errorApi = rSnapshot.exceptionOrNull()?.let { "Sin contexto El Niño: la API de SIFEC no respondió (${it.message}). Dirección: $apiUrl" }
 
         val datoTitular = titular?.dato
         val alertasZona = alertas?.let { Alertas.ordenar(Alertas.deZona(it.dato, departamento)) } ?: emptyList()
@@ -194,7 +194,7 @@ class InicioViewModel(app: Application) : AndroidViewModel(app) {
         val generadoMs = Tiempo.parsearMs(datoTitular?.generado_en)
         val revisadoMs = Tiempo.parsearMs(datoTitular?.revisado_en) ?: generadoMs
         val fuentes = mutableListOf<Fuente>()
-        if (datoTitular != null) fuentes += Fuente("Titular de SIMPAC (${if (datoTitular.origen == "llm") "redactado por un modelo y validado" else "por reglas"})", Tiempo.horaConHace(generadoMs))
+        if (datoTitular != null) fuentes += Fuente("Titular de SIFEC (${if (datoTitular.origen == "llm") "redactado por un modelo y validado" else "por reglas"})", Tiempo.horaConHace(generadoMs))
         alertas?.let { r ->
             val masReciente = alertasZona.mapNotNull { Tiempo.parsearMs(it.ts) }.maxOrNull()
             fuentes += Fuente("Alertas oficiales (SENAMHI y ANA)", if (masReciente != null) Tiempo.horaConHace(masReciente) else "leídas " + Tiempo.horaCorta(r.obtenidoEn))

@@ -89,7 +89,7 @@ MAX_FRACCION_2M = 0.25        # si la zona de 2 m cubre más que esto del corred
 MAX_DESCARGA = 80_000_000     # bytes por tesela (pesan ~43 MB)
 
 URL_TESELA = "https://copernicus-dem-30m.s3.amazonaws.com/{n}/{n}.tif"
-FUENTE = ("Estimación SIMPAC: altura sobre el cauce (HAND) con el modelo de elevación Copernicus DEM GLO-30 "
+FUENTE = ("Estimación SIFEC: altura sobre el cauce (HAND) con el modelo de elevación Copernicus DEM GLO-30 "
           "(https://registry.opendata.aws/copernicus-dem/) y el trazo del río de ANA - GeoSNIRH")
 LICENCIA = "Aviso Copernicus (uso libre citando la atribución); trazo del río: información pública de la ANA"
 ATRIBUCION = ("Elaborado con Copernicus WorldDEM-30 © DLR e.V. 2010-2014 y © Airbus Defence and Space GmbH "

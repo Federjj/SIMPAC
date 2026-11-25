@@ -9,7 +9,7 @@
 //   Ríos        umbrales de alerta y emergencia de ANA (crecida o nivel bajo)
 //   Lluvia      escala horaria de AEMET como referencia (no hay escala oficial internacional)
 //   Referencia  la que SENAMHI usa para cada estación (1 h y 6 h); no es un aviso oficial
-//   "Atento" (80 % del umbral o menos de 0.5 m) y lo de meses secos son criterios de SIMPAC.
+//   "Atento" (80 % del umbral o menos de 0.5 m) y lo de meses secos son criterios de SIFEC.
 import { MESES, diaLegible, diasDesde, fechaPeru } from "./tiempo.js";
 
 const TRIMESTRES = {
@@ -139,8 +139,8 @@ const ETIQUETA = {
   sd: "Sin nivel de alerta",
 };
 
-// "Cerca del nivel de alerta" no es de ANA: es un criterio de SIMPAC y se dice.
-const NOTA_ATENTO = "“Cerca” es un criterio de SIMPAC (80 % del caudal de alerta, o menos de 50 cm del nivel), no un aviso de ANA.";
+// "Cerca del nivel de alerta" no es de ANA: es un criterio de SIFEC y se dice.
+const NOTA_ATENTO = "“Cerca” es un criterio de SIFEC (80 % del caudal de alerta, o menos de 50 cm del nivel), no un aviso de ANA.";
 
 // Todo lo que el mapa dice de una estación de río. `estado` decide el color.
 export function textoRio(c) {
@@ -171,7 +171,7 @@ export function textoRio(c) {
       return { ...bajo, estado: "alerta", etiqueta: "Río muy bajo", frase: `Río muy bajo por la temporada seca: está por debajo de su nivel de alerta por nivel bajo (${num(ua)} ${c.unidad}).${va}`, accion: "Puede dificultar la navegación y el transporte por río." };
     }
     // Por encima del umbral de nivel bajo: para ANA está normal. Solo se avisa si está
-    // cerca y bajando (criterio SIMPAC); no se atribuye una causa que no se mide.
+    // cerca y bajando (criterio SIFEC); no se atribuye una causa que no se mide.
     const sobra = c.valor - ua;
     const atento = sobra <= 0.5 && c.tendencia === "Descendente";
     return {
@@ -347,7 +347,7 @@ export function textoAnomalia(p, periodo) {
   const nombreMes = mes.split(" ")[0];
   const prec = p.PREC != null ? `${num(p.PREC)} mm` : null;
   const normal = p.NORMAL != null ? `${num(p.NORMAL)} mm` : null;
-  // en meses casi secos el porcentaje exagera: se habla en milímetros (criterio SIMPAC)
+  // en meses casi secos el porcentaje exagera: se habla en milímetros (criterio SIFEC)
   if (p.NORMAL != null && p.NORMAL < 10) {
     return {
       clase,
@@ -386,14 +386,14 @@ export const FRASES_RIO_PAIS = {
   // chip de la tarjeta junto a la distancia a un río con trazo de ANA (no vigilado)
   trazo: "trazo de ANA",
   // chips de la zona estimada de un río del país (el Mashcón conserva sus textos de siempre)
-  dentroZona: "Dentro de la zona que podría inundarse (estimación SIMPAC con el relieve)",
-  fueraZona: "Fuera de la zona que podría inundarse (estimación SIMPAC con el relieve)",
+  dentroZona: "Dentro de la zona que podría inundarse (estimación SIFEC con el relieve)",
+  fueraZona: "Fuera de la zona que podría inundarse (estimación SIFEC con el relieve)",
   sinZonas: "Este río no tiene mapa de zonas; la franja junto al cauce es solo referencial",
   // solo cuando el departamento no tiene ningún río con trazo ni vigilado
-  sinRiosDepto: "Aquí SIMPAC no vigila ríos con mapa de zonas todavía",
+  sinRiosDepto: "Aquí SIFEC no vigila ríos con mapa de zonas todavía",
   lejosTrazo: "El río con trazo más cercano está a",
   // popup y leyenda de la capa
-  metodo: "Estimación de SIMPAC con el relieve; no es un mapa oficial.",
+  metodo: "Estimación de SIFEC con el relieve; no es un mapa oficial.",
   franjaLeyenda: "Franja de atención junto al río (referencial, no es un mapa de inundación)",
   franjaPopup:
     "La franja punteada es una banda de ancho fijo a cada lado del trazo de ANA que marca el entorno inmediato del río que hay que vigilar; no es un mapa de inundación ni dice hasta dónde llegaría el agua.",

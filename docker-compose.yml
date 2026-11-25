@@ -1,4 +1,4 @@
-# SIMPAC — stack completo. Levantar con:  docker compose up --build
+# SIFEC — stack completo. Levantar con:  docker compose up --build
 # Necesita un archivo .env en la raíz (copia .env.docker.example).
 services:
   redis:

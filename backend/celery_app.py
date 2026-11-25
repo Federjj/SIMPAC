@@ -1,5 +1,5 @@
 """
-Worker de SIMPAC — Celery + Redis (cola/broker) con beat (programador).
+Worker de SIFEC — Celery + Redis (cola/broker) con beat (programador).
 
 Tareas:
   - ingesta: baja datos de las fuentes y los escribe en Supabase (cada hora).
@@ -32,7 +32,7 @@ from celery.signals import beat_init
 from backend.config import ajustes
 
 _redis = ajustes().redis_url
-celery = Celery("simpac", broker=_redis, backend=_redis)
+celery = Celery("sifec", broker=_redis, backend=_redis)
 celery.conf.update(timezone="America/Lima", enable_utc=False)
 celery.conf.beat_schedule = {
     "ingesta-horaria": {"task": "backend.celery_app.ingesta", "schedule": 3600.0},

@@ -35,7 +35,7 @@ class Pasada:
     caudal_ok: list[str] = field(default_factory=list)         # referencias de alerta re-evaluadas
     alertas_caudal: list[dict] = field(default_factory=list)
     # último mes del IGP (nunca posterior al mes anterior al actual) y los MESES_SERIE_IGP
-    # hasta él, en orden; su categoría la calcula SIMPAC (igp.categoria)
+    # hasta él, en orden; su categoría la calcula SIFEC (igp.categoria)
     icen: igp.PuntoICEN | None = None
     icen_serie: list[igp.PuntoICEN] = field(default_factory=list)
     roni: noaa.PuntoRONI | None = None

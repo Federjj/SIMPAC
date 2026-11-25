@@ -1,5 +1,5 @@
 """
-Motor de umbrales de SIMPAC: decide qué lectura es una alerta. Puro y sin red.
+Motor de umbrales de SIFEC: decide qué lectura es una alerta. Puro y sin red.
 
 - Caudal (ANA): usa los umbrales que la propia fuente entrega por estación
   (UALERTA / UEMERGENCIA), de crecida o de nivel bajo (vaciante) → el estado ya
@@ -11,7 +11,7 @@ Motor de umbrales de SIMPAC: decide qué lectura es una alerta. Puro y sin red.
   2 de cada 3 estaciones: por eso el nivel es siempre 'aviso' y el texto dice que no es un
   aviso oficial. La evalúa la tarea lluvia_nacional (backend/ingesta/lluvia_nacional.py).
 
-Se retiraron los umbrales provisionales de SIMPAC para la lluvia (20 y 40 mm en 24 h, 15 mm
+Se retiraron los umbrales provisionales de SIFEC para la lluvia (20 y 40 mm en 24 h, 15 mm
 en 1 h): eran los mismos en todo el país y no se ajustaban a cada lugar (20 mm en 24 h es
 lluvia normal en la selva).
 """

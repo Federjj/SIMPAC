@@ -1,5 +1,5 @@
 """
-Demo de los conectores de SIMPAC. Corre así (Python 3.10+, sin dependencias):
+Demo de los conectores de SIFEC. Corre así (Python 3.10+, sin dependencias):
 
     python -m backend.prototipo.demo
 
@@ -23,7 +23,7 @@ def seccion(t: str) -> None:
 
 
 def main() -> None:
-    print("=== SIMPAC · foto en tiempo real (Cajamarca) ===")
+    print("=== SIFEC · foto en tiempo real (Cajamarca) ===")
 
     seccion("Contexto El Niño")
     try:

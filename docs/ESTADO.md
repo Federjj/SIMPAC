@@ -1,6 +1,6 @@
-# SIMPAC — Estado del proyecto
+# SIFEC — Estado del proyecto
 
-> Panel vivo de "dónde estamos". Actualizado: **2026-10-24** (fase "app Kotlin, push y zonas de los
+> Panel vivo de "dónde estamos". Actualizado: **2026-11-25** (fase "app Kotlin, push y zonas de los
 > ríos del país" construida el 20-10 e integrada y verificada el 24-10; antes, verificación y
 > despliegue del software terminado la noche del 19 al 20 de octubre).
 > Repo: `github.com/Federjj/SIMPAC` (monorepo, rama `main`).
@@ -337,13 +337,13 @@ recorrida en `localhost:8080` (escritorio y 375x812) y app probada en el emulado
       interruptor que pide `POST_NOTIFICATIONS` y se suscribe a `pais` y `zona_cajamarca`.
       **Límite conocido:** el **Mapa (WebView) carga la web pero la captura sale en blanco** en ese
       emulador sin GPU (el árbol de accesibilidad muestra la web entera; una página simple sí se pinta
-      y Chrome del emulador sí pinta la web de SIMPAC): falta probarlo en un teléfono real. Detalle en
+      y Chrome del emulador sí pinta la web de SIFEC): falta probarlo en un teléfono real. Detalle en
       `appmobile/README.md` y `README-tecnico.md` §8.4.
 - [x] **Notificaciones push (HU-20) de extremo a extremo**: tarea `push` del worker
       (`backend/ingesta/push.py`, cada 5 min; 44 pruebas en `test_push.py`) lee `titular_zona`, compara
       con la memoria `push_estado` (migración `push_estado`, RLS sin lectura pública) y manda por FCM
-      (API HTTP v1, token OAuth2 firmado con `google-auth`) "SIMPAC: ALERTA|EMERGENCIA en <Depto>" con
-      el `titular_corto` de cuerpo solo cuando el nivel sube a alerta o emergencia, y "SIMPAC: vuelve
+      (API HTTP v1, token OAuth2 firmado con `google-auth`) "SIFEC: ALERTA|EMERGENCIA en <Depto>" con
+      el `titular_corto` de cuerpo solo cuando el nivel sube a alerta o emergencia, y "SIFEC: vuelve
       la calma en <Depto>" cuando baja a normal o aviso; nunca por aviso amarillo ni lluvia medida,
       nunca dos veces lo mismo, y `sin_dato` (fuente caída) no toca nada. Temas `pais` y `zona_<slug>`
       con una condición para que quien está en los dos lo reciba una vez. La cuenta de servicio de
@@ -378,7 +378,7 @@ recorrida en `localhost:8080` (escritorio y 375x812) y app probada en el emulado
       inundación". La tarjeta "Tu zona ahora" elige el río más cercano entre los vigilados del
       departamento y los ~100 ríos con trazo de ANA (`lib/zonaAhora.js riosTrazados`, `rioCercano`,
       `rioParaVer`): chips "A 820 m del río Rímac (trazo de ANA)", "Dentro/Fuera de la zona que podría
-      inundarse (estimación SIMPAC con el relieve)" o "Este río no tiene mapa de zonas; la franja junto
+      inundarse (estimación SIFEC con el relieve)" o "Este río no tiene mapa de zonas; la franja junto
       al cauce es solo referencial", y a más de 30 km "El río con trazo más cercano está a 34 km
       (Chicama)"; "Ver el río X en el mapa" encuadra a la persona y el tramo más cercano a zoom 16.
       `getTitular` ya pide `titular_corto` y la tarjeta lo usa (misma regla de frescura y nivel).
@@ -408,7 +408,7 @@ recordadas").
       hidrológico de SENAMHI (también el amarillo) es más alto que la lectura de ANA, el cauce y el
       disco toman el color del aviso y lo dicen («Mashcón · Aviso rojo SENAMHI», con la cifra de ANA
       al lado): así la zona no sale roja con el río "tranquilo".
-- [x] **La zona que podría afectar, sin leer nada:** una franja rayada (estimación de SIMPAC con el
+- [x] **La zona que podría afectar, sin leer nada:** una franja rayada (estimación de SIFEC con el
       relieve, Copernicus GLO-30) y manchas lisas (estudio INDECI-PNUD 2005 pasado a coordenadas).
       Ninguna es un mapa oficial vigente y nunca se dan metros. Los polígonos, desde zoom 13; desde
       zoom 14, «zona que podría inundarse» escrito junto al río y el límite de la faja marginal
@@ -522,12 +522,12 @@ las localidades).
   - Lluvia de las últimas 24 h de tu departamento.
   - El Niño en palabras ("El Niño costero: Alerta", "mar más caliente"), con su mes y su fuente.
   - Anomalías con las clases oficiales de SENAMHI.
-  - Lo que es criterio de SIMPAC ("atento" de los ríos) se rotula como referencial. La lluvia ya no
-    usa umbrales de SIMPAC: se compara con la referencia de SENAMHI de cada estación (ver "Alertas
+  - Lo que es criterio de SIFEC ("atento" de los ríos) se rotula como referencial. La lluvia ya no
+    usa umbrales de SIFEC: se compara con la referencia de SENAMHI de cada estación (ver "Alertas
     de lluvia con la referencia de SENAMHI").
 - [x] **Revisión adversarial de este cambio** (8 agentes, 24 hallazgos confirmados, corregidos). Lo principal:
   - Nunca "Normal" en verde por algo que no se midió: mientras carga, si falla la consulta o si
-    SIMPAC no vigila nada en la zona (Callao) sale "Sin datos". En Lima aclaraba que la lluvia aún
+    SIFEC no vigila nada en la zona (Callao) sale "Sin datos". En Lima aclaraba que la lluvia aún
     no se medía ahí (hoy la lluvia de la última hora cubre todo el país).
   - La lluvia medida sube la zona a "Aviso" como mucho (rótulo "Atentos a la lluvia"), nunca a
     "Alerta" ni "Emergencia", y se describe como lo que es: lo que midió una estación frente a la
@@ -583,7 +583,7 @@ las localidades).
 **Alertas de lluvia con la referencia de SENAMHI (22 sep, noche)** — **338 pruebas** sin red,
 migración `alerta_lluvia_referencia_senamhi` aplicada e imágenes reconstruidas (primera corrida: 213
 estaciones evaluadas, 1 alerta real de 6 h en Cotahuasi, Arequipa)
-- [x] **Fuera los umbrales provisionales de SIMPAC** (20 y 40 mm en 24 h, 15 mm en 1 h): eran los
+- [x] **Fuera los umbrales provisionales de SIFEC** (20 y 40 mm en 24 h, 15 mm en 1 h): eran los
       mismos en todo el país. 20 mm en 24 h es lluvia normal en la selva, y 15 mm/h casi no se
       alcanzaría en Cajamarca.
 - [x] **Regla nueva** (`alerts.py`, tarea `lluvia_nacional`): una estación pasa si la lluvia de su
@@ -602,7 +602,7 @@ estaciones evaluadas, 1 alerta real de 6 h en Cotahuasi, Arequipa)
     `lluvia_nacional` de verdad evaluó (`alertas` no nulo en el latido) y la consulta respondió; si
     no, "No se pudo revisar la lluvia de las estaciones de SENAMHI". La frase del resto del país
     solo lo dice si hay estaciones evaluables fuera de tu zona.
-  - Lima, Piura o Loreto ya no dicen "SIMPAC aún no mide la lluvia aquí": la cobertura sale de
+  - Lima, Piura o Loreto ya no dicen "SIFEC aún no mide la lluvia aquí": la cobertura sale de
     las estaciones de SENAMHI del departamento.
   - La cabecera separa "ríos" y "lluvia", cada una con su hora y su aviso de atraso.
   - En el mapa, borde amarillo en las estaciones que pasaron la referencia (1 h o 6 h).
@@ -831,7 +831,7 @@ estaciones evaluadas, 1 alerta real de 6 h en Cotahuasi, Arequipa)
       sobre un aviso naranja; zona azul sin señales desde zoom 13), los textos de "Ríos muy bajos" y
       el flujo de reportar. Hasta ahora todo se probó con los verificadores, no con usuarios.
 - [ ] **Radios de "A dónde acudir"**: la tarjeta busca en una caja de 30 km y prefiere un hospital
-      de 24 h si está a menos de 15 km; son criterios de SIMPAC, no de una norma. Revisarlos con
+      de 24 h si está a menos de 15 km; son criterios de SIFEC, no de una norma. Revisarlos con
       Defensa Civil o la DIRESA (en zona rural 30 km puede dejar la tarjeta vacía).
 - [ ] **Pendientes de la hoja**: nowcasting animado de 3 cuadros, recorrido "Si el río se desborda"
       y la línea recta hasta el punto de acudir.
@@ -844,7 +844,7 @@ estaciones evaluadas, 1 alerta real de 6 h en Cotahuasi, Arequipa)
       el `WebView` creado dentro de `AndroidView` quedaba con alto `WRAP_CONTENT` y Chromium resuelve
       `100vh` y `height: 100%` como 0 (la web usa `h-screen`; la app de Capacitor no lo sufría porque su
       WebView venía del XML con `match_parent`). Arreglado con `LayoutParams(MATCH_PARENT,
-      MATCH_PARENT)` en `ui/mapa/MapaScreen.kt`: el emulador sin ventana ya muestra tiles, chip SIMPAC y
+      MATCH_PARENT)` en `ui/mapa/MapaScreen.kt`: el emulador sin ventana ya muestra tiles, chip SIFEC y
       hoja. Queda probarlo en un teléfono real y revisar `canGoBack` del botón atrás tras abrir `/cuenta`
       (una vez volvió a Inicio en vez de retroceder).
 - [x] **Notificaciones push (FCM)** (HU-20, 20/24-10): proyecto Firebase `appsimpac`,
@@ -863,15 +863,15 @@ estaciones evaluadas, 1 alerta real de 6 h en Cotahuasi, Arequipa)
       deprecación de `security-crypto` 1.1.0 cuando AndroidX publique el reemplazo.
 - [x] **Stadia Maps fuera de localhost**: la web en Vercel usa la API key de Stadia
       (`VITE_STADIA_API_KEY`); los tiles cargan en el dominio real (verificado el 2026-11-05).
-- [x] **Descarga de la app desde la web (HU-32, 19-11-2026)**: página `/app` "SIMPAC en tu celular"
+- [x] **Descarga de la app desde la web (HU-32, 19-11-2026)**: página `/app` "SIFEC en tu celular"
       (`frontend/src/pages/DescargarApp.jsx`) con el botón "Descargar para Android (APK)" que
-      descarga directo `/descargas/SIMPAC.apk` (el APK va en `frontend/public/descargas/`, servido
+      descarga directo `/descargas/SIFEC.apk` (el APK va en `frontend/public/descargas/`, servido
       con `Content-Disposition: attachment`; desde la noche del 19-11 ya no depende de un release
       de GitHub), qué es la app, unos 18 MB, Android 8 o más nuevo, 4 pasos de instalación, aviso de que no está en Play Store y la
       firma el equipo, nota de privacidad, "Copiar enlace" para WhatsApp y "Ver el código en GitHub";
-      acceso "Descargar la app" en la barra lateral y tarjeta "Lleva SIMPAC en tu celular" en Cuenta.
+      acceso "Descargar la app" en la barra lateral y tarjeta "Lleva SIFEC en tu celular" en Cuenta.
       `npm test` y `npm run build` OK; verificada en escritorio y 375x812. Para publicar una versión
-      nueva: reemplazar `frontend/public/descargas/SIMPAC.apk` y hacer push (README, "Descargar la
+      nueva: reemplazar `frontend/public/descargas/SIFEC.apk` y hacer push (README, "Descargar la
       app"). El release de GitHub queda como alternativa opcional.
 - [x] **Pulido de la app Android (19-11-2026)**: kit común en `ui/componentes` (esqueletos con
       shimmer, estados vacío y de error, transiciones del NavHost, aparición escalonada, pulsado con
@@ -903,6 +903,36 @@ estaciones evaluadas, 1 alerta real de 6 h en Cotahuasi, Arequipa)
       navegador (184 pruebas en verde) y en el emulador (74 pruebas JVM, sin crashes). Pendientes:
       `rio_cauce_senal` no trae `avisos_lluvia` ni `lluvia_cuenca`, así que la línea de cuenca y el
       halo por lluvia solo salen para el río vigilado; probar la precisión en un teléfono real.
+- [x] **Cambio de nombre a SIFEC (25-11-2026)**: el producto se llamaba SIMPAC y pasa a llamarse SIFEC
+      (Sistema Inteligente de Acceso a Información del Fenómeno El Niño, el nombre largo que ya mostraba
+      la barra lateral). Cambió todo lo que ve la gente (títulos, pie, Acerca de, manifest de la PWA con
+      `short_name` SIFEC, notificaciones push "SIFEC: ALERTA en <Depto>" y "SIFEC: vuelve la calma
+      en <Depto>", titulares y textos del backend, `SIFEC API` y `{"service":"sifec-api"}`, página
+      `/app` "SIFEC en tu celular", leyendas y el campo `fuente` de los geojson), los nombres en código
+      (`SifecApp`, `PushSifec`, `JsonSifec`, `SifecTheme`, `Theme.SIFEC`, clases CSS `sifec-*`, paquete
+      npm `sifec-frontend`, caché del service worker `sifec-v3`, `launch.json` `sifec-web`), el APK (ahora
+      `SIFEC.apk`, servido en `/descargas/SIFEC.apk`; la ruta vieja redirige con 301 en `vercel.json`,
+      `netlify.toml` y `nginx.conf` para que los enlaces ya compartidos sigan funcionando) y la
+      documentación. Se conservó tal cual, porque nadie lo ve o porque cambiarlo rompe cosas: el paquete
+      y `applicationId` `pe.simpac.app` (carpetas `pe/simpac/app`), el proyecto de Firebase `appsimpac`
+      y su `google-services.json`; los dominios `simpac-v7nf.vercel.app` y
+      `simpac-production.up.railway.app` y el repo `github.com/Federjj/SIMPAC`; las variables de entorno
+      `SIMPAC_*` y las propiedades de Gradle `simpac.apiUrl`, `simpac.webUrl` y `simpac.stadiaKey` (y los
+      `-P` de los comandos de build); las claves de `localStorage` de la web (`simpac.mapa`, `simpac.gps`,
+      `simpac.zona`, `simpac.chat.ocultos`) y los archivos locales de la app (la caché en disco
+      `simpac_cache`, el DataStore de ajustes `simpac_ajustes` y el EncryptedSharedPreferences
+      `simpac_seguro.xml`), porque renombrarlos haría perder la ciudad elegida, las capas y la sesión de
+      quien ya usa la app; las migraciones de `supabase/migrations/` (historial ya aplicado), los nombres
+      de tablas, vistas y funciones de la base, `backend/prototipo/simpac.db` y la nota
+      `init_simpac_schema` del índice de migraciones en `schema.sql`. Los csv que descarga Histórico sí
+      cambian de prefijo (`sifec_rio_mashcon_7d.csv`). El APK publicado en la web es el `2.1`
+      (`versionCode 3`) compilado el 25-11-2026 con los textos nuevos y la misma firma de depuración
+      que el `2.0`, así que se instala encima. Queda por aplicar en Supabase la migración
+      `20261125120000_nombre_sifec.sql` (solo textos ya guardados: 13 filas de `rio_zona`, 40 de
+      `rio_cauce_zona`, 1 de `rio_vigilado`, 1 titular del Callao y 2 comentarios de objetos), después
+      de desplegar el backend nuevo en Railway: si se aplica antes, el worker viejo volvería a escribir
+      el titular del Callao con el nombre viejo. Los titulares de los demás departamentos los redacta
+      el worker nuevo solo; las variables `SIMPAC_*` de Railway no cambian.
 
 **Despliegue en la nube (preparado el 04-11-2026; ejecutado el 05-11-2026)**
 - [x] **En producción**: web `https://simpac-v7nf.vercel.app` (Vercel, Root Directory `frontend`,
@@ -1080,7 +1110,7 @@ estaciones evaluadas, 1 alerta real de 6 h en Cotahuasi, Arequipa)
 - **Zonas de relieve de los ríos del país**: mismos límites que las del Mashcón (modelo de
   superficie con 2-3 m de error vertical; en ciudades la zona queda corta porque el DSM incluye
   edificios: Piura, Sullana, Lima; no considera muros, defensas ni drenajes; el trazo de ANA es la
-  línea central de 2018, no la orilla de hoy). Por eso cada zona dice "Estimación de SIMPAC con el
+  línea central de 2018, no la orilla de hoy). Por eso cada zona dice "Estimación de SIFEC con el
   relieve; no es un mapa oficial" y nunca da metros. La franja de atención de `rio_cauce_mapa` es solo
   una banda de ancho fijo junto al trazo, no un mapa de inundación, y se ve solo en alerta o
   emergencia.

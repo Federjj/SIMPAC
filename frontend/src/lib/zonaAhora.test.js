@@ -335,17 +335,17 @@ test("chips por caso: trazo de ANA, dentro/fuera de la zona estimada, sin zonas,
   const chips = chipsDistancia(d, rimac.rio, rimac.estado.nivel);
   assert.match(chips[0].texto, /^A \d+ m del río Rímac \(trazo de ANA\)$/);
   assert.equal(chips[0].despues, " del río Rímac (trazo de ANA)");
-  assert.match(chips[1].texto, /^Fuera de la zona que podría inundarse, a \d+ m \(estimación SIMPAC con el relieve\)$/);
+  assert.match(chips[1].texto, /^Fuera de la zona que podría inundarse, a \d+ m \(estimación SIFEC con el relieve\)$/);
   assert.equal(chips[1].nivel, "normal");
   assert.equal(chipSinZonas(d, rimac.rio, true), null); // ya hay chip de zona
   // dentro de la zona, en el color del nivel del río
   const dentro = chipsDistancia(distancias([-12.042, -77.043], rimac.rio, zonas), rimac.rio, "alerta");
-  assert.equal(dentro[1].texto, "Dentro de la zona que podría inundarse (estimación SIMPAC con el relieve)");
+  assert.equal(dentro[1].texto, "Dentro de la zona que podría inundarse (estimación SIFEC con el relieve)");
   assert.equal(dentro[1].nivel, "alerta");
   assert.equal(dentro[1].dentro, true);
   // lejos de la zona (más de 1 km): sin distancia
   const lejosZona = chipsDistancia(distancias([-12.06, -76.95], rimac.rio, zonas), rimac.rio, "sin_senales");
-  assert.equal(lejosZona[1].texto, "Fuera de la zona que podría inundarse (estimación SIMPAC con el relieve)");
+  assert.equal(lejosZona[1].texto, "Fuera de la zona que podría inundarse (estimación SIFEC con el relieve)");
   // sin zonas cargadas para el río: el chip punteado, solo cuando ya se consultaron
   const sinZonas = distancias(LIMA, rimac.rio, []);
   assert.equal(chipsDistancia(sinZonas, rimac.rio).length, 1);

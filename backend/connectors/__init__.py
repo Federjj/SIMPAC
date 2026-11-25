@@ -1,4 +1,4 @@
-"""Conectores de fuentes de datos de SIMPAC.
+"""Conectores de fuentes de datos de SIFEC.
 
 Un módulo por organismo; cada uno normaliza su fuente a estructuras simples.
 Ver docs/README-tecnico.md para el detalle de cada endpoint.

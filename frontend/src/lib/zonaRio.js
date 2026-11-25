@@ -7,7 +7,7 @@
 // Nivel de la zona = el más alto de sus señales:
 //   emergencia  ANA: el río pasó su nivel de emergencia (de crecida)  · o aviso hidrológico ROJO de SENAMHI
 //   alerta      ANA: pasó su nivel de alerta                          · o aviso hidrológico NARANJA de SENAMHI
-//   atentos     ANA: cerca de su nivel de alerta (criterio SIMPAC)    · o aviso hidrológico AMARILLO de SENAMHI
+//   atentos     ANA: cerca de su nivel de alerta (criterio SIFEC)    · o aviso hidrológico AMARILLO de SENAMHI
 //               · o aviso de SENAMHI por lluvias NARANJA o ROJO, en curso, sobre la cuenca
 //               · o una estación de SENAMHI de la cuenca midió más lluvia que su referencia (1 h o 6 h)
 //   sin_senales nada de lo anterior
@@ -74,7 +74,7 @@ export function estadoZona({ caudal = null, senal = null, ahora = new Date() } =
         texto: `Lleva ${medida}; su nivel de alerta es ${num(t.ua)} ${caudal.unidad}.` });
     else if (t.estado === "atento")
       senales.push({ clave: "ana", nivel: "atentos", titulo: "El río está cerca de su nivel de alerta",
-        texto: `${t.frase} “Cerca” es un criterio de SIMPAC, no un aviso de ANA.` });
+        texto: `${t.frase} “Cerca” es un criterio de SIFEC, no un aviso de ANA.` });
   }
   if (!caudal) menciones.push({ clave: "sin_ana", texto: "ANA no tiene una medición reciente de la estación de este río." });
 

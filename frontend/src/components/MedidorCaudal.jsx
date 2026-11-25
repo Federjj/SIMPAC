@@ -196,7 +196,7 @@ export default function MedidorCaudal({ c, rio, estado = null, viejo = false, cl
       )}
       <p className={cn("mt-1 text-[0.7rem]", atrasado ? "font-medium text-nivel-alerta" : "text-muted-foreground")}>
         {lectura ? (atrasado ? `Último dato: ${c.fecha ? diaLegible(c.fecha) : ""} ${c.hora ?? ""} (ANA); puede haber cambiado.` : lectura) : "ANA: sin hora de lectura."}
-        {t?.estado === "atento" && !t.bajo && <span className="block">“Cerca” es un criterio de SIMPAC (80 % del caudal de alerta), no un aviso de ANA.</span>}
+        {t?.estado === "atento" && !t.bajo && <span className="block">“Cerca” es un criterio de SIFEC (80 % del caudal de alerta), no un aviso de ANA.</span>}
         {Number.isFinite(fechaMs) && !atrasado && horasDesde(new Date(fechaMs).toISOString()) >= 3 && <span className="block">Hace más de 3 h: ANA publica por horas y a veces con atraso.</span>}
       </p>
     </section>

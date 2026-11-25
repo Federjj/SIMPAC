@@ -15,7 +15,7 @@ const enPlataforma = Boolean(process.env.VERCEL || process.env.NETLIFY);
 function precomprimir() {
   let salida = "dist";
   return {
-    name: "simpac-precomprimir",
+    name: "sifec-precomprimir",
     apply: "build",
     configResolved(c) {
       salida = c.build.outDir;
@@ -50,7 +50,7 @@ export default defineConfig({
   build: {
     rollupOptions: {
       output: {
-        // vendors en chunks propios: un cambio en el código de SIMPAC solo invalida el chunk index
+        // vendors en chunks propios: un cambio en el código de SIFEC solo invalida el chunk index
         // (~64 KB gz) y no los ~190 KB gz de React, Leaflet y supabase-js, que el navegador ya tiene.
         // Radix no se separa: con React en otro chunk queda una dependencia circular.
         manualChunks: {

@@ -5,12 +5,12 @@ import PanelPagina from "@/components/PanelPagina";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
-// El APK vive en esta misma web: `public/descargas/SIMPAC.apk` (Vite lo copia tal cual al build y
+// El APK vive en esta misma web: `public/descargas/SIFEC.apk` (Vite lo copia tal cual al build y
 // Vercel lo sirve como archivo con `Content-Disposition: attachment`, ver vercel.json). Al ser el
 // mismo origen, el atributo `download` sí vale: el navegador descarga sin abrir nada. Para publicar
 // una versión nueva basta con reemplazar ese archivo y desplegar. `URL_APK` es relativa; para
 // compartir se arma la absoluta con `enlaceApkAbsoluto()`.
-export const URL_APK = "/descargas/SIMPAC.apk";
+export const URL_APK = "/descargas/SIFEC.apk";
 export const URL_REPO = "https://github.com/Federjj/SIMPAC";
 export const TAMANO_APK = "unos 18 MB";
 export const ANDROID_MINIMO = "Android 8 o más nuevo";
@@ -22,9 +22,9 @@ export function enlaceApkAbsoluto() {
 
 const PASOS = [
   "Toca \"Descargar para Android (APK)\". Si Chrome avisa que el archivo puede dañar el dispositivo, toca \"Descargar de todas formas\" y espera a que termine (unos 18 MB).",
-  "Abre el archivo SIMPAC.apk desde las notificaciones o desde la carpeta Descargas.",
+  "Abre el archivo SIFEC.apk desde las notificaciones o desde la carpeta Descargas.",
   "Si el celular pregunta, permite que tu navegador instale apps de origen desconocido (solo esta vez).",
-  "Toca Instalar y abre SIMPAC. Elige tu zona en Cuenta o deja que use tu ubicación.",
+  "Toca Instalar y abre SIFEC. Elige tu zona en Cuenta o deja que use tu ubicación.",
 ];
 
 // En iPhone y iPad el archivo no sirve de nada (Safari lo bajaría igual a Archivos): se avisa en vez
@@ -45,7 +45,7 @@ export function BotonDescargarApk({ className }) {
   }
   return (
     <Button asChild size="lg" className={cn("h-12 w-full text-base", className)}>
-      <a href={URL_APK} download="SIMPAC.apk">
+      <a href={URL_APK} download="SIFEC.apk">
         <Download className="h-5 w-5" />
         Descargar para Android (APK)
       </a>
@@ -100,7 +100,7 @@ function Punto({ Icon, children }) {
 // No consulta nada en vivo.
 export default function DescargarApp() {
   return (
-    <PanelPagina titulo="SIMPAC en tu celular" subtitulo="App Android nativa, gratis">
+    <PanelPagina titulo="SIFEC en tu celular" subtitulo="App Android nativa, gratis">
       <div className="space-y-5 text-sm">
         <section className="rounded-xl border border-border bg-card p-4">
           <div className="flex items-start gap-3">
@@ -110,7 +110,7 @@ export default function DescargarApp() {
             <div>
               <h2 className="text-base font-semibold">La misma información, en una app</h2>
               <p className="mt-1 text-muted-foreground">
-                SIMPAC para Android es una app nativa con el mapa, las alertas de tu zona y a dónde acudir en una
+                SIFEC para Android es una app nativa con el mapa, las alertas de tu zona y a dónde acudir en una
                 emergencia. Lo que agrega frente a la web: te avisa con una notificación cuando tu departamento entra en
                 alerta o emergencia oficial, aunque tengas la app cerrada.
               </p>
@@ -124,7 +124,7 @@ export default function DescargarApp() {
           <div className="mt-4">
             <BotonDescargarApk />
             <p className="mt-2 text-center text-xs text-muted-foreground">
-              Archivo SIMPAC.apk, {TAMANO_APK} · {ANDROID_MINIMO} · descarga directa desde esta web
+              Archivo SIFEC.apk, {TAMANO_APK} · {ANDROID_MINIMO} · descarga directa desde esta web
             </p>
           </div>
         </section>

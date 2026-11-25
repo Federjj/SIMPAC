@@ -41,7 +41,7 @@ export default {
           DEFAULT: "hsl(var(--card))",
           foreground: "hsl(var(--card-foreground))",
         },
-        // Niveles semanticos de SIMPAC (semaforo de alerta) + capas.
+        // Niveles semanticos de SIFEC (semaforo de alerta) + capas.
         // Paleta propia del equipo (no los colores por defecto).
         nivel: {
           normal: "#3BEB40",

@@ -1,7 +1,7 @@
-# SIMPAC — Brief de diseño de frontend (producto completo)
+# SIFEC — Brief de diseño de frontend (producto completo)
 
 > **Para quién es:** para pegar en **Claude Design**. Describe *qué* pantallas y componentes
-> necesita SIMPAC, *qué datos* muestra cada uno y *cómo se comporta*. El **estilo visual**
+> necesita SIFEC, *qué datos* muestra cada uno y *cómo se comporta*. El **estilo visual**
 > (paleta fina, tipografía, espaciado, ilustración) lo decide el diseño; aquí se fijan los
 > roles funcionales (p. ej. el semáforo de alerta, que es semántico).
 >
@@ -12,7 +12,7 @@
 
 ## 1. Contexto
 
-- **Producto:** SIMPAC — centraliza datos hidrometeorológicos de **Cajamarca (Perú)**, avisa de
+- **Producto:** SIFEC — centraliza datos hidrometeorológicos de **Cajamarca (Perú)**, avisa de
   **lluvias/crecidas** con anticipación y suma una **capa comunitaria** (reportes + chat) tipo
   Waze para el detalle calle a calle.
 - **Usuarios/roles:** visitante (sin cuenta) · ciudadano/agricultor. **Sin roles de
@@ -71,7 +71,7 @@ Foto instantánea del estado de Cajamarca. De arriba a abajo:
 **Datos:** `GET /api/snapshot`.
 
 ### 4.2. Mapa interactivo — **pantalla principal, estilo Waze**
-Es LA pantalla central de SIMPAC (como en Waze, el mapa *es* el home). Al entrar se centra en la
+Es LA pantalla central de SIFEC (como en Waze, el mapa *es* el home). Al entrar se centra en la
 ubicación del usuario (GPS o zona elegida). El panel de Panorama (4.1) va como *bottom-sheet*
 deslizable encima del mapa, no como página aparte.
 
@@ -176,7 +176,7 @@ Diseñar los estados **logueado / no logueado** y el gate de "necesitas cuenta p
 ## 6. C — Comunidad / reportes ciudadanos (v2)
 
 La **comunidad valida**, no la app ni un moderador: cada quien sube su reporte con foto y los
-demás lo **votan (like/dislike)** y **comentan**. SIMPAC solo es el intermediario que muestra la
+demás lo **votan (like/dislike)** y **comentan**. SIFEC solo es el intermediario que muestra la
 información; la veracidad la juzga la gente.
 
 - **Crear reporte:** tipo (ver taxonomía de §4.2), ubicación = **posición GPS actual** (sin

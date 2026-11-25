@@ -10,7 +10,7 @@ Ojo: el IGP puede atrasarse (en sep-2026 seguía en mayo) mientras el ENFEN ya p
 meses más nuevos en la Tabla 3 de su Informe Técnico (connectors/enfen.py); la tabla indice
 guarda el más reciente de los dos.
 
-El archivo no trae categoría: la de cada mes la calcula SIMPAC con categoria() (cortes de la
+El archivo no trae categoría: la de cada mes la calcula SIFEC con categoria() (cortes de la
 Nota Técnica ENFEN 01-2024). La oficial es la de la tabla del Informe Técnico ENFEN.
 """
 from __future__ import annotations
@@ -67,7 +67,7 @@ class PuntoICEN:
 
     @property
     def categoria(self) -> str:
-        """Calculada por SIMPAC (el ICEN.txt no la trae): ver categoria()."""
+        """Calculada por SIFEC (el ICEN.txt no la trae): ver categoria()."""
         return categoria(self.valor)
 
 
