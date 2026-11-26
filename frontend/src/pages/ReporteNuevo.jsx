@@ -150,12 +150,12 @@ export default function ReporteNuevo() {
                   aria-checked={tipo === x.id}
                   onClick={() => elegirTipo(x.id)}
                   className={cn(
-                    "flex items-center gap-2 rounded-xl border px-2.5 py-2 text-left text-xs font-medium transition-colors",
+                    "flex items-center gap-2 rounded-xl border px-2.5 py-2 text-left text-xs font-medium transition-colors wrap-anywhere",
                     tipo === x.id ? "border-foreground bg-foreground text-background" : "border-border bg-card hover:bg-accent"
                   )}
                 >
                   <IconoReporte tipo={x.id} tamano="sm" />
-                  <span className="leading-tight">{x.label}</span>
+                  <span className="leading-tight wrap-anywhere max-w-5">{x.labelpers}</span>
                 </button>
               ))}
             </div>
